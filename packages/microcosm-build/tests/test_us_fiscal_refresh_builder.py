@@ -4166,6 +4166,13 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
                 measure="income",
                 value=500_000.0,
                 source="fixture",
+                metadata={
+                    "ledger_selector_source_name": "irs_soi",
+                    "ledger_measure_concept": "irs_soi.income",
+                    "ledger_measure_unit": "usd",
+                    "ledger_geography_level": "state",
+                    "ledger_geography_id": "0400000US06",
+                },
             ),
         ),
         country="us",
@@ -4203,6 +4210,19 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     )
 
     diagnostics = json.loads((tmp_path / "calibration_diagnostics.json").read_text())
+    assert diagnostics["schema_version"] == 7
+    assert diagnostics["targets"][0]["source"] == {
+        "id": "irs_soi",
+        "citation": "fixture",
+    }
+    assert diagnostics["targets"][0]["dimensions"] == {"geography_state": "0400000US06"}
+    assert diagnostics["dimensions"]["geography_state"] == {
+        "label": "State",
+        "role": "geography",
+        "level": "state",
+        "values": {"0400000US06": "CA"},
+        "order": ["0400000US06"],
+    }
     assert diagnostics["final_loss"] is None
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
 
@@ -9167,8 +9187,6 @@ def test_exact_k_receipt_stays_strict_even_when_base_h5_opt_in_is_present() -> N
 
     with pytest.raises(RuntimeError, match="lost its passing agreement gate"):
         builder._exact_k_ladder_manifest_payload(**_gate_failed_exact_k_inputs(builder))
-
-
 def test_exact_k_receipt_carries_current_worker_authentication() -> None:
     builder = _load_builder_module()
     inputs = _gate_failed_exact_k_inputs(builder)
