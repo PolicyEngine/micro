@@ -26,6 +26,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.income_tax",
+        "diagnostic_variable_id": "efo_receipts",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -45,6 +46,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.ni",
+        "diagnostic_variable_id": "efo_receipts",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -64,6 +66,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.ni_employee",
+        "diagnostic_variable_id": "efo_receipts",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -83,6 +86,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.ni_employer",
+        "diagnostic_variable_id": "efo_receipts",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -102,6 +106,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.ni_self_employed",
+        "diagnostic_variable_id": "efo_receipts",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -121,6 +126,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.vat",
+        "diagnostic_variable_id": "efo_receipts",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -140,6 +146,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.fuel_duties",
+        "diagnostic_variable_id": "efo_receipts",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -159,6 +166,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.capital_gains_tax",
+        "diagnostic_variable_id": "efo_receipts",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -178,6 +186,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.sdlt",
+        "diagnostic_variable_id": "efo_receipts",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -197,6 +206,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.attendance_allowance",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -216,6 +226,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.carers_allowance",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -235,6 +246,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.child_benefit",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -253,6 +265,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.council_tax",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -272,6 +285,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.esa",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
@@ -292,6 +306,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.housing_benefit",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -311,6 +326,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.jobseekers_allowance",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -330,6 +346,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.pension_credit",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -349,6 +366,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.pip",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -368,6 +386,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.state_pension",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -387,6 +406,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.statutory_maternity_pay",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -406,6 +426,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.tv_licence_fee",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -425,6 +446,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.universal_credit_in_cap",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -444,6 +466,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.universal_credit_outside_cap",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -463,6 +486,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.winter_fuel_allowance",
+        "diagnostic_variable_id": "efo_expenditure",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
