@@ -100,6 +100,13 @@ from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
     SkippedTarget,
     build_constraint_matrix,
 )
+from microcosm.calibrate.hierarchy import (  # noqa: E402 - after compat gate
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyDimension,
+    HierarchyGeography,
+    HierarchyNode,
+)
 from microcosm.calibrate.monetary_binding import (  # noqa: E402 - after compat gate
     MonetaryBindingIntegrityError,
 )
@@ -154,9 +161,14 @@ __all__ = [
     "TARGET_LOSS_ATTRIBUTION_WARNING_CODES",
     "TARGET_LOSS_BASIS_HASH_ALGORITHM",
     "CalibrationProblem",
+    "CalibrationHierarchy",
     "CalibrationResult",
     "L0RefitResult",
     "MonetaryBindingIntegrityError",
+    "HierarchyCategory",
+    "HierarchyDimension",
+    "HierarchyGeography",
+    "HierarchyNode",
     "SkippedTarget",
     "Target",
     "TargetDiagnostic",
