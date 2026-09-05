@@ -2352,7 +2352,7 @@ def test_legacy_diagnostics_exemption_is_scoped_to_the_exact_june_id(
         payload=diagnostics,
     )
 
-    with pytest.raises(ReleaseContractError, match="publishes version 7"):
+    with pytest.raises(ReleaseContractError, match="publishes version 8"):
         validate_release_dir(directory)
 
 
@@ -3574,6 +3574,7 @@ def test_schema_7_structured_calibration_diagnostics_are_accepted(
         }
     }
     for row in diagnostics["targets"]:
+        row["label"] = "Fixture target"
         row["source"] = {
             "id": "fixture",
             "label": "Fixture provider",
@@ -3592,6 +3593,103 @@ def test_schema_7_structured_calibration_diagnostics_are_accepted(
     )
 
     validate_release_dir(release_dir)
+
+
+def test_schema_8_calibration_hierarchy_is_accepted(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 8
+    for row in diagnostics["targets"]:
+        row["hierarchy"] = {
+            "provider": {"id": "fixture", "label": "Fixture provider"},
+            "category": {
+                "id": "fixture.population",
+                "label": "Population",
+                "provider_id": "fixture",
+            },
+            "geography": {
+                "id": "0100000US",
+                "label": "United States",
+                "level": "country",
+            },
+            "dimensions": [
+                {
+                    "id": "sex",
+                    "label": "Sex",
+                    "value_id": "female",
+                    "value_label": "Female",
+                }
+            ],
+            "target": {
+                "id": row["target_name"],
+                "label": "Fixture target",
+            },
+        }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    validate_release_dir(release_dir)
+
+
+def test_schema_8_rejects_incomplete_hierarchy(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 8
+    for row in diagnostics["targets"]:
+        row["hierarchy"] = {
+            "provider": {"id": "fixture", "label": "Fixture provider"},
+            "category": {
+                "id": "fixture.population",
+                "label": "",
+                "provider_id": "another-provider",
+            },
+            "geography": {
+                "id": "0100000US",
+                "label": "United States",
+                "level": "country",
+            },
+            "dimensions": [],
+            "target": {"id": "wrong", "label": "Fixture target"},
+        }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "hierarchy.category.label must be a non-empty string" in failures
+    assert "hierarchy.category.provider_id must equal" in failures
+    assert "hierarchy.target.id must equal" in failures
+
+
+def test_schema_7_rejects_an_empty_target_label(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 7
+    diagnostics["dimensions"] = {}
+    for row in diagnostics["targets"]:
+        row["label"] = " "
+        row["source"] = {"id": "fixture"}
+        row["variable"] = {"id": row["target_name"]}
+        row["dimensions"] = {}
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "schema 7 requires a non-empty string 'label'" in failures
 
 
 @pytest.mark.parametrize("field", ["source", "variable"])

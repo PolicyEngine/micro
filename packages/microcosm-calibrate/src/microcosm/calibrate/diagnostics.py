@@ -23,6 +23,7 @@ import logging
 import math
 import re
 from collections.abc import Mapping
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -52,11 +53,14 @@ __all__ = [
 #: v6 added authoritative final per-target loss attribution and an explicit
 #: warning-only degradation state when that supplementary attribution cannot
 #: be validated.
-#: v7 adds producer-defined source, variable, and dimension identity for
+#: v7 added producer-defined source, variable, and dimension identity for
 #: registry-backed release diagnostics. Sources include country-owned display
 #: labels when registered. Geography is represented as a typed dimension with
 #: stable identifiers and display labels.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 7
+#: v8 replaces those parallel inferred fields with one complete, ordered
+#: hierarchy carried by each registry target: provider, category, geography,
+#: zero or more dimensions, and target.
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -312,6 +316,26 @@ def _dimension_label(dimension_id: str) -> str:
     return _humanize_identifier(dimension_id)
 
 
+def _target_label(spec: object, metadata: Mapping[str, object]) -> str:
+    """Return a producer label or a deterministic Microcosm fallback."""
+
+    explicit = _metadata_string(metadata, "diagnostic_target_label")
+    if explicit:
+        return explicit
+    name = str(getattr(spec, "name", "")).strip()
+    if name and not name.startswith("ledger."):
+        leaf = re.split(r"[./]", name)[-1]
+        label = _humanize_identifier(leaf)
+        if label:
+            return label
+    for key in ("ledger_layout_measure_id", "source_measure_id"):
+        measure_id = _metadata_string(metadata, key)
+        if measure_id:
+            return _humanize_identifier(measure_id)
+    leaf = re.split(r"[./]", name)[-1] if name else ""
+    return _humanize_identifier(leaf) or "Target"
+
+
 def _normalized_geography_level(value: str) -> str:
     """Normalize producer aliases used by the existing country contracts."""
 
@@ -389,10 +413,17 @@ def _structured_dimensions(
     ]
     layout_dimension = _metadata_string(metadata, "ledger_layout_groupby_dimension")
     layout_value = _metadata_string(metadata, "ledger_layout_groupby_value_id")
+    layout_value_label = _metadata_string(
+        metadata, "ledger_layout_groupby_value_label"
+    ) or _humanize_identifier(layout_value)
     layout_label = _dimension_label(layout_dimension)
-    duplicate_filter = any(
-        _dimension_label(dimension_id) == layout_label and value == layout_value
-        for dimension_id, value in filter_dimensions
+    duplicate_filter_dimension = next(
+        (
+            dimension_id
+            for dimension_id, value in filter_dimensions
+            if _dimension_label(dimension_id) == layout_label and value == layout_value
+        ),
+        "",
     )
     resolved_geography_label = (
         _geography_label(
@@ -416,24 +447,30 @@ def _structured_dimensions(
     if (
         layout_dimension
         and layout_value
-        and not duplicate_filter
+        and not duplicate_filter_dimension
         and not geography_layout
         and not redundant_geography
     ):
         values[layout_dimension] = layout_value
         definitions[layout_dimension] = {
             "label": layout_label,
-            "values": {layout_value: _humanize_identifier(layout_value)},
+            "values": {layout_value: layout_value_label},
             "order": [layout_value],
         }
 
     for dimension_id, value in filter_dimensions:
+        value_label = (
+            layout_value_label
+            if dimension_id == duplicate_filter_dimension
+            else _humanize_identifier(value)
+        )
         values[dimension_id] = value
         definitions[dimension_id] = {
             "label": _dimension_label(dimension_id),
-            "values": {value: _humanize_identifier(value)},
+            "values": {value: value_label},
             "order": [value],
         }
+
     return values, definitions
 
 
@@ -513,10 +550,26 @@ def _structured_target_fields(
     if measure:
         variable["measure"] = measure
     return {
+        "label": _target_label(spec, metadata),
         "source": source,
         "variable": variable,
         "dimensions": dimensions,
     }, definitions
+
+
+def _hierarchy_target_field(spec: object) -> dict[str, object]:
+    """Serialize the complete hierarchy already carried by a target spec."""
+
+    hierarchy = getattr(spec, "hierarchy", None)
+    if hierarchy is None:
+        raise ValueError(
+            f"Target spec {getattr(spec, 'name', '')!r} has no calibration "
+            "hierarchy. Diagnostics schema 8 requires producer-supplied labels "
+            "for every hierarchy tier."
+        )
+    serialized = asdict(hierarchy)
+    serialized["dimensions"] = list(serialized["dimensions"])
+    return {"hierarchy": serialized}
 
 
 def _target_identity_rows(result: CalibrationResult) -> list[dict[str, object]]:
@@ -727,8 +780,6 @@ def diagnostics_payload(
         floats become ``null``).
     """
     registry_specs = _registry_spec_lookup(target_registry)
-    registry_country = str(getattr(target_registry, "country", "")).strip()
-    dimension_definitions: dict[str, dict[str, object]] = {}
     target_rows: list[dict[str, object]] = []
     for index, (diagnostic, target) in enumerate(
         zip(result.diagnostics, result.problem.targets, strict=True)
@@ -746,13 +797,7 @@ def diagnostics_payload(
             spec=spec,
         )
         if spec is not None:
-            structured_fields, row_definitions = _structured_target_fields(
-                target,
-                spec,
-                country=registry_country,
-            )
-            row.update(structured_fields)
-            _merge_dimension_definitions(dimension_definitions, row_definitions)
+            row.update(_hierarchy_target_field(spec))
         target_rows.append(row)
     payload = {
         "schema_version": CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
@@ -776,8 +821,6 @@ def diagnostics_payload(
         "diagnostic_warnings": [],
         "targets": target_rows,
     }
-    if target_registry is not None:
-        payload["dimensions"] = dimension_definitions
     try:
         attribution = assemble_target_loss_attribution(result)
     except TargetLossAttributionError as error:

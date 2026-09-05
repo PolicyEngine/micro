@@ -127,13 +127,13 @@ LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
 )
 
 # Lockstep with microcosm.calibrate.diagnostics.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-# (schema 7 = structured source, variable, and dimension identity for
-# registry-backed release diagnostics).
+# (schema 8 = a complete producer-supplied hierarchy on every registry-backed
+# target row).
 # microcosm-data cannot import
 # microcosm-calibrate (dependency direction), so the builder test suite pins the
 # two constants equal — see test_calibration_diagnostics_schema_lockstep.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 7
-_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({6, 7})
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
+_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({6, 7, 8})
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -3353,6 +3353,12 @@ def _check_calibration_diagnostics(
                     ),
                     failures=failures,
                 )
+            elif schema_version == 8:
+                _check_hierarchy_diagnostics_target(
+                    target,
+                    index=index,
+                    failures=failures,
+                )
             if not grandfathered_uk_june:
                 if not isinstance(target.get("measure"), Mapping):
                     failures.append(
@@ -3440,6 +3446,8 @@ def _check_structured_diagnostics_target(
     """Validate complete structured identity on one schema-7 target row."""
 
     owner = f"calibration_diagnostics.json target row {index}"
+    if not isinstance(target.get("label"), str) or not str(target.get("label")).strip():
+        failures.append(f"{owner} schema 7 requires a non-empty string 'label'.")
     for field in ("source", "variable"):
         value = target.get(field)
         if (
@@ -3491,6 +3499,84 @@ def _check_structured_diagnostics_target(
                 )
     if geography_count > 1:
         failures.append(f"{owner} may populate at most one geography-role dimension.")
+
+
+def _check_hierarchy_diagnostics_target(
+    target: Mapping,
+    *,
+    index: int,
+    failures: list[str],
+) -> None:
+    """Validate one complete schema-8 provider-to-target hierarchy."""
+
+    owner = f"calibration_diagnostics.json target row {index}"
+    hierarchy = target.get("hierarchy")
+    if not isinstance(hierarchy, Mapping):
+        failures.append(f"{owner} schema 8 requires a 'hierarchy' object.")
+        return
+    provider = hierarchy.get("provider")
+    category = hierarchy.get("category")
+    geography = hierarchy.get("geography")
+    target_node = hierarchy.get("target")
+    for field, node in (
+        ("provider", provider),
+        ("category", category),
+        ("geography", geography),
+        ("target", target_node),
+    ):
+        if not isinstance(node, Mapping):
+            failures.append(f"{owner} hierarchy.{field} must be an object.")
+            continue
+        for required in ("id", "label"):
+            value = node.get(required)
+            if not isinstance(value, str) or not value.strip():
+                failures.append(
+                    f"{owner} hierarchy.{field}.{required} must be a non-empty "
+                    "string."
+                )
+    if isinstance(category, Mapping) and isinstance(provider, Mapping):
+        if category.get("provider_id") != provider.get("id"):
+            failures.append(
+                f"{owner} hierarchy.category.provider_id must equal "
+                "hierarchy.provider.id."
+            )
+    if isinstance(geography, Mapping):
+        level = geography.get("level")
+        if not isinstance(level, str) or not level.strip():
+            failures.append(
+                f"{owner} hierarchy.geography.level must be a non-empty string."
+            )
+    if isinstance(target_node, Mapping) and target_node.get("id") != target.get(
+        "target_name"
+    ):
+        failures.append(
+            f"{owner} hierarchy.target.id must equal the row's target_name."
+        )
+    dimensions = hierarchy.get("dimensions")
+    if not isinstance(dimensions, list):
+        failures.append(f"{owner} hierarchy.dimensions must be an array.")
+        return
+    seen: set[str] = set()
+    for dimension_index, dimension in enumerate(dimensions):
+        dimension_owner = (
+            f"{owner} hierarchy.dimensions[{dimension_index}]"
+        )
+        if not isinstance(dimension, Mapping):
+            failures.append(f"{dimension_owner} must be an object.")
+            continue
+        for required in ("id", "label", "value_id", "value_label"):
+            value = dimension.get(required)
+            if not isinstance(value, str) or not value.strip():
+                failures.append(
+                    f"{dimension_owner}.{required} must be a non-empty string."
+                )
+        dimension_id = dimension.get("id")
+        if isinstance(dimension_id, str):
+            if dimension_id in seen:
+                failures.append(
+                    f"{owner} hierarchy dimensions repeat id {dimension_id!r}."
+                )
+            seen.add(dimension_id)
 
 
 def _uk_non_negative_int(

@@ -19,6 +19,11 @@ import pytest
 
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyDimension,
+    HierarchyGeography,
+    HierarchyNode,
     TARGET_LOSS_ATTRIBUTION_WARNING_CODES,
     TARGET_LOSS_BASIS_HASH_ALGORITHM,
     Target,
@@ -45,6 +50,30 @@ _ATTRIBUTION_ROW_FIELDS = {
 _ATTRIBUTION_FIXTURE_DIR = (
     Path(__file__).parent / "fixtures" / "target_loss_attribution"
 )
+
+
+def _hierarchy(
+    name: str,
+    *,
+    provider_id: str,
+    provider_label: str,
+    category_id: str,
+    category_label: str,
+    geography_id: str,
+    geography_label: str,
+    geography_level: str,
+    dimensions: tuple[HierarchyDimension, ...] = (),
+    target_label: str | None = None,
+) -> CalibrationHierarchy:
+    return CalibrationHierarchy(
+        provider=HierarchyNode(provider_id, provider_label),
+        category=HierarchyCategory(category_id, category_label, provider_id),
+        geography=HierarchyGeography(
+            geography_id, geography_label, geography_level
+        ),
+        dimensions=dimensions,
+        target=HierarchyNode(name, target_label or name.capitalize()),
+    )
 
 
 def _result(feasible_frame, *, with_skip: bool = False, epochs: int = 120):
@@ -115,7 +144,7 @@ def test_payload_reports_complete_uniform_final_loss_attribution(
     result = _result(feasible_frame, epochs=1)
     payload = diagnostics_payload(result)
 
-    assert payload["schema_version"] == 7
+    assert payload["schema_version"] == 8
     assert payload["diagnostic_warnings"] == []
     basis = payload["target_loss_basis"]
     assert basis["formula"] == (
@@ -428,6 +457,16 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
                 period=2024,
                 source="Census PEP 2024",
                 family="census_population",
+                hierarchy=_hierarchy(
+                    "population",
+                    provider_id="census_pep",
+                    provider_label="Census Population Estimates Program",
+                    category_id="census.population",
+                    category_label="Population",
+                    geography_id="0100000US",
+                    geography_label="United States",
+                    geography_level="country",
+                ),
             ),
             TargetSpec(
                 name="income",
@@ -445,8 +484,29 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
                     "ledger_geography_id": "0400000US06",
                     "ledger_layout_groupby_dimension": "filing_status",
                     "ledger_layout_groupby_value_id": "single",
+                    "ledger_layout_groupby_value_label": "Single return",
                     "ledger_filter_filing_status": "single",
+                    "diagnostic_target_label": "California adjusted gross income",
                 },
+                hierarchy=_hierarchy(
+                    "income",
+                    provider_id="irs_soi",
+                    provider_label="IRS Statistics of Income",
+                    category_id="irs_soi.adjusted_gross_income",
+                    category_label="Adjusted gross income",
+                    geography_id="0400000US06",
+                    geography_label="California",
+                    geography_level="state",
+                    dimensions=(
+                        HierarchyDimension(
+                            "filing_status",
+                            "Filing status",
+                            "single",
+                            "Single return",
+                        ),
+                    ),
+                    target_label="California adjusted gross income",
+                ),
             ),
         ),
         country="us",
@@ -461,34 +521,30 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
     }
     income = next(row for row in payload["targets"] if row["target_name"] == "income")
     assert income["period"] == 2024
-    assert income["source"] == {
-        "id": "irs_soi",
-        "label": "IRS Statistics of Income",
-        "citation": "IRS SOI 2024",
-    }
-    assert income["variable"] == {
-        "id": "adjusted_gross_income",
-        "label": "Adjusted gross income",
-        "measure": "total",
-    }
-    assert income["dimensions"] == {
-        "geography_state": "0400000US06",
-        "filing_status": "single",
-    }
-    assert payload["dimensions"] == {
-        "geography_state": {
-            "label": "State",
-            "role": "geography",
+    assert income["source"] == "IRS SOI 2024"
+    assert income["hierarchy"] == {
+        "provider": {"id": "irs_soi", "label": "IRS Statistics of Income"},
+        "category": {
+            "id": "irs_soi.adjusted_gross_income",
+            "label": "Adjusted gross income",
+            "provider_id": "irs_soi",
+        },
+        "geography": {
+            "id": "0400000US06",
+            "label": "California",
             "level": "state",
-            "values": {"0400000US06": "CA"},
-            "order": ["0400000US06"],
         },
-        "filing_status": {
-            "label": "Filing Status",
-            "values": {"single": "Single"},
-            "order": ["single"],
-        },
+        "dimensions": [
+            {
+                "id": "filing_status",
+                "label": "Filing status",
+                "value_id": "single",
+                "value_label": "Single return",
+            }
+        ],
+        "target": {"id": "income", "label": "California adjusted gross income"},
     }
+    assert "dimensions" not in payload
     assert income["registry"]["family"] == "irs_soi"
 
 
@@ -520,10 +576,27 @@ def test_registry_diagnostics_publish_uk_geography_and_all_ledger_dimensions(
                     "ledger_geography_id": geography_id,
                     "ledger_layout_groupby_dimension": "age_band",
                     "ledger_layout_groupby_value_id": "18_64",
+                    "ledger_layout_groupby_value_label": "Aged 18 to 64",
                     "ledger_filter_sex": "female",
                 },
+                hierarchy=_hierarchy(
+                    f"population_female_{geography_id}",
+                    provider_id="ons",
+                    provider_label="Office for National Statistics",
+                    category_id="ons.population",
+                    category_label="Population",
+                    geography_id=geography_id,
+                    geography_label=geography_label,
+                    geography_level="country",
+                    dimensions=(
+                        HierarchyDimension(
+                            "age_band", "Age band", "18_64", "Aged 18 to 64"
+                        ),
+                        HierarchyDimension("sex", "Sex", "female", "Female"),
+                    ),
+                ),
             )
-            for geography_id in geographies
+            for geography_id, geography_label in geographies.items()
         ),
         country="uk",
     )
@@ -531,31 +604,21 @@ def test_registry_diagnostics_publish_uk_geography_and_all_ledger_dimensions(
 
     payload = diagnostics_payload(result, target_registry=registry)
 
-    assert payload["targets"][2]["source"] == {
+    hierarchy = payload["targets"][2]["hierarchy"]
+    assert hierarchy["provider"] == {
         "id": "ons",
         "label": "Office for National Statistics",
-        "citation": "ons | Population table | https://example.test/ons",
-        "url": "https://example.test/ons",
     }
-    assert payload["targets"][2]["variable"] == {
-        "id": "population",
-        "label": "Population",
-        "measure": "count",
-    }
-    assert payload["targets"][2]["dimensions"] == {
-        "geography_country": "E92000001",
-        "age_band": "18_64",
-        "sex": "female",
-    }
-    assert payload["dimensions"]["geography_country"] == {
-        "label": "Country",
-        "role": "geography",
+    assert hierarchy["category"]["id"] == "ons.population"
+    assert hierarchy["geography"] == {
+        "id": "E92000001",
+        "label": "England",
         "level": "country",
-        "values": geographies,
-        "order": list(geographies),
     }
-    assert payload["dimensions"]["age_band"]["values"] == {"18_64": "18 64"}
-    assert payload["dimensions"]["sex"]["values"] == {"female": "Female"}
+    assert [dimension["id"] for dimension in hierarchy["dimensions"]] == [
+        "age_band",
+        "sex",
+    ]
 
 
 def test_registry_diagnostics_separate_measure_from_variable_category(
@@ -578,6 +641,24 @@ def test_registry_diagnostics_separate_measure_from_variable_category(
                     "ledger_measure_unit": "gbp",
                     "ledger_filter_total_income_lower_bound": "100000",
                 },
+                hierarchy=_hierarchy(
+                    "employment_income_amount_band_100000",
+                    provider_id="hmrc",
+                    provider_label="HM Revenue and Customs",
+                    category_id="hmrc.survey_of_personal_incomes",
+                    category_label="Survey of Personal Incomes",
+                    geography_id="K02000001",
+                    geography_label="United Kingdom",
+                    geography_level="country",
+                    dimensions=(
+                        HierarchyDimension(
+                            "total_income_lower_bound",
+                            "Total income lower bound",
+                            "100000",
+                            "100000",
+                        ),
+                    ),
+                ),
             ),
             TargetSpec(
                 name="employment_income_count_band_100000",
@@ -593,6 +674,24 @@ def test_registry_diagnostics_separate_measure_from_variable_category(
                     "ledger_measure_unit": "count",
                     "ledger_filter_total_income_lower_bound": "100000",
                 },
+                hierarchy=_hierarchy(
+                    "employment_income_count_band_100000",
+                    provider_id="hmrc",
+                    provider_label="HM Revenue and Customs",
+                    category_id="hmrc.survey_of_personal_incomes",
+                    category_label="Survey of Personal Incomes",
+                    geography_id="K02000001",
+                    geography_label="United Kingdom",
+                    geography_level="country",
+                    dimensions=(
+                        HierarchyDimension(
+                            "total_income_lower_bound",
+                            "Total income lower bound",
+                            "100000",
+                            "100000",
+                        ),
+                    ),
+                ),
             ),
         ),
         country="uk",
@@ -601,21 +700,13 @@ def test_registry_diagnostics_separate_measure_from_variable_category(
 
     payload = diagnostics_payload(result, target_registry=registry)
 
-    variables = [row["variable"] for row in payload["targets"]]
-    assert variables == [
-        {
-            "id": "spi_employment_income",
-            "label": "SPI employment income",
-            "measure": "total",
-        },
-        {
-            "id": "spi_employment_income",
-            "label": "SPI employment income",
-            "measure": "count",
-        },
-    ]
-    assert payload["targets"][0]["dimensions"] == {"total_income_lower_bound": "100000"}
-    assert payload["targets"][1]["dimensions"] == {"total_income_lower_bound": "100000"}
+    categories = [row["hierarchy"]["category"] for row in payload["targets"]]
+    assert categories[0] == categories[1]
+    assert categories[0]["id"] == "hmrc.survey_of_personal_incomes"
+    assert all(
+        row["hierarchy"]["dimensions"][0]["id"] == "total_income_lower_bound"
+        for row in payload["targets"]
+    )
 
 
 def test_registry_diagnostics_reject_missing_compiled_target_identity(
