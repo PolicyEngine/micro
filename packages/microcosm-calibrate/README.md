@@ -76,33 +76,21 @@ frontier can be read off any run's artifact. The standalone
 `effective_sample_size(weights)` scores any weight vector, e.g. a published
 artifact's.
 
-Registry-backed diagnostics use schema 7. Each target publishes structured
-`source`, `variable`, and `dimensions` objects, and the artifact publishes a
-top-level dimension dictionary. The `source.id` remains the stable provider
-identifier, while `source.label` comes from separate country-owned provider
-label mappings in `microcosm.calibrate.provider_labels`. The `variable.id`
-defines a provider's calibration statistic category, while `variable.label`
-comes from separate country- and provider-specific mappings in
-`microcosm.calibrate.variable_labels`. Labels are not copied into Chronicle
-facts or repeated in target-reference metadata. Ledger geography metadata
-becomes one typed geography dimension per level (for example,
-`geography_country` or `geography_state`), with stable geography identifiers,
-producer-owned labels, and deterministic value order. Ledger filter and layout
-dimensions remain separate non-geographic dimensions. This applies to every
-country release that passes its `TargetRegistry`, including the UK and US
-release builders. Calls without a registry retain legacy target identity fields
-because they do not provide enough declared information to construct structured
-identities.
+Registry-backed diagnostics use schema 8. Every target publishes one ordered
+`hierarchy` object containing provider, category, geography, zero or more
+dimensions, and target. Provider/category ownership comes from the normalized
+country declaration; Chronicle supplies geography, fact labels, dimension ids,
+and categorical value labels where present. Microcosm supplies a deterministic
+label only when Chronicle has no label for that field. The dashboard consumes
+these identifiers and labels verbatim and does not infer schema-8 display text.
 
-Schema 7 also separates the statistic category from its measurement. For
-legacy Ledger concepts whose declared unit agrees with a trailing `_count` or
-`_amount`, the suffix is represented as `variable.measure` (`count` or `total`)
-instead of remaining in `variable.id`. For example,
-`hmrc.spi_employment_income_count` and
-`hmrc.spi_employment_income_amount` both use the variable identifier
-`spi_employment_income`; their measure values remain distinct. An explicit
-`diagnostic_variable_id` or `variable` metadata value always takes precedence
-and is not rewritten.
+Dimensions are not manually enumerated in the target declaration. A single
+fact or fan-out target inherits all Chronicle dimensions, with
+`layout.groupby_dimension` first and all remaining ids sorted. A target that
+combines multiple facts inherits only dimensions whose values are constant
+across every member fact; varying ids remain in aggregation provenance. Only
+exactly equal ids are merged. See `docs/calibration-target-hierarchy.md` for
+the authoring and propagation contract.
 
 ## Example
 
