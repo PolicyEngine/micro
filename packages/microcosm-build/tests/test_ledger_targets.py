@@ -18,7 +18,13 @@ from microcosm.build.ledger_targets import (
     select_ledger_targets_from_jsonl,
     target_spec_from_ledger_reference,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchySeed,
+    HierarchyCategory,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+)
 
 _FISCAL_MONTHS = [f"2025-{month:02d}" for month in range(4, 13)] + [
     f"2026-{month:02d}" for month in range(1, 4)
@@ -345,6 +351,7 @@ def _consumer_fact_row(**overrides):
     row = {
         "aggregate_fact_key": "ledger.aggregate_fact.v2:abc123",
         "legacy_fact_key": "ledger.fact.v1:abc123",
+        "label": "United States adjusted gross income",
         "lineage": {
             "source_record_id": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
             "source_cell_keys": ["ledger.source_cell.v1:cell"],
@@ -387,6 +394,7 @@ def _consumer_fact_row(**overrides):
             "record_set_id": "irs_soi.ty2023.table_1_1",
             "groupby_dimension": "us:statutes/26/62#adjusted_gross_income",
             "groupby_value_id": "all",
+            "groupby_value_label": "All adjusted gross income returns",
             "measure_id": "adjusted_gross_income",
         },
     }
@@ -441,6 +449,14 @@ def _exact_agi_reference(**overrides) -> LedgerTargetReference:
         "period": 2023,
         "family": "irs_soi",
         "period_match_policy": "exact",
+        "hierarchy": CalibrationHierarchySeed(
+            provider=HierarchyNode("irs_soi", "IRS Statistics of Income"),
+            category=HierarchyCategory(
+                "irs_soi.adjusted_gross_income",
+                "Adjusted gross income",
+                "irs_soi",
+            ),
+        ),
     }
     values.update(overrides)
     return LedgerTargetReference(**values)
@@ -670,7 +686,15 @@ def test__given_consumer_contract_row__then_microcosm_target_preserves_lineage()
         == "irs_soi.ty2023.table_1_1.all.adjusted_gross_income"
     )
     assert spec.metadata["ledger_fact_key"] == "ledger.aggregate_fact.v2:abc123"
+    assert spec.metadata["ledger_fact_label"] == ("United States adjusted gross income")
+    assert spec.metadata["diagnostic_target_label"] == (
+        "United States adjusted gross income"
+    )
     assert spec.metadata["ledger_source_concept"] == "irs_soi.adjusted_gross_income"
+    assert (
+        spec.metadata["ledger_layout_groupby_value_label"]
+        == "All adjusted gross income returns"
+    )
 
 
 def test__given_consumer_contract_jsonl__then_microcosm_selects_targets(
@@ -3540,8 +3564,6 @@ def test__given_chronicle_era_reference_pin__then_it_resolves_against_the_feed()
         registry.specs[0].metadata["ledger_fact_key"]
         == "chronicle.aggregate_fact.v3:def456"
     )
-
-
 # Equal missing identities must not count as a known common publication.
 @pytest.mark.parametrize("summed", [False, True])
 @pytest.mark.parametrize("field", ["source_release_key", "source_sha256"])
@@ -3564,3 +3586,67 @@ def test_monthly_window_requires_actual_publication_identity(summed, field, bad_
     # The same authority must run if a caller bypasses selector resolution.
     with pytest.raises(ValueError, match="requires nonempty source_release_key"):
         target_spec_from_ledger_reference(tuple(rows), reference)
+
+
+def test_single_fact_hierarchy_inherits_groupby_first_and_exact_dimensions() -> None:
+    groupby_id = "us:statutes/26/62#adjusted_gross_income"
+    fact = _consumer_fact_row(
+        dimensions={groupby_id: "all", "filing_status": "single"},
+        dimension_labels={
+            groupby_id: "Adjusted gross income band",
+            "filing_status": "Filing status",
+        },
+        dimension_value_labels={
+            "filing_status": {"single": "Single return"},
+        },
+    )
+
+    (spec,) = compile_ledger_target_references(
+        [fact], [_exact_agi_reference()], country="us"
+    ).specs
+
+    assert spec.hierarchy is not None
+    assert [dimension.id for dimension in spec.hierarchy.dimensions] == [
+        groupby_id,
+        "filing_status",
+    ]
+    assert spec.hierarchy.dimensions[0].label == "Adjusted gross income band"
+    assert spec.hierarchy.dimensions[0].value_label == (
+        "All adjusted gross income returns"
+    )
+    assert spec.hierarchy.dimensions[1].value_label == "Single return"
+    assert spec.hierarchy.target.label == "United States adjusted gross income"
+
+
+def test_multi_fact_hierarchy_keeps_only_constant_dimensions() -> None:
+    first = _consumer_fact_row(
+        value=10.0,
+        dimensions={"band": "low", "sex": "all"},
+    )
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:second",
+        legacy_fact_key="ledger.fact.v1:second",
+        semantic_fact_key="ledger.semantic_fact.v2:second",
+        lineage={
+            "source_record_id": (
+                "irs_soi.ty2023.table_1_1.second.adjusted_gross_income"
+            ),
+            "source_cell_keys": ["ledger.source_cell.v1:second"],
+            "source_row_keys": [],
+        },
+        value=20.0,
+        dimensions={"band": "high", "sex": "all"},
+    )
+    reference = _exact_agi_reference(value_operation="sum")
+
+    (spec,) = compile_ledger_target_references(
+        [first, second], [reference], country="us"
+    ).specs
+
+    assert spec.value == 30.0
+    assert spec.hierarchy is not None
+    assert [dimension.id for dimension in spec.hierarchy.dimensions] == [
+        "us:statutes/26/62#adjusted_gross_income",
+        "sex",
+    ]
+    assert spec.metadata["ledger_aggregation_varying_dimensions"] == '["band"]'

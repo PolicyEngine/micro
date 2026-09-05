@@ -132,6 +132,18 @@ def test_author_area_target_references_fans_out_roster_and_resolves_operations()
     }
 
 
+def test_authoring_refuses_target_without_a_declared_category() -> None:
+    contract = _single_age_contract()
+    contract["targets"][0].pop("category_id")
+
+    with pytest.raises(ValueError, match="references unknown hierarchy category"):
+        author_area_target_references(
+            contract,
+            [],
+            _area_config(areas=("A1",)),
+        )
+
+
 def test_author_area_target_references_refuses_unsigned_absence() -> None:
     contract = _single_age_contract()
     facts = [
@@ -372,6 +384,7 @@ def _contract() -> dict:
         {
             "target_id": "hmrc.employment_income.amount",
             "family": "hmrc",
+            "category_id": "hmrc.employment",
             "geography_levels": ["constituency"],
             "ledger_selector": {
                 "source_name": "hmrc",
@@ -396,11 +409,29 @@ def _contract() -> dict:
 
 def _single_age_contract() -> dict:
     return {
+        "schema_version": 2,
         "country": "uk",
+        "hierarchy": {
+            "providers": {
+                "hmrc": {"label": "HM Revenue and Customs"},
+                "ons": {"label": "Office for National Statistics"},
+            },
+            "categories": {
+                "hmrc.employment": {
+                    "provider_id": "hmrc",
+                    "label": "Employment income",
+                },
+                "ons.population": {
+                    "provider_id": "ons",
+                    "label": "Population",
+                },
+            },
+        },
         "targets": [
             {
                 "target_id": "ons.age.0_10",
                 "family": "ons_population",
+                "category_id": "ons.population",
                 "geography_levels": ["constituency"],
                 "ledger_selector": {
                     "source_name": "ons",

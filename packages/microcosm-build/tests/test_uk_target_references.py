@@ -39,7 +39,6 @@ from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.calibrate.score import score_targets
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from tools.generate_uk_target_references import (
-    OBR_DIAGNOSTIC_VARIABLE_BY_TARGET_ID,
     POLICYENGINE_BINDING_KEYS,
     _annual_uc_award_band_token,
     _geography_pins,
@@ -190,6 +189,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
     names = [reference["name"] for reference in resource["target_references"]]
 
     assert resource["country"] == "uk"
+    assert resource["schema_version"] == 2
     assert resource["allowed_value_operations"] == [
         "identity",
         "sum",
@@ -240,6 +240,13 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         if diagnostic_variable_id is not None:
             expected_metadata["diagnostic_variable_id"] = diagnostic_variable_id
         assert reference["metadata"] == expected_metadata
+        category_id = target["category_id"]
+        category = resource["hierarchy"]["categories"][category_id]
+        provider_id = category["provider_id"]
+        assert resource["hierarchy"]["target_categories"][contract_target_id] == (
+            category_id
+        )
+        assert resource["hierarchy"]["providers"][provider_id]["label"]
         # The measure is a prepared column, so the pointed-to contract binding
         # must carry what the microcosm#622 materializer needs to prepare it.
         assert (
@@ -332,26 +339,57 @@ def test_uk_target_references_do_not_bind_known_mismatched_property_amounts() ->
 
 
 def test_uk_obr_references_declare_receipts_and_expenditure_categories() -> None:
-    references = _load_uk_resource("target_references.json")["target_references"]
+    resource = _load_uk_resource("target_references.json")
+    references = resource["target_references"]
     obr_references = [
         reference
         for reference in references
         if reference["metadata"]["contract_target_id"].startswith("obr.")
     ]
 
-    assert len(obr_references) == len(OBR_DIAGNOSTIC_VARIABLE_BY_TARGET_ID)
+    assert len(obr_references) == 24
     assert {
-        reference["metadata"]["contract_target_id"]: reference["metadata"][
-            "diagnostic_variable_id"
+        resource["hierarchy"]["target_categories"][
+            reference["metadata"]["contract_target_id"]
         ]
         for reference in obr_references
-    } == OBR_DIAGNOSTIC_VARIABLE_BY_TARGET_ID
-    assert not [
-        reference["name"]
+    } == {
+        "obr.efo_expenditure",
+        "obr.efo_receipts",
+    }
+
+
+def test_every_uk_reference_has_a_declared_provider_and_category() -> None:
+    resource = _load_uk_resource("target_references.json")
+    references = resource["target_references"]
+    assert len(references) == ACTIVE_REFERENCE_COUNT
+    categories = resource["hierarchy"]["categories"]
+    providers = resource["hierarchy"]["providers"]
+    target_categories = resource["hierarchy"]["target_categories"]
+    assert all(
+        categories[target_categories[reference["metadata"]["contract_target_id"]]][
+            "label"
+        ]
         for reference in references
-        if not reference["metadata"]["contract_target_id"].startswith("obr.")
-        and "diagnostic_variable_id" in reference["metadata"]
+    )
+    assert all(
+        providers[
+            categories[
+                target_categories[reference["metadata"]["contract_target_id"]]
+            ]["provider_id"]
+        ]["label"]
+        for reference in references
+    )
+    universal_credit = [
+        reference
+        for reference in references
+        if reference["family"] == "dwp_universal_credit"
     ]
+    assert universal_credit
+    assert {
+        target_categories[reference["metadata"]["contract_target_id"]]
+        for reference in universal_credit
+    } == {"dwp.universal_credit"}
 
 
 def test_uk_target_references_do_not_emit_nan_uc_payment_bands() -> None:
@@ -643,13 +681,14 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
         for reference in spec.target_references
         if reference.name in FIXTURE_REFERENCE_NAMES
     ]
+    feed_rows = [
+        json.loads(line)
+        for line in FIXTURE_FEED_ROWS.read_text().splitlines()
+        if line.strip()
+    ]
 
     registry = compile_ledger_target_references(
-        [
-            json.loads(line)
-            for line in FIXTURE_FEED_ROWS.read_text().splitlines()
-            if line.strip()
-        ],
+        feed_rows,
         references,
         country="uk",
     )
@@ -662,11 +701,27 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert income_tax.period == 2025
     assert income_tax.metadata["ledger_assertion"] == "source_projection"
     assert income_tax.metadata["ledger_assertion_policy"] == ("allow_source_projection")
-    assert income_tax.metadata["diagnostic_variable_id"] == "efo_receipts"
+    assert income_tax.hierarchy is not None
+    assert income_tax.hierarchy.category.id == "obr.efo_receipts"
+    assert income_tax.hierarchy.dimensions[0].id == "obr.efo_line"
+    assert income_tax.hierarchy.dimensions[0].value_label == (
+        "Income tax (gross of tax credits)"
+    )
+    income_tax_fact = next(
+        row
+        for row in feed_rows
+        if row["aggregate_fact_key"] == income_tax.metadata["ledger_fact_key"]
+    )
+    assert income_tax.metadata["ledger_fact_label"] == income_tax_fact["label"]
+    assert income_tax.metadata["diagnostic_target_label"] == income_tax_fact["label"]
 
     tcl_households = targets["dwp.uc.two_child_limit.households_affected"]
     assert tcl_households.value == 469_780
     assert tcl_households.metadata["ledger_fact_period"] == "2025-04"
+    assert tcl_households.metadata["ledger_layout_groupby_value_label"] == (
+        "Affected UC Household (has third or subsequent child on or after 6 April 2017)"
+    )
+    assert "diagnostic_target_label" not in tcl_households.metadata
 
     population = targets["ons.population.uk_total"]
     assert population.value == 69_281_437
@@ -683,6 +738,7 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     slc_plan_2 = targets["slc.repayments.england_plan_2"]
     assert slc_plan_2.value == pytest.approx(2_778_253_361.64)
     assert slc_plan_2.metadata["ledger_member_fact_count"] == "2"
+    assert "diagnostic_target_label" not in slc_plan_2.metadata
 
     assert targets["hmrc.cgt.gains_total"].value == 65_937_000_000
     assert targets["hmrc.cgt.taxpayers_total"].value == 378_000
@@ -896,28 +952,63 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
         score_targets(frame, registry.to_target_set()),
         target_registry=registry,
     )
-    obr_variables = {
-        row["name"]: row["variable"]
+    obr_hierarchies = {
+        row["name"]: row["hierarchy"]
         for row in diagnostics["targets"]
-        if row["source"]["id"] == "obr"
+        if row["hierarchy"]["provider"]["id"] == "obr"
     }
     assert {
-        row["source"]["label"]
+        row["hierarchy"]["provider"]["label"]
         for row in diagnostics["targets"]
-        if row["source"]["id"] == "obr"
+        if row["hierarchy"]["provider"]["id"] == "obr"
     } == {"Office for Budget Responsibility"}
-    assert obr_variables == {
-        "obr.esa@2025": {
-            "id": "efo_expenditure",
-            "label": "EFO expenditure",
-            "measure": "total",
-        },
-        "obr.income_tax@2025": {
-            "id": "efo_receipts",
-            "label": "EFO receipts",
-            "measure": "total",
-        },
+    assert {
+        name: hierarchy["category"]["id"]
+        for name, hierarchy in obr_hierarchies.items()
+    } == {
+        "obr.esa@2025": "obr.efo_expenditure",
+        "obr.income_tax@2025": "obr.efo_receipts",
     }
+    assert obr_hierarchies["obr.income_tax@2025"]["dimensions"][0] == {
+        "id": "obr.efo_line",
+        "label": "Efo line",
+        "value_id": "income_tax",
+        "value_label": "Income tax (gross of tax credits)",
+    }
+    diagnostic_rows = {row["target_name"]: row for row in diagnostics["targets"]}
+    dwp_dimensions = {
+        dimension["id"]: dimension
+        for dimension in diagnostic_rows[
+            "dwp.uc.two_child_limit.households_affected"
+        ]["hierarchy"]["dimensions"]
+    }
+    assert dwp_dimensions["dwp.two_child_limit_status"]["value_label"] == (
+        "Affected UC Household (has third or subsequent child on or after "
+        "6 April 2017)"
+    )
+    hmrc_dimensions = diagnostic_rows[
+        "hmrc/employment_income_income_band_12_570_to_15_000"
+    ]["hierarchy"]["dimensions"]
+    assert hmrc_dimensions[0] == {
+        "id": "hmrc.total_income_band",
+        "label": "Total income band",
+        "value_id": "band_12570",
+        "value_label": "Total income from GBP 12 570",
+    }
+    assert diagnostic_rows["obr.income_tax"]["hierarchy"]["target"][
+        "label"
+    ] == next(
+        row["label"]
+        for row in feed_rows
+        if row["aggregate_fact_key"]
+        == diagnostic_rows["obr.income_tax"]["metadata"]["ledger_fact_key"]
+    )
+    assert diagnostic_rows["dwp.uc.two_child_limit.households_affected"][
+        "hierarchy"
+    ]["target"]["label"] == "Households affected"
+    assert diagnostic_rows["slc.repayments.england_plan_2"]["hierarchy"]["target"][
+        "label"
+    ] == "England plan 2"
 
 
 def _real_uk_consumer_fact_rows() -> list[dict]:

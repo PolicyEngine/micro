@@ -447061,5 +447061,368 @@
         "geography_id": "E09000033"
       }
     }
-  ]
+  ],
+  "schema_version": 2,
+  "hierarchy": {
+    "providers": {
+      "dwp": {
+        "label": "Department for Work and Pensions"
+      },
+      "hmrc": {
+        "label": "HM Revenue and Customs"
+      },
+      "isc": {
+        "label": "Independent Schools Council"
+      },
+      "obr": {
+        "label": "Office for Budget Responsibility"
+      },
+      "ons": {
+        "label": "Office for National Statistics"
+      },
+      "scotgov": {
+        "label": "Scottish Government"
+      },
+      "slc": {
+        "label": "Student Loans Company"
+      },
+      "voa": {
+        "label": "Valuation Office Agency"
+      }
+    },
+    "categories": {
+      "dwp.benefit_cap": {
+        "provider_id": "dwp",
+        "label": "Benefit Cap"
+      },
+      "dwp.legacy_benefits": {
+        "provider_id": "dwp",
+        "label": "Legacy benefits"
+      },
+      "dwp.pip": {
+        "provider_id": "dwp",
+        "label": "Personal Independence Payment"
+      },
+      "dwp.universal_credit": {
+        "provider_id": "dwp",
+        "label": "Universal Credit"
+      },
+      "dwp.universal_credit_two_child_limit": {
+        "provider_id": "dwp",
+        "label": "Universal Credit two-child limit"
+      },
+      "hmrc.capital_gains_tax": {
+        "provider_id": "hmrc",
+        "label": "Capital Gains Tax"
+      },
+      "hmrc.salary_sacrifice_income_tax_relief": {
+        "provider_id": "hmrc",
+        "label": "Salary-sacrifice Income Tax relief"
+      },
+      "hmrc.salary_sacrifice_national_insurance_relief": {
+        "provider_id": "hmrc",
+        "label": "Salary-sacrifice National Insurance relief"
+      },
+      "hmrc.salary_sacrifice_pension_users": {
+        "provider_id": "hmrc",
+        "label": "Salary-sacrifice pension users"
+      },
+      "hmrc.survey_of_personal_incomes": {
+        "provider_id": "hmrc",
+        "label": "Survey of Personal Incomes"
+      },
+      "hmrc.tax_statistics": {
+        "provider_id": "hmrc",
+        "label": "Income statistics"
+      },
+      "isc.independent_school_pupils": {
+        "provider_id": "isc",
+        "label": "Pupils at independent schools"
+      },
+      "obr.efo_expenditure": {
+        "provider_id": "obr",
+        "label": "Economic and fiscal outlook expenditure"
+      },
+      "obr.efo_receipts": {
+        "provider_id": "obr",
+        "label": "Economic and fiscal outlook receipts"
+      },
+      "ons.employment": {
+        "provider_id": "ons",
+        "label": "Employment"
+      },
+      "ons.household_composition": {
+        "provider_id": "ons",
+        "label": "Household composition"
+      },
+      "ons.housing": {
+        "provider_id": "ons",
+        "label": "Housing"
+      },
+      "ons.income": {
+        "provider_id": "ons",
+        "label": "Household income"
+      },
+      "ons.land": {
+        "provider_id": "ons",
+        "label": "Land value"
+      },
+      "ons.national_accounts": {
+        "provider_id": "ons",
+        "label": "National accounts"
+      },
+      "ons.population": {
+        "provider_id": "ons",
+        "label": "Population"
+      },
+      "scotgov.council_tax_stock": {
+        "provider_id": "scotgov",
+        "label": "Council Tax dwelling stock"
+      },
+      "scotgov.social_security": {
+        "provider_id": "scotgov",
+        "label": "Social security"
+      },
+      "slc.borrowers": {
+        "provider_id": "slc",
+        "label": "Student loan borrowers"
+      },
+      "slc.repayments": {
+        "provider_id": "slc",
+        "label": "Student loan repayments"
+      },
+      "slc.student_support": {
+        "provider_id": "slc",
+        "label": "Student support"
+      },
+      "voa.council_tax_stock": {
+        "provider_id": "voa",
+        "label": "Council Tax dwelling stock"
+      }
+    },
+    "target_categories": {
+      "obr.income_tax": "obr.efo_receipts",
+      "obr.ni": "obr.efo_receipts",
+      "obr.ni_employee": "obr.efo_receipts",
+      "obr.ni_employer": "obr.efo_receipts",
+      "obr.ni_self_employed": "obr.efo_receipts",
+      "obr.vat": "obr.efo_receipts",
+      "obr.fuel_duties": "obr.efo_receipts",
+      "obr.capital_gains_tax": "obr.efo_receipts",
+      "obr.sdlt": "obr.efo_receipts",
+      "obr.attendance_allowance": "obr.efo_expenditure",
+      "obr.carers_allowance": "obr.efo_expenditure",
+      "obr.child_benefit": "obr.efo_expenditure",
+      "obr.council_tax": "obr.efo_expenditure",
+      "obr.council_tax_england": "obr.efo_expenditure",
+      "obr.council_tax_scotland": "obr.efo_expenditure",
+      "obr.council_tax_wales": "obr.efo_expenditure",
+      "obr.domestic_rates": "obr.efo_expenditure",
+      "obr.esa": "obr.efo_expenditure",
+      "obr.housing_benefit": "obr.efo_expenditure",
+      "obr.jobseekers_allowance": "obr.efo_expenditure",
+      "obr.pension_credit": "obr.efo_expenditure",
+      "obr.pip": "obr.efo_expenditure",
+      "obr.state_pension": "obr.efo_expenditure",
+      "obr.statutory_maternity_pay": "obr.efo_expenditure",
+      "obr.tv_licence_fee": "obr.efo_expenditure",
+      "obr.universal_credit_in_cap": "obr.efo_expenditure",
+      "obr.universal_credit_outside_cap": "obr.efo_expenditure",
+      "obr.winter_fuel_allowance": "obr.efo_expenditure",
+      "isc.private_school_students": "isc.independent_school_pupils",
+      "hmrc.salary_sacrifice.it_relief_basic_rate": "hmrc.salary_sacrifice_income_tax_relief",
+      "hmrc.salary_sacrifice.it_relief_higher_rate": "hmrc.salary_sacrifice_income_tax_relief",
+      "hmrc.salary_sacrifice.it_relief_additional_rate": "hmrc.salary_sacrifice_income_tax_relief",
+      "hmrc.salary_sacrifice.nics_relief_employee": "hmrc.salary_sacrifice_national_insurance_relief",
+      "hmrc.salary_sacrifice.nics_relief_employer": "hmrc.salary_sacrifice_national_insurance_relief",
+      "hmrc.salary_sacrifice.users_total": "hmrc.salary_sacrifice_pension_users",
+      "hmrc.salary_sacrifice.users_below_cap": "hmrc.salary_sacrifice_pension_users",
+      "hmrc.salary_sacrifice.users_above_cap": "hmrc.salary_sacrifice_pension_users",
+      "hmrc.spi.employment_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.employment_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.self_employment_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.self_employment_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.dividend_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.dividend_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.property_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.property_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.private_pension_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.private_pension_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.state_pension.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.state_pension.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.cgt.taxpayers_total": "hmrc.capital_gains_tax",
+      "hmrc.cgt.gains_total": "hmrc.capital_gains_tax",
+      "dwp.benefit_cap.capped_households": "dwp.benefit_cap",
+      "dwp.pip.daily_living_standard_claimants": "dwp.pip",
+      "dwp.pip.daily_living_enhanced_claimants": "dwp.pip",
+      "dwp.esa_claimants": "dwp.legacy_benefits",
+      "dwp.esa_contrib_claimants": "dwp.legacy_benefits",
+      "dwp.esa_income_claimants": "dwp.legacy_benefits",
+      "dwp.jsa_claimants": "dwp.legacy_benefits",
+      "dwp.uc.households_children_1": "dwp.universal_credit",
+      "dwp.uc.households_children_2": "dwp.universal_credit",
+      "dwp.uc.households_children_3": "dwp.universal_credit",
+      "dwp.uc.households_children_4": "dwp.universal_credit",
+      "dwp.uc.households_children_5_or_more": "dwp.universal_credit",
+      "dwp.uc.households_single_no_children": "dwp.universal_credit",
+      "dwp.uc.households_single_with_children": "dwp.universal_credit",
+      "dwp.uc.households_couple_no_children": "dwp.universal_credit",
+      "dwp.uc.households_couple_with_children": "dwp.universal_credit",
+      "dwp.uc.payment_distribution_single": "dwp.universal_credit",
+      "dwp.uc.payment_distribution_lone_parent": "dwp.universal_credit",
+      "dwp.uc.payment_distribution_couple_no_children": "dwp.universal_credit",
+      "dwp.uc.payment_distribution_couple_with_children": "dwp.universal_credit",
+      "dwp.uc.scotland_households_child_under_1": "dwp.universal_credit",
+      "dwp.uc.two_child_limit.households_affected": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.children_affected": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.children_in_affected_households": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.households_3_children": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.children_in_3_children_households": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.households_4_children": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.children_in_4_children_households": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.households_5_children": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.children_in_5_children_households": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.households_6_plus_children": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.children_in_6_plus_children_households": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.households_claimant_pip": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.children_claimant_pip": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.households_disabled_child_element": "dwp.universal_credit_two_child_limit",
+      "dwp.uc.two_child_limit.children_disabled_child_element": "dwp.universal_credit_two_child_limit",
+      "ons.population.uk_total": "ons.population",
+      "ons.population.age_0_9_by_region": "ons.population",
+      "ons.population.age_10_19_by_region": "ons.population",
+      "ons.population.age_20_29_by_region": "ons.population",
+      "ons.population.age_30_39_by_region": "ons.population",
+      "ons.population.age_40_49_by_region": "ons.population",
+      "ons.population.age_50_59_by_region": "ons.population",
+      "ons.population.age_60_69_by_region": "ons.population",
+      "ons.population.age_70_79_by_region": "ons.population",
+      "ons.population.age_80_89_by_region": "ons.population",
+      "ons.population.female_0_4": "ons.population",
+      "ons.population.female_10_14": "ons.population",
+      "ons.population.female_15_19": "ons.population",
+      "ons.population.female_20_24": "ons.population",
+      "ons.population.female_25_29": "ons.population",
+      "ons.population.female_30_34": "ons.population",
+      "ons.population.female_35_39": "ons.population",
+      "ons.population.female_40_44": "ons.population",
+      "ons.population.female_45_49": "ons.population",
+      "ons.population.female_50_54": "ons.population",
+      "ons.population.female_55_59": "ons.population",
+      "ons.population.female_5_9": "ons.population",
+      "ons.population.female_60_64": "ons.population",
+      "ons.population.female_65_69": "ons.population",
+      "ons.population.female_70_74": "ons.population",
+      "ons.population.female_75_79": "ons.population",
+      "ons.population.female_80_84": "ons.population",
+      "ons.population.female_85_89": "ons.population",
+      "ons.population.female_90_plus": "ons.population",
+      "ons.population.male_0_4": "ons.population",
+      "ons.population.male_10_14": "ons.population",
+      "ons.population.male_15_19": "ons.population",
+      "ons.population.male_20_24": "ons.population",
+      "ons.population.male_25_29": "ons.population",
+      "ons.population.male_30_34": "ons.population",
+      "ons.population.male_35_39": "ons.population",
+      "ons.population.male_40_44": "ons.population",
+      "ons.population.male_45_49": "ons.population",
+      "ons.population.male_50_54": "ons.population",
+      "ons.population.male_55_59": "ons.population",
+      "ons.population.male_5_9": "ons.population",
+      "ons.population.male_60_64": "ons.population",
+      "ons.population.male_65_69": "ons.population",
+      "ons.population.male_70_74": "ons.population",
+      "ons.population.male_75_79": "ons.population",
+      "ons.population.male_80_84": "ons.population",
+      "ons.population.male_85_89": "ons.population",
+      "ons.population.male_90_plus": "ons.population",
+      "ons.population.scotland_children_under_16": "ons.population",
+      "ons.population.scotland_babies_under_1": "ons.population",
+      "ons.population.scotland_households_3plus_children": "ons.population",
+      "ons.household_composition.lone_households_under_65": "ons.household_composition",
+      "ons.household_composition.lone_households_over_65": "ons.household_composition",
+      "ons.household_composition.unrelated_adult_households": "ons.household_composition",
+      "ons.household_composition.couple_no_children_households": "ons.household_composition",
+      "ons.household_composition.couple_under_3_children_households": "ons.household_composition",
+      "ons.household_composition.couple_3_plus_children_households": "ons.household_composition",
+      "ons.household_composition.couple_non_dependent_children_only_households": "ons.household_composition",
+      "ons.household_composition.lone_parent_dependent_children_households": "ons.household_composition",
+      "ons.household_composition.lone_parent_non_dependent_children_households": "ons.household_composition",
+      "ons.household_composition.multi_family_households": "ons.household_composition",
+      "voa.council_tax_stock.band_a": "voa.council_tax_stock",
+      "scotgov.council_tax_stock.band_a": "scotgov.council_tax_stock",
+      "voa.council_tax_stock.band_b": "voa.council_tax_stock",
+      "scotgov.council_tax_stock.band_b": "scotgov.council_tax_stock",
+      "voa.council_tax_stock.band_c": "voa.council_tax_stock",
+      "scotgov.council_tax_stock.band_c": "scotgov.council_tax_stock",
+      "voa.council_tax_stock.band_d": "voa.council_tax_stock",
+      "scotgov.council_tax_stock.band_d": "scotgov.council_tax_stock",
+      "voa.council_tax_stock.band_e": "voa.council_tax_stock",
+      "scotgov.council_tax_stock.band_e": "scotgov.council_tax_stock",
+      "voa.council_tax_stock.band_f": "voa.council_tax_stock",
+      "scotgov.council_tax_stock.band_f": "scotgov.council_tax_stock",
+      "voa.council_tax_stock.band_g": "voa.council_tax_stock",
+      "scotgov.council_tax_stock.band_g": "scotgov.council_tax_stock",
+      "voa.council_tax_stock.band_h": "voa.council_tax_stock",
+      "scotgov.council_tax_stock.band_h": "scotgov.council_tax_stock",
+      "voa.council_tax_stock.total": "voa.council_tax_stock",
+      "scotgov.council_tax_stock.total": "scotgov.council_tax_stock",
+      "scotgov.scottish_child_payment_spending": "scotgov.social_security",
+      "ons.savings_interest_income": "ons.national_accounts",
+      "ons.public_sector_employment": "ons.employment",
+      "ons.land.land_value": "ons.land",
+      "ons.land.household_land_value": "ons.land",
+      "ons.land.corporate_land_value": "ons.land",
+      "slc.repayments.devolved_total": "slc.repayments",
+      "slc.repayments.england_total_higher_education": "slc.repayments",
+      "slc.repayments.england_plan_1": "slc.repayments",
+      "slc.repayments.england_plan_2": "slc.repayments",
+      "slc.repayments.england_postgraduate": "slc.repayments",
+      "slc.repayments.england_plan_5": "slc.repayments",
+      "slc.borrowers.plan_2_above_threshold": "slc.borrowers",
+      "slc.borrowers.plan_2_liable": "slc.borrowers",
+      "slc.borrowers.plan_5_above_threshold": "slc.borrowers",
+      "slc.borrowers.plan_5_liable": "slc.borrowers",
+      "slc.support.maintenance_loan_recipients": "slc.student_support",
+      "slc.support.maintenance_loan_spend": "slc.student_support",
+      "slc.support.parents_learning_allowance_recipients": "slc.student_support",
+      "slc.support.parents_learning_allowance_spend": "slc.student_support",
+      "slc.support.adult_dependants_grant_recipients": "slc.student_support",
+      "slc.support.adult_dependants_grant_spend": "slc.student_support",
+      "dwp.uc.households": "dwp.universal_credit",
+      "hmrc.self_employment_income.amount": "hmrc.tax_statistics",
+      "hmrc.self_employment_income.count": "hmrc.tax_statistics",
+      "hmrc.employment_income.amount": "hmrc.tax_statistics",
+      "hmrc.employment_income.count": "hmrc.tax_statistics",
+      "ons.age.0_10": "ons.population",
+      "ons.age.10_20": "ons.population",
+      "ons.age.20_30": "ons.population",
+      "ons.age.30_40": "ons.population",
+      "ons.age.40_50": "ons.population",
+      "ons.age.50_60": "ons.population",
+      "ons.age.60_70": "ons.population",
+      "ons.age.70_80": "ons.population",
+      "dwp.uc.households_by_area": "dwp.universal_credit",
+      "dwp.uc.households_by_area_children_0": "dwp.universal_credit",
+      "dwp.uc.households_by_area_children_1": "dwp.universal_credit",
+      "dwp.uc.households_by_area_children_2": "dwp.universal_credit",
+      "dwp.uc.households_by_area_children_3plus": "dwp.universal_credit",
+      "ons.equiv_net_income_bhc": "ons.income",
+      "ons.equiv_net_income_ahc": "ons.income",
+      "ons.equiv_housing_costs": "ons.income",
+      "ons.tenure.owned_outright": "ons.housing",
+      "ons.tenure.owned_mortgage": "ons.housing",
+      "ons.tenure.private_rent": "ons.housing",
+      "ons.tenure.social_rent": "ons.housing",
+      "ons.rent.private_rent": "ons.housing",
+      "voa.council_tax_stock.by_area.band_a": "voa.council_tax_stock",
+      "voa.council_tax_stock.by_area.band_b": "voa.council_tax_stock",
+      "voa.council_tax_stock.by_area.band_c": "voa.council_tax_stock",
+      "voa.council_tax_stock.by_area.band_d": "voa.council_tax_stock",
+      "voa.council_tax_stock.by_area.band_e": "voa.council_tax_stock",
+      "voa.council_tax_stock.by_area.band_f": "voa.council_tax_stock",
+      "voa.council_tax_stock.by_area.band_g": "voa.council_tax_stock",
+      "voa.council_tax_stock.by_area.band_h": "voa.council_tax_stock"
+    }
+  }
 }

@@ -44,6 +44,7 @@ from typing import Any
 
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
+    hierarchy_seed_from_catalog,
     period_type_hint,
     period_values_semantically_equal,
 )
@@ -804,6 +805,12 @@ def _validate_target_references(
             f"{context}: declares country {declared!r} but lives in the "
             f"{country!r} package."
         )
+    schema_version = raw.get("schema_version")
+    if schema_version is not None and schema_version != 2:
+        raise ValueError(
+            f"{context}: schema_version must be 2 when declared, got "
+            f"{schema_version!r}."
+        )
     rows = raw.get("target_references")
     if not isinstance(rows, list) or not rows:
         raise ValueError(f"{context}: target_references must be a non-empty list.")
@@ -818,12 +825,91 @@ def _validate_target_references(
                 "live in Ledger, never in microcosm."
             )
         try:
-            references.append(LedgerTargetReference(**row))
+            constructor_row = dict(row)
+            if schema_version == 2:
+                hierarchy_catalog = _require_mapping(
+                    raw.get("hierarchy"), context=f"{context} hierarchy"
+                )
+                category_id = constructor_row.pop("category_id", None)
+                if category_id is None:
+                    metadata = constructor_row.get("metadata")
+                    contract_target_id = (
+                        metadata.get("contract_target_id")
+                        if isinstance(metadata, Mapping)
+                        else None
+                    )
+                    target_categories = _require_mapping(
+                        hierarchy_catalog.get("target_categories"),
+                        context=f"{context} hierarchy.target_categories",
+                    )
+                    category_id = target_categories.get(contract_target_id)
+                category_id = _require_non_empty_string(
+                    category_id,
+                    field_name="category_id",
+                    context=f"{context} reference {row.get('name')!r}",
+                )
+                constructor_row["hierarchy"] = hierarchy_seed_from_catalog(
+                    hierarchy_catalog,
+                    category_id,
+                )
+            references.append(LedgerTargetReference(**constructor_row))
         except (TypeError, ValueError) as error:
             raise ValueError(
                 f"{context}: reference {row.get('name')!r} is invalid: {error}"
             ) from error
+    if schema_version == 2:
+        _validate_target_reference_hierarchy(
+            raw.get("hierarchy"),
+            references=references,
+            context=context,
+        )
     return tuple(references)
+
+
+def _validate_target_reference_hierarchy(
+    raw_hierarchy: object,
+    *,
+    references: list[LedgerTargetReference],
+    context: str,
+) -> None:
+    """Validate normalized catalogs against every denormalized reference seed."""
+
+    hierarchy = _require_mapping(raw_hierarchy, context=f"{context} hierarchy")
+    providers = _require_mapping(
+        hierarchy.get("providers"), context=f"{context} hierarchy.providers"
+    )
+    categories = _require_mapping(
+        hierarchy.get("categories"), context=f"{context} hierarchy.categories"
+    )
+    if not providers or not categories:
+        raise ValueError(f"{context}: hierarchy catalogs must be non-empty.")
+    for reference in references:
+        seed = reference.hierarchy
+        if seed is None:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} has no hierarchy seed."
+            )
+        provider = _require_mapping(
+            providers.get(seed.provider.id),
+            context=f"{context} provider {seed.provider.id!r}",
+        )
+        category = _require_mapping(
+            categories.get(seed.category.id),
+            context=f"{context} category {seed.category.id!r}",
+        )
+        if provider.get("label") != seed.provider.label:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} provider label does "
+                "not match the normalized catalog."
+            )
+        if (
+            category.get("label") != seed.category.label
+            or category.get("provider_id") != seed.provider.id
+        ):
+            raise ValueError(
+                f"{context}: reference {reference.name!r} category does not "
+                "match the normalized catalog."
+            )
 
 
 def _typed_geography_vintage_aliases(

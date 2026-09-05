@@ -76,6 +76,7 @@ def main() -> None:
         country="uk",
         description=DESCRIPTION,
         authored=authored,
+        hierarchy=contract["hierarchy"],
     )
     args.output.write_text(json.dumps(resource, indent=2) + "\n", encoding="utf-8")
     args.membership_report.write_text(

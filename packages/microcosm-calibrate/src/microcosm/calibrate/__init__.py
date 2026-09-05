@@ -102,6 +102,7 @@ from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
 )
 from microcosm.calibrate.hierarchy import (  # noqa: E402 - after compat gate
     CalibrationHierarchy,
+    CalibrationHierarchySeed,
     HierarchyCategory,
     HierarchyDimension,
     HierarchyGeography,
@@ -162,6 +163,7 @@ __all__ = [
     "TARGET_LOSS_BASIS_HASH_ALGORITHM",
     "CalibrationProblem",
     "CalibrationHierarchy",
+    "CalibrationHierarchySeed",
     "CalibrationResult",
     "L0RefitResult",
     "MonetaryBindingIntegrityError",

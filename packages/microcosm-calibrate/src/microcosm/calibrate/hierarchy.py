@@ -13,6 +13,7 @@ from typing import Any
 
 __all__ = [
     "CalibrationHierarchy",
+    "CalibrationHierarchySeed",
     "HierarchyCategory",
     "HierarchyDimension",
     "HierarchyGeography",
@@ -82,6 +83,28 @@ class HierarchyDimension:
                 value,
                 field_name=f"HierarchyDimension {self.id!r}.{field_name}",
             )
+
+
+@dataclass(frozen=True)
+class CalibrationHierarchySeed:
+    """Microcosm-owned provider/category data known before Chronicle matching."""
+
+    provider: HierarchyNode
+    category: HierarchyCategory
+
+    def __post_init__(self) -> None:
+        if self.category.provider_id != self.provider.id:
+            raise ValueError(
+                f"Hierarchy category {self.category.id!r} belongs to provider "
+                f"{self.category.provider_id!r}, not {self.provider.id!r}."
+            )
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "CalibrationHierarchySeed":
+        return cls(
+            provider=HierarchyNode(**raw["provider"]),
+            category=HierarchyCategory(**raw["category"]),
+        )
 
 
 @dataclass(frozen=True)

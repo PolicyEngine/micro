@@ -21,6 +21,7 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     apply_ledger_target_profile,
     compile_ledger_target_references,
+    hierarchy_seed_from_catalog,
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
@@ -29,7 +30,16 @@ from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
     enforce_period_contract,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    CalibrationHierarchySeed,
+    HierarchyCategory,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+    calibration_provider_label,
+    calibration_variable_label,
+)
 
 __all__ = [
     "US_FISCAL_MACRO_REALISM_BANDS",
@@ -55,6 +65,38 @@ __all__ = [
 
 TaxExpenditureReformKind = Literal["neutralize_variable"]
 TaxExpenditureMatrixRow = Literal["reform_minus_baseline_income_tax"]
+
+
+def _us_hierarchy_seed(
+    provider_id: str,
+    category_id: str,
+    *,
+    category_label: str = "",
+) -> CalibrationHierarchySeed:
+    """Build the explicit provider/category declaration for a selected US row."""
+
+    provider_label = calibration_provider_label("us", provider_id) or " ".join(
+        part.upper() if len(part) <= 3 else part.capitalize()
+        for part in provider_id.replace("-", "_").split("_")
+        if part
+    )
+    resolved_category_label = (
+        category_label
+        or calibration_variable_label("us", provider_id, category_id)
+        or " ".join(
+            part.upper() if len(part) <= 3 else part.capitalize()
+            for part in category_id.replace("-", "_").split("_")
+            if part
+        )
+    )
+    return CalibrationHierarchySeed(
+        provider=HierarchyNode(provider_id, provider_label),
+        category=HierarchyCategory(
+            f"{provider_id}.{category_id}",
+            resolved_category_label,
+            provider_id,
+        ),
+    )
 
 
 STATE_FIPS_TO_POSTAL: dict[str, str] = {
@@ -908,7 +950,19 @@ def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
             "US fiscal target references currently permit only identity value "
             f"resolution from Ledger facts; got {sorted(allowed_operations)!r}."
         )
-    return tuple(LedgerTargetReference(**raw) for raw in payload["target_references"])
+    hierarchy = payload.get("hierarchy")
+    if not isinstance(hierarchy, dict):
+        raise ValueError("US fiscal target manifest requires a hierarchy catalog.")
+    references = []
+    for raw in payload["target_references"]:
+        normalized = dict(raw)
+        category_id = str(normalized.pop("category_id", ""))
+        normalized["hierarchy"] = hierarchy_seed_from_catalog(
+            hierarchy,
+            category_id,
+        )
+        references.append(LedgerTargetReference(**normalized))
+    return tuple(references)
 
 
 def _load_us_fiscal_target_profile() -> dict[str, Any]:
@@ -1088,9 +1142,33 @@ def _with_derived_chip_enrollment_targets(registry: TargetRegistry) -> TargetReg
                     combined_spec,
                     medicaid_spec,
                 ),
+                hierarchy=_derived_chip_enrollment_hierarchy(combined_spec),
             )
         )
     return TargetRegistry(specs, country=registry.country)
+
+
+def _derived_chip_enrollment_hierarchy(
+    combined_spec: TargetSpec,
+) -> CalibrationHierarchy:
+    hierarchy = combined_spec.hierarchy
+    if hierarchy is None:
+        raise ValueError(
+            f"CMS source target {combined_spec.name!r} has no hierarchy for "
+            "the derived CHIP enrollment target."
+        )
+    name = _derived_chip_enrollment_name(combined_spec)
+    return CalibrationHierarchy(
+        provider=hierarchy.provider,
+        category=HierarchyCategory(
+            f"{hierarchy.provider.id}.total_chip_enrollment",
+            "Total CHIP enrollment",
+            hierarchy.provider.id,
+        ),
+        geography=hierarchy.geography,
+        dimensions=hierarchy.dimensions,
+        target=HierarchyNode(name, "Total CHIP enrollment"),
+    )
 
 
 def _cms_medicaid_specs_by_key(
@@ -2440,6 +2518,7 @@ def _soi_reference_from_fact(
         family="irs_soi",
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed("irs_soi", display_variable),
     )
 
 
@@ -2547,6 +2626,10 @@ def _state_income_tax_reference_from_fact(
         measure=source_record_id,
         period=target_period,
         family="state_income_tax",
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            "individual_income_tax_collections",
+        ),
         metadata={
             "source_measure_id": "collections",
             "source_period": str(_period_value(fact)),
@@ -2614,6 +2697,10 @@ def _population_age_reference_from_fact(
         period=target_period,
         family="census_population",
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            "resident_population",
+        ),
     )
 
 
@@ -2779,6 +2866,11 @@ def _ssa_ssi_reference_from_fact(
             measure=source_record_id,
             period=target_period,
             family="ssa",
+            hierarchy=_us_hierarchy_seed(
+                _source_name(fact),
+                "ssi_federal_payment_recipients",
+                category_label="Federal SSI payment recipients",
+            ),
             metadata={
                 "materializer": "policyengine_variable",
                 "measure_mode": "indicator_sum",
@@ -2847,6 +2939,14 @@ def _ssa_ssi_reference_from_fact(
         period=target_period,
         family="ssa",
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            (
+                "ssi_recipients"
+                if measure_id == "recipient_count"
+                else "ssi_payments"
+            ),
+        ),
     )
 
 
@@ -2939,6 +3039,10 @@ def _bea_reference_from_fact(
         family="bea",
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            target_role,
+        ),
     )
 
 
@@ -2998,6 +3102,7 @@ def _direct_reference_from_fact(
         family=family,
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(source_name, family),
     )
 
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "country": "uk",
   "description": "UK population calibration contract: value-free national and local-geography target declarations over Chronicle facts. Selection contracts live in Microcosm per the chronicle#166 ruling (2026-08-13): Chronicle is a facts-only layer; Microcosm owns which facts are targets and how they bind to the model. This resource consolidates the former national and local-geography contracts into one population contract while preserving both target levels and their provenance accounting blocks. Observed values resolve from hash-pinned Chronicle consumer-facts artifacts at build time.",
   "allowed_value_operations": [
@@ -1359,6 +1359,162 @@
       "voa.council_tax_stock.by_area.band_h"
     ]
   },
+  "hierarchy": {
+    "providers": {
+      "dwp": {
+        "label": "Department for Work and Pensions"
+      },
+      "hmrc": {
+        "label": "HM Revenue and Customs"
+      },
+      "isc": {
+        "label": "Independent Schools Council"
+      },
+      "obr": {
+        "label": "Office for Budget Responsibility"
+      },
+      "ons": {
+        "label": "Office for National Statistics"
+      },
+      "scotgov": {
+        "label": "Scottish Government"
+      },
+      "slc": {
+        "label": "Student Loans Company"
+      },
+      "voa": {
+        "label": "Valuation Office Agency"
+      },
+      "dfe": {
+        "label": "Department for Education"
+      },
+      "dft": {
+        "label": "Department for Transport"
+      }
+    },
+    "categories": {
+      "dwp.benefit_cap": {
+        "provider_id": "dwp",
+        "label": "Benefit Cap"
+      },
+      "dwp.legacy_benefits": {
+        "provider_id": "dwp",
+        "label": "Legacy benefits"
+      },
+      "dwp.pip": {
+        "provider_id": "dwp",
+        "label": "Personal Independence Payment"
+      },
+      "dwp.universal_credit": {
+        "provider_id": "dwp",
+        "label": "Universal Credit"
+      },
+      "dwp.universal_credit_two_child_limit": {
+        "provider_id": "dwp",
+        "label": "Universal Credit two-child limit"
+      },
+      "hmrc.capital_gains_tax": {
+        "provider_id": "hmrc",
+        "label": "Capital Gains Tax"
+      },
+      "hmrc.salary_sacrifice_income_tax_relief": {
+        "provider_id": "hmrc",
+        "label": "Salary-sacrifice Income Tax relief"
+      },
+      "hmrc.salary_sacrifice_national_insurance_relief": {
+        "provider_id": "hmrc",
+        "label": "Salary-sacrifice National Insurance relief"
+      },
+      "hmrc.salary_sacrifice_pension_users": {
+        "provider_id": "hmrc",
+        "label": "Salary-sacrifice pension users"
+      },
+      "hmrc.survey_of_personal_incomes": {
+        "provider_id": "hmrc",
+        "label": "Survey of Personal Incomes"
+      },
+      "hmrc.tax_statistics": {
+        "provider_id": "hmrc",
+        "label": "Income statistics"
+      },
+      "isc.independent_school_pupils": {
+        "provider_id": "isc",
+        "label": "Pupils at independent schools"
+      },
+      "obr.efo_expenditure": {
+        "provider_id": "obr",
+        "label": "Economic and fiscal outlook expenditure"
+      },
+      "obr.efo_receipts": {
+        "provider_id": "obr",
+        "label": "Economic and fiscal outlook receipts"
+      },
+      "ons.employment": {
+        "provider_id": "ons",
+        "label": "Employment"
+      },
+      "ons.household_composition": {
+        "provider_id": "ons",
+        "label": "Household composition"
+      },
+      "ons.housing": {
+        "provider_id": "ons",
+        "label": "Housing"
+      },
+      "ons.income": {
+        "provider_id": "ons",
+        "label": "Household income"
+      },
+      "ons.land": {
+        "provider_id": "ons",
+        "label": "Land value"
+      },
+      "ons.national_accounts": {
+        "provider_id": "ons",
+        "label": "National accounts"
+      },
+      "ons.population": {
+        "provider_id": "ons",
+        "label": "Population"
+      },
+      "scotgov.council_tax_stock": {
+        "provider_id": "scotgov",
+        "label": "Council Tax dwelling stock"
+      },
+      "scotgov.social_security": {
+        "provider_id": "scotgov",
+        "label": "Social security"
+      },
+      "slc.borrowers": {
+        "provider_id": "slc",
+        "label": "Student loan borrowers"
+      },
+      "slc.repayments": {
+        "provider_id": "slc",
+        "label": "Student loan repayments"
+      },
+      "slc.student_support": {
+        "provider_id": "slc",
+        "label": "Student support"
+      },
+      "voa.council_tax_stock": {
+        "provider_id": "voa",
+        "label": "Council Tax dwelling stock"
+      },
+      "hmrc.tax_free_childcare": {
+        "provider_id": "hmrc",
+        "label": "Tax-Free Childcare"
+      },
+      "dfe.funded_childcare": {
+        "provider_id": "dfe",
+        "label": "Funded childcare"
+      },
+      "dft.local_bus_finances": {
+        "provider_id": "dft",
+        "label": "Local bus finances"
+      }
+    }
+  },
   "targets": [
     {
       "target_id": "obr.income_tax",
@@ -1389,7 +1545,8 @@
         "source_name": "obr",
         "source_concept": "obr.income_tax",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_receipts"
     },
     {
       "target_id": "obr.ni",
@@ -1421,7 +1578,8 @@
         "source_name": "obr",
         "source_concept": "obr.ni_total",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_receipts"
     },
     {
       "target_id": "obr.ni_employee",
@@ -1452,7 +1610,8 @@
         "source_name": "obr",
         "source_concept": "obr.ni_employee",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_receipts"
     },
     {
       "target_id": "obr.ni_employer",
@@ -1483,7 +1642,8 @@
         "source_name": "obr",
         "source_concept": "obr.ni_employer",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_receipts"
     },
     {
       "target_id": "obr.ni_self_employed",
@@ -1514,7 +1674,8 @@
         "source_name": "obr",
         "source_concept": "obr.ni_self_employed",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_receipts"
     },
     {
       "target_id": "obr.vat",
@@ -1542,7 +1703,8 @@
         "source_name": "obr",
         "source_concept": "obr.vat",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_receipts"
     },
     {
       "target_id": "obr.fuel_duties",
@@ -1570,7 +1732,8 @@
         "source_name": "obr",
         "source_concept": "obr.fuel_duties",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_receipts"
     },
     {
       "target_id": "obr.capital_gains_tax",
@@ -1601,7 +1764,8 @@
         "source_name": "obr",
         "source_concept": "obr.capital_gains_tax",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_receipts"
     },
     {
       "target_id": "obr.sdlt",
@@ -1629,7 +1793,8 @@
         "source_name": "obr",
         "source_concept": "obr.sdlt",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_receipts"
     },
     {
       "target_id": "obr.attendance_allowance",
@@ -1660,7 +1825,8 @@
         "source_name": "obr",
         "source_concept": "obr.attendance_allowance",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.carers_allowance",
@@ -1691,7 +1857,8 @@
         "source_name": "obr",
         "source_concept": "obr.carers_allowance",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.child_benefit",
@@ -1722,7 +1889,8 @@
         "source_name": "obr",
         "source_concept": "obr.child_benefit",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.council_tax",
@@ -1750,7 +1918,8 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_total"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.council_tax_england",
@@ -1790,7 +1959,8 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_england"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.council_tax_scotland",
@@ -1830,7 +2000,8 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_scotland"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.council_tax_wales",
@@ -1870,7 +2041,8 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.council_tax_wales"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.domestic_rates",
@@ -1898,7 +2070,8 @@
         "source_name": "obr",
         "source_concept": "obr.domestic_rates",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.esa",
@@ -1928,7 +2101,8 @@
         "source_name": "obr",
         "source_concept": "obr.incapacity_benefits",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.housing_benefit",
@@ -1959,7 +2133,8 @@
         "source_name": "obr",
         "source_concept": "obr.housing_benefit",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.jobseekers_allowance",
@@ -1990,7 +2165,8 @@
         "source_name": "obr",
         "source_concept": "obr.jobseekers_allowance",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.pension_credit",
@@ -2021,7 +2197,8 @@
         "source_name": "obr",
         "source_concept": "obr.pension_credit",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.pip",
@@ -2053,7 +2230,8 @@
         "source_name": "obr",
         "source_concept": "obr.dla_and_pip",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.state_pension",
@@ -2084,7 +2262,8 @@
         "source_name": "obr",
         "source_concept": "obr.state_pension",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.statutory_maternity_pay",
@@ -2115,7 +2294,8 @@
         "source_name": "obr",
         "source_concept": "obr.statutory_maternity_pay",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.tv_licence_fee",
@@ -2143,7 +2323,8 @@
         "source_name": "obr",
         "source_concept": "obr.tv_licence_fee",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.universal_credit_in_cap",
@@ -2189,7 +2370,8 @@
         "source_name": "obr",
         "source_concept": "obr.universal_credit_in_cap",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.universal_credit_outside_cap",
@@ -2235,7 +2417,8 @@
         "source_name": "obr",
         "source_concept": "obr.universal_credit_outside_cap",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "obr.winter_fuel_allowance",
@@ -2263,7 +2446,8 @@
         "source_name": "obr",
         "source_concept": "obr.winter_fuel_payment",
         "entity_name": "person"
-      }
+      },
+      "category_id": "obr.efo_expenditure"
     },
     {
       "target_id": "isc.private_school_students",
@@ -2304,7 +2488,8 @@
       "ledger_selector": {
         "source_name": "isc",
         "source_concept": "isc.pupils_at_member_schools"
-      }
+      },
+      "category_id": "isc.independent_school_pupils"
     },
     {
       "target_id": "hmrc.salary_sacrifice.it_relief_basic_rate",
@@ -2344,7 +2529,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.ss_income_tax_relief_basic_rate"
-      }
+      },
+      "category_id": "hmrc.salary_sacrifice_income_tax_relief"
     },
     {
       "target_id": "hmrc.salary_sacrifice.it_relief_higher_rate",
@@ -2384,7 +2570,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.ss_income_tax_relief_higher_rate"
-      }
+      },
+      "category_id": "hmrc.salary_sacrifice_income_tax_relief"
     },
     {
       "target_id": "hmrc.salary_sacrifice.it_relief_additional_rate",
@@ -2423,7 +2610,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.ss_income_tax_relief_additional_rate"
-      }
+      },
+      "category_id": "hmrc.salary_sacrifice_income_tax_relief"
     },
     {
       "target_id": "hmrc.salary_sacrifice.nics_relief_employee",
@@ -2457,7 +2645,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.ss_nics_relief_employee"
-      }
+      },
+      "category_id": "hmrc.salary_sacrifice_national_insurance_relief"
     },
     {
       "target_id": "hmrc.salary_sacrifice.nics_relief_employer",
@@ -2491,7 +2680,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.ss_nics_relief_employer"
-      }
+      },
+      "category_id": "hmrc.salary_sacrifice_national_insurance_relief"
     },
     {
       "target_id": "hmrc.salary_sacrifice.users_total",
@@ -2532,7 +2722,8 @@
         "dimension_values": {
           "salary_sacrifice_threshold_position": "all"
         }
-      }
+      },
+      "category_id": "hmrc.salary_sacrifice_pension_users"
     },
     {
       "target_id": "hmrc.salary_sacrifice.users_below_cap",
@@ -2578,7 +2769,8 @@
         "dimension_values": {
           "salary_sacrifice_threshold_position": "within_2000"
         }
-      }
+      },
+      "category_id": "hmrc.salary_sacrifice_pension_users"
     },
     {
       "target_id": "hmrc.salary_sacrifice.users_above_cap",
@@ -2619,7 +2811,8 @@
         "dimension_values": {
           "salary_sacrifice_threshold_position": "above_2000"
         }
-      }
+      },
+      "category_id": "hmrc.salary_sacrifice_pension_users"
     },
     {
       "target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
@@ -2653,7 +2846,8 @@
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.employment_income.count_by_total_income_band",
@@ -2699,7 +2893,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_count",
         "groupby_dimension": "hmrc.total_income_band"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
@@ -2733,7 +2928,8 @@
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
@@ -2779,7 +2975,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_count",
         "groupby_dimension": "hmrc.total_income_band"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
@@ -2813,7 +3010,8 @@
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
@@ -2859,7 +3057,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_count",
         "groupby_dimension": "hmrc.total_income_band"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
@@ -2893,7 +3092,8 @@
         "source_concept": "hmrc.spi_property_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.property_income.count_by_total_income_band",
@@ -2939,7 +3139,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_property_income_count",
         "groupby_dimension": "hmrc.total_income_band"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
@@ -2973,7 +3174,8 @@
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
@@ -3019,7 +3221,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_count",
         "groupby_dimension": "hmrc.total_income_band"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
@@ -3053,7 +3256,8 @@
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
         "entity_name": "person"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.spi.state_pension.count_by_total_income_band",
@@ -3099,7 +3303,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_count",
         "groupby_dimension": "hmrc.total_income_band"
-      }
+      },
+      "category_id": "hmrc.survey_of_personal_incomes"
     },
     {
       "target_id": "hmrc.cgt.taxpayers_total",
@@ -3141,7 +3346,8 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.cgt_taxpayers_total",
         "groupby_dimension": "hmrc.cgt_table1_line"
-      }
+      },
+      "category_id": "hmrc.capital_gains_tax"
     },
     {
       "target_id": "hmrc.cgt.gains_total",
@@ -3184,7 +3390,8 @@
         "source_concept": "hmrc.cgt_gains_total",
         "groupby_dimension": "hmrc.cgt_table1_line",
         "entity_name": "tax_unit"
-      }
+      },
+      "category_id": "hmrc.capital_gains_tax"
     },
     {
       "target_id": "dwp.benefit_cap.capped_households",
@@ -3228,7 +3435,8 @@
       "ledger_selector": {
         "source_name": "dwp",
         "source_concept": "dwp.uc_capped_households_total"
-      }
+      },
+      "category_id": "dwp.benefit_cap"
     },
     {
       "target_id": "dwp.pip.daily_living_standard_claimants",
@@ -3273,7 +3481,8 @@
         "dimension_values": {
           "pip_daily_living_award_rate": "standard"
         }
-      }
+      },
+      "category_id": "dwp.pip"
     },
     {
       "target_id": "dwp.pip.daily_living_enhanced_claimants",
@@ -3318,7 +3527,8 @@
         "dimension_values": {
           "pip_daily_living_award_rate": "enhanced"
         }
-      }
+      },
+      "category_id": "dwp.pip"
     },
     {
       "target_id": "dwp.esa_claimants",
@@ -3358,7 +3568,8 @@
         "dimension_values": {
           "esa_claim_type": "all"
         }
-      }
+      },
+      "category_id": "dwp.legacy_benefits"
     },
     {
       "target_id": "dwp.esa_contrib_claimants",
@@ -3397,7 +3608,8 @@
         "dimension_values": {
           "esa_claim_type": "contributions_based"
         }
-      }
+      },
+      "category_id": "dwp.legacy_benefits"
     },
     {
       "target_id": "dwp.esa_income_claimants",
@@ -3436,7 +3648,8 @@
         "dimension_values": {
           "esa_claim_type": "income_related"
         }
-      }
+      },
+      "category_id": "dwp.legacy_benefits"
     },
     {
       "target_id": "dwp.jsa_claimants",
@@ -3473,7 +3686,8 @@
       "ledger_selector": {
         "source_name": "dwp",
         "source_concept": "dwp.jsa_claimants"
-      }
+      },
+      "category_id": "dwp.legacy_benefits"
     },
     {
       "target_id": "dwp.uc.households_children_1",
@@ -3589,7 +3803,8 @@
           "2025-12"
         ]
       },
-      "value_operation": "calendar_year_average"
+      "value_operation": "calendar_year_average",
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_children_2",
@@ -3705,7 +3920,8 @@
           "2025-12"
         ]
       },
-      "value_operation": "calendar_year_average"
+      "value_operation": "calendar_year_average",
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_children_3",
@@ -3821,7 +4037,8 @@
           "2025-12"
         ]
       },
-      "value_operation": "calendar_year_average"
+      "value_operation": "calendar_year_average",
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_children_4",
@@ -3937,7 +4154,8 @@
           "2025-12"
         ]
       },
-      "value_operation": "calendar_year_average"
+      "value_operation": "calendar_year_average",
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_children_5_or_more",
@@ -4053,7 +4271,8 @@
           "2025-12"
         ]
       },
-      "value_operation": "calendar_year_average"
+      "value_operation": "calendar_year_average",
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_single_no_children",
@@ -4184,7 +4403,8 @@
             "child_entitlement": "Yes"
           }
         }
-      ]
+      ],
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_single_with_children",
@@ -4315,7 +4535,8 @@
             "child_entitlement": "Yes"
           }
         }
-      ]
+      ],
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_couple_no_children",
@@ -4446,7 +4667,8 @@
             "child_entitlement": "Yes"
           }
         }
-      ]
+      ],
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_couple_with_children",
@@ -4577,7 +4799,8 @@
             "child_entitlement": "Yes"
           }
         }
-      ]
+      ],
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.payment_distribution_single",
@@ -4667,7 +4890,8 @@
         "dimension_values": {
           "family_type": "Single, no children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.payment_distribution_lone_parent",
@@ -4757,7 +4981,8 @@
         "dimension_values": {
           "family_type": "Single, with children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.payment_distribution_couple_no_children",
@@ -4847,7 +5072,8 @@
         "dimension_values": {
           "family_type": "Couple, no children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.payment_distribution_couple_with_children",
@@ -4937,7 +5163,8 @@
         "dimension_values": {
           "family_type": "Couple, with children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.scotland_households_child_under_1",
@@ -5007,7 +5234,8 @@
         "dimension_values": {
           "age_of_youngest_child_bands_and_single_year": 0
         }
-      }
+      },
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.households_affected",
@@ -5064,7 +5292,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.children_affected",
@@ -5121,7 +5350,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.children_in_affected_households",
@@ -5178,7 +5408,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.households_3_children",
@@ -5242,7 +5473,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.children_in_3_children_households",
@@ -5306,7 +5538,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.households_4_children",
@@ -5370,7 +5603,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.children_in_4_children_households",
@@ -5434,7 +5668,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.households_5_children",
@@ -5498,7 +5733,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.children_in_5_children_households",
@@ -5562,7 +5798,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.households_6_plus_children",
@@ -5626,7 +5863,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.children_in_6_plus_children_households",
@@ -5690,7 +5928,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.households_claimant_pip",
@@ -5754,7 +5993,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.children_claimant_pip",
@@ -5818,7 +6058,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.households_disabled_child_element",
@@ -5882,7 +6123,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "dwp.uc.two_child_limit.children_disabled_child_element",
@@ -5946,7 +6188,8 @@
         "dimension_values": {
           "two_child_limit_status": "affected_3plus_children"
         }
-      }
+      },
+      "category_id": "dwp.universal_credit_two_child_limit"
     },
     {
       "target_id": "ons.population.uk_total",
@@ -5986,7 +6229,8 @@
         "source_concept": "ons.mid_year_population_estimate",
         "groupby_dimension": "age",
         "dimensions": []
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.age_0_9_by_region",
@@ -6056,7 +6300,8 @@
             9
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.age_10_19_by_region",
@@ -6126,7 +6371,8 @@
             19
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.age_20_29_by_region",
@@ -6196,7 +6442,8 @@
             29
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.age_30_39_by_region",
@@ -6266,7 +6513,8 @@
             39
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.age_40_49_by_region",
@@ -6336,7 +6584,8 @@
             49
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.age_50_59_by_region",
@@ -6406,7 +6655,8 @@
             59
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.age_60_69_by_region",
@@ -6476,7 +6726,8 @@
             69
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.age_70_79_by_region",
@@ -6546,7 +6797,8 @@
             79
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.age_80_89_by_region",
@@ -6616,7 +6868,8 @@
             89
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_0_4",
@@ -6688,7 +6941,8 @@
             4
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_10_14",
@@ -6760,7 +7014,8 @@
             14
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_15_19",
@@ -6832,7 +7087,8 @@
             19
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_20_24",
@@ -6904,7 +7160,8 @@
             24
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_25_29",
@@ -6976,7 +7233,8 @@
             29
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_30_34",
@@ -7048,7 +7306,8 @@
             34
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_35_39",
@@ -7120,7 +7379,8 @@
             39
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_40_44",
@@ -7192,7 +7452,8 @@
             44
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_45_49",
@@ -7264,7 +7525,8 @@
             49
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_50_54",
@@ -7336,7 +7598,8 @@
             54
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_55_59",
@@ -7408,7 +7671,8 @@
             59
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_5_9",
@@ -7480,7 +7744,8 @@
             9
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_60_64",
@@ -7552,7 +7817,8 @@
             64
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_65_69",
@@ -7624,7 +7890,8 @@
             69
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_70_74",
@@ -7696,7 +7963,8 @@
             74
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_75_79",
@@ -7768,7 +8036,8 @@
             79
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_80_84",
@@ -7840,7 +8109,8 @@
             84
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_85_89",
@@ -7912,7 +8182,8 @@
             89
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.female_90_plus",
@@ -7970,7 +8241,8 @@
             "90_plus"
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_0_4",
@@ -8042,7 +8314,8 @@
             4
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_10_14",
@@ -8114,7 +8387,8 @@
             14
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_15_19",
@@ -8186,7 +8460,8 @@
             19
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_20_24",
@@ -8258,7 +8533,8 @@
             24
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_25_29",
@@ -8330,7 +8606,8 @@
             29
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_30_34",
@@ -8402,7 +8679,8 @@
             34
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_35_39",
@@ -8474,7 +8752,8 @@
             39
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_40_44",
@@ -8546,7 +8825,8 @@
             44
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_45_49",
@@ -8618,7 +8898,8 @@
             49
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_50_54",
@@ -8690,7 +8971,8 @@
             54
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_55_59",
@@ -8762,7 +9044,8 @@
             59
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_5_9",
@@ -8834,7 +9117,8 @@
             9
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_60_64",
@@ -8906,7 +9190,8 @@
             64
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_65_69",
@@ -8978,7 +9263,8 @@
             69
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_70_74",
@@ -9050,7 +9336,8 @@
             74
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_75_79",
@@ -9122,7 +9409,8 @@
             79
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_80_84",
@@ -9194,7 +9482,8 @@
             84
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_85_89",
@@ -9266,7 +9555,8 @@
             89
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.male_90_plus",
@@ -9324,7 +9614,8 @@
             "90_plus"
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.scotland_children_under_16",
@@ -9396,7 +9687,8 @@
             15
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.scotland_babies_under_1",
@@ -9453,7 +9745,8 @@
             0
           ]
         }
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.population.scotland_households_3plus_children",
@@ -9507,7 +9800,8 @@
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
         "groupby_dimension": "age"
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.household_composition.lone_households_under_65",
@@ -9569,7 +9863,8 @@
         "dimension_values": {
           "household_type": "lone_households_under_65"
         }
-      }
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "ons.household_composition.lone_households_over_65",
@@ -9631,7 +9926,8 @@
         "dimension_values": {
           "household_type": "lone_households_over_65"
         }
-      }
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "ons.household_composition.unrelated_adult_households",
@@ -9685,7 +9981,8 @@
         "dimension_values": {
           "household_type": "unrelated_adult_households"
         }
-      }
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "ons.household_composition.couple_no_children_households",
@@ -9733,7 +10030,8 @@
         "dimension_values": {
           "household_type": "couple_no_children_households"
         }
-      }
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "ons.household_composition.couple_under_3_children_households",
@@ -9787,7 +10085,8 @@
         "dimension_values": {
           "household_type": "couple_under_3_children_households"
         }
-      }
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "ons.household_composition.couple_3_plus_children_households",
@@ -9834,7 +10133,8 @@
         "dimension_values": {
           "household_type": "couple_3_plus_children_households"
         }
-      }
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "ons.household_composition.couple_non_dependent_children_only_households",
@@ -9882,7 +10182,8 @@
         "dimension_values": {
           "household_type": "couple_non_dependent_children_only_households"
         }
-      }
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "ons.household_composition.lone_parent_dependent_children_households",
@@ -9929,7 +10230,8 @@
         "dimension_values": {
           "household_type": "lone_parent_dependent_children_households"
         }
-      }
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "ons.household_composition.lone_parent_non_dependent_children_households",
@@ -9991,7 +10293,8 @@
         "dimension_values": {
           "household_type": "lone_parent_non_dependent_children_households"
         }
-      }
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "ons.household_composition.multi_family_households",
@@ -10029,7 +10332,8 @@
         "dimension_values": {
           "household_type": "multi_family_households"
         }
-      }
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "voa.council_tax_stock.band_a",
@@ -10076,7 +10380,8 @@
       "ledger_selector": {
         "source_name": "voa",
         "source_measure_id": "band_a"
-      }
+      },
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "scotgov.council_tax_stock.band_a",
@@ -10122,7 +10427,8 @@
       "ledger_selector": {
         "source_name": "scotgov",
         "source_measure_id": "band_a"
-      }
+      },
+      "category_id": "scotgov.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.band_b",
@@ -10169,7 +10475,8 @@
       "ledger_selector": {
         "source_name": "voa",
         "source_measure_id": "band_b"
-      }
+      },
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "scotgov.council_tax_stock.band_b",
@@ -10215,7 +10522,8 @@
       "ledger_selector": {
         "source_name": "scotgov",
         "source_measure_id": "band_b"
-      }
+      },
+      "category_id": "scotgov.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.band_c",
@@ -10262,7 +10570,8 @@
       "ledger_selector": {
         "source_name": "voa",
         "source_measure_id": "band_c"
-      }
+      },
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "scotgov.council_tax_stock.band_c",
@@ -10308,7 +10617,8 @@
       "ledger_selector": {
         "source_name": "scotgov",
         "source_measure_id": "band_c"
-      }
+      },
+      "category_id": "scotgov.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.band_d",
@@ -10355,7 +10665,8 @@
       "ledger_selector": {
         "source_name": "voa",
         "source_measure_id": "band_d"
-      }
+      },
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "scotgov.council_tax_stock.band_d",
@@ -10401,7 +10712,8 @@
       "ledger_selector": {
         "source_name": "scotgov",
         "source_measure_id": "band_d"
-      }
+      },
+      "category_id": "scotgov.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.band_e",
@@ -10448,7 +10760,8 @@
       "ledger_selector": {
         "source_name": "voa",
         "source_measure_id": "band_e"
-      }
+      },
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "scotgov.council_tax_stock.band_e",
@@ -10494,7 +10807,8 @@
       "ledger_selector": {
         "source_name": "scotgov",
         "source_measure_id": "band_e"
-      }
+      },
+      "category_id": "scotgov.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.band_f",
@@ -10541,7 +10855,8 @@
       "ledger_selector": {
         "source_name": "voa",
         "source_measure_id": "band_f"
-      }
+      },
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "scotgov.council_tax_stock.band_f",
@@ -10587,7 +10902,8 @@
       "ledger_selector": {
         "source_name": "scotgov",
         "source_measure_id": "band_f"
-      }
+      },
+      "category_id": "scotgov.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.band_g",
@@ -10634,7 +10950,8 @@
       "ledger_selector": {
         "source_name": "voa",
         "source_measure_id": "band_g"
-      }
+      },
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "scotgov.council_tax_stock.band_g",
@@ -10680,7 +10997,8 @@
       "ledger_selector": {
         "source_name": "scotgov",
         "source_measure_id": "band_g"
-      }
+      },
+      "category_id": "scotgov.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.band_h",
@@ -10727,7 +11045,8 @@
       "ledger_selector": {
         "source_name": "voa",
         "source_measure_id": "band_h"
-      }
+      },
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "scotgov.council_tax_stock.band_h",
@@ -10773,7 +11092,8 @@
       "ledger_selector": {
         "source_name": "scotgov",
         "source_measure_id": "band_h"
-      }
+      },
+      "category_id": "scotgov.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.total",
@@ -10814,7 +11134,8 @@
       "ledger_selector": {
         "source_name": "voa",
         "source_measure_id": "all_properties"
-      }
+      },
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "scotgov.council_tax_stock.total",
@@ -10854,7 +11175,8 @@
       "ledger_selector": {
         "source_name": "scotgov",
         "source_measure_id": "total"
-      }
+      },
+      "category_id": "scotgov.council_tax_stock"
     },
     {
       "target_id": "scotgov.scottish_child_payment_spending",
@@ -10889,7 +11211,8 @@
           "social_security_line": "scottish_child_payment"
         },
         "entity_name": "person"
-      }
+      },
+      "category_id": "scotgov.social_security"
     },
     {
       "target_id": "ons.savings_interest_income",
@@ -10920,7 +11243,8 @@
         "source_name": "ons",
         "source_concept": "ons.ukea_haxv",
         "entity_name": "household"
-      }
+      },
+      "category_id": "ons.national_accounts"
     },
     {
       "target_id": "ons.public_sector_employment",
@@ -10961,7 +11285,8 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_measure_id": "total_public_sector"
-      }
+      },
+      "category_id": "ons.employment"
     },
     {
       "target_id": "ons.land.land_value",
@@ -10989,7 +11314,8 @@
         "source_name": "ons",
         "source_concept": "ons.e44r",
         "entity_name": "institutional_sector"
-      }
+      },
+      "category_id": "ons.land"
     },
     {
       "target_id": "ons.land.household_land_value",
@@ -11017,7 +11343,8 @@
         "source_name": "ons",
         "source_concept": "ons.e44n",
         "entity_name": "institutional_sector"
-      }
+      },
+      "category_id": "ons.land"
     },
     {
       "target_id": "ons.land.corporate_land_value",
@@ -11045,7 +11372,8 @@
         "source_name": "ons",
         "source_concept": "ons.e43b",
         "entity_name": "institutional_sector"
-      }
+      },
+      "category_id": "ons.land"
     },
     {
       "target_id": "slc.repayments.devolved_total",
@@ -11076,7 +11404,8 @@
         "source_name": "slc",
         "source_concept": "slc.student_loan_net_repayments_total",
         "entity_name": "person"
-      }
+      },
+      "category_id": "slc.repayments"
     },
     {
       "target_id": "slc.repayments.england_total_higher_education",
@@ -11124,7 +11453,8 @@
           "total_higher_education"
         ],
         "entity_name": "person"
-      }
+      },
+      "category_id": "slc.repayments"
     },
     {
       "target_id": "slc.repayments.england_plan_1",
@@ -11180,7 +11510,8 @@
           "plan_1"
         ],
         "entity_name": "person"
-      }
+      },
+      "category_id": "slc.repayments"
     },
     {
       "target_id": "slc.repayments.england_plan_2",
@@ -11239,7 +11570,8 @@
           "plan_2_part_time"
         ],
         "entity_name": "person"
-      }
+      },
+      "category_id": "slc.repayments"
     },
     {
       "target_id": "slc.repayments.england_postgraduate",
@@ -11298,7 +11630,8 @@
           "plan_3_postgraduate_doctoral"
         ],
         "entity_name": "person"
-      }
+      },
+      "category_id": "slc.repayments"
     },
     {
       "target_id": "slc.repayments.england_plan_5",
@@ -11357,7 +11690,8 @@
           "plan_5_part_time"
         ],
         "entity_name": "person"
-      }
+      },
+      "category_id": "slc.repayments"
     },
     {
       "target_id": "slc.borrowers.plan_2_above_threshold",
@@ -11408,7 +11742,8 @@
           "repayment_plan": "plan_2",
           "borrower_status": "above_repayment_threshold"
         }
-      }
+      },
+      "category_id": "slc.borrowers"
     },
     {
       "target_id": "slc.borrowers.plan_2_liable",
@@ -11454,7 +11789,8 @@
           "repayment_plan": "plan_2",
           "borrower_status": "liable_to_repay"
         }
-      }
+      },
+      "category_id": "slc.borrowers"
     },
     {
       "target_id": "slc.borrowers.plan_5_above_threshold",
@@ -11505,7 +11841,8 @@
           "repayment_plan": "plan_5",
           "borrower_status": "above_repayment_threshold"
         }
-      }
+      },
+      "category_id": "slc.borrowers"
     },
     {
       "target_id": "slc.borrowers.plan_5_liable",
@@ -11551,7 +11888,8 @@
           "repayment_plan": "plan_5",
           "borrower_status": "liable_to_repay"
         }
-      }
+      },
+      "category_id": "slc.borrowers"
     },
     {
       "target_id": "slc.support.maintenance_loan_recipients",
@@ -11594,7 +11932,8 @@
       "ledger_selector": {
         "source_name": "slc",
         "source_concept": "slc.maintenance_loan_recipients"
-      }
+      },
+      "category_id": "slc.student_support"
     },
     {
       "target_id": "slc.support.maintenance_loan_spend",
@@ -11624,7 +11963,8 @@
         "source_name": "slc",
         "source_concept": "slc.maintenance_loan_amount_paid",
         "entity_name": "person"
-      }
+      },
+      "category_id": "slc.student_support"
     },
     {
       "target_id": "slc.support.parents_learning_allowance_recipients",
@@ -11670,7 +12010,8 @@
         "dimension_values": {
           "student_support_product": "parents_learning_allowance"
         }
-      }
+      },
+      "category_id": "slc.student_support"
     },
     {
       "target_id": "slc.support.parents_learning_allowance_spend",
@@ -11703,7 +12044,8 @@
           "student_support_product": "parents_learning_allowance"
         },
         "entity_name": "person"
-      }
+      },
+      "category_id": "slc.student_support"
     },
     {
       "target_id": "slc.support.adult_dependants_grant_recipients",
@@ -11749,7 +12091,8 @@
         "dimension_values": {
           "student_support_product": "adult_dependants_grant"
         }
-      }
+      },
+      "category_id": "slc.student_support"
     },
     {
       "target_id": "slc.support.adult_dependants_grant_spend",
@@ -11782,7 +12125,8 @@
           "student_support_product": "adult_dependants_grant"
         },
         "entity_name": "person"
-      }
+      },
+      "category_id": "slc.student_support"
     },
     {
       "target_id": "dwp.uc.households",
@@ -11970,7 +12314,8 @@
             "child_entitlement": "Yes"
           }
         }
-      ]
+      ],
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "hmrc.tfc.government_top_up",
@@ -12002,7 +12347,8 @@
         "source_concept": "hmrc.tax_free_childcare.government_top_up_gbp_million",
         "entity_name": "government",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "hmrc.tax_free_childcare"
     },
     {
       "target_id": "hmrc.tfc.children_with_used_accounts",
@@ -12049,7 +12395,8 @@
         "dimension_values": {
           "definition_regime": "payment_and_open_at_reference_date"
         }
-      }
+      },
+      "category_id": "hmrc.tax_free_childcare"
     },
     {
       "target_id": "dfe.funded_childcare.working_parent_children_2_to_4",
@@ -12121,7 +12468,8 @@
           "registration_basis": "registered_children",
           "provision": "all"
         }
-      }
+      },
+      "category_id": "dfe.funded_childcare"
     },
     {
       "target_id": "dfe.funded_childcare.early_learning_2_year_olds",
@@ -12179,7 +12527,8 @@
           "age": "2 years",
           "registration_basis": "registered_children"
         }
-      }
+      },
+      "category_id": "dfe.funded_childcare"
     },
     {
       "target_id": "dfe.funded_childcare.universal_only_children",
@@ -12251,7 +12600,8 @@
       "ledger_selector": {
         "source_name": "dfe",
         "entity_name": "person"
-      }
+      },
+      "category_id": "dfe.funded_childcare"
     },
     {
       "target_id": "dft.bus_fare_receipts.england",
@@ -12294,7 +12644,8 @@
         "layout_groupby_value_id": "england",
         "entity_name": "institutional_sector",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "dft.local_bus_finances"
     },
     {
       "target_id": "dft.bus_net_support.england",
@@ -12337,7 +12688,8 @@
         "layout_groupby_value_id": "england",
         "entity_name": "institutional_sector",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "dft.local_bus_finances"
     },
     {
       "target_id": "dft.bus_fare_receipts.london",
@@ -12374,7 +12726,8 @@
         "layout_groupby_value_id": "london",
         "entity_name": "institutional_sector",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "dft.local_bus_finances"
     },
     {
       "target_id": "dft.bus_net_support.london",
@@ -12411,7 +12764,8 @@
         "layout_groupby_value_id": "london",
         "entity_name": "institutional_sector",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "dft.local_bus_finances"
     },
     {
       "target_id": "dft.bus_fare_receipts.england_outside_london",
@@ -12453,7 +12807,8 @@
         "layout_groupby_value_id": "england_outside_london",
         "entity_name": "institutional_sector",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "dft.local_bus_finances"
     },
     {
       "target_id": "dft.bus_net_support.england_outside_london",
@@ -12495,7 +12850,8 @@
         "layout_groupby_value_id": "england_outside_london",
         "entity_name": "institutional_sector",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "dft.local_bus_finances"
     },
     {
       "target_id": "dft.bus_fare_receipts.uk",
@@ -12525,7 +12881,8 @@
         "layout_groupby_value_id": "uk",
         "entity_name": "institutional_sector",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "dft.local_bus_finances"
     },
     {
       "target_id": "dft.bus_net_support.uk",
@@ -12555,7 +12912,8 @@
         "layout_groupby_value_id": "uk",
         "entity_name": "institutional_sector",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "dft.local_bus_finances"
     },
     {
       "target_id": "hmrc.self_employment_income.amount",
@@ -12607,7 +12965,8 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "No Chronicle amount fact exists; count_x_mean consumes the ordered count and mean facts from the same SPI area record-set spec."
+      "selector_note": "No Chronicle amount fact exists; count_x_mean consumes the ordered count and mean facts from the same SPI area record-set spec.",
+      "category_id": "hmrc.tax_statistics"
     },
     {
       "target_id": "hmrc.self_employment_income.count",
@@ -12665,7 +13024,8 @@
           "uk.local_geography.spi_income.by_constituency.v1",
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
-      }
+      },
+      "category_id": "hmrc.tax_statistics"
     },
     {
       "target_id": "hmrc.employment_income.amount",
@@ -12717,7 +13077,8 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "No Chronicle amount fact exists; count_x_mean consumes the ordered count and mean facts from the same SPI area record-set spec."
+      "selector_note": "No Chronicle amount fact exists; count_x_mean consumes the ordered count and mean facts from the same SPI area record-set spec.",
+      "category_id": "hmrc.tax_statistics"
     },
     {
       "target_id": "hmrc.employment_income.count",
@@ -12775,7 +13136,8 @@
           "uk.local_geography.spi_income.by_constituency.v1",
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
-      }
+      },
+      "category_id": "hmrc.tax_statistics"
     },
     {
       "target_id": "ons.age.0_10",
@@ -12819,7 +13181,8 @@
       "ledger_selector": {
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_0_10.v1"
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.age.10_20",
@@ -12863,7 +13226,8 @@
       "ledger_selector": {
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_10_20.v1"
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.age.20_30",
@@ -12907,7 +13271,8 @@
       "ledger_selector": {
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_20_30.v1"
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.age.30_40",
@@ -12951,7 +13316,8 @@
       "ledger_selector": {
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_30_40.v1"
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.age.40_50",
@@ -12995,7 +13361,8 @@
       "ledger_selector": {
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_40_50.v1"
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.age.50_60",
@@ -13039,7 +13406,8 @@
       "ledger_selector": {
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_50_60.v1"
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.age.60_70",
@@ -13083,7 +13451,8 @@
       "ledger_selector": {
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_60_70.v1"
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "ons.age.70_80",
@@ -13127,7 +13496,8 @@
       "ledger_selector": {
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_70_80.v1"
-      }
+      },
+      "category_id": "ons.population"
     },
     {
       "target_id": "dwp.uc.households_by_area",
@@ -13175,7 +13545,8 @@
           "uk.local_geography.uc_households.by_constituency.v1",
           "uk.local_geography.uc_households.by_local_authority.v1"
         ]
-      }
+      },
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_by_area_children_0",
@@ -13212,7 +13583,8 @@
         "source_name": "dwp",
         "source_measure_id": "universal_credit_households_by_children",
         "record_set_spec_id": "uk.local_geography.uc_households.children_0.v1"
-      }
+      },
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_by_area_children_1",
@@ -13249,7 +13621,8 @@
         "source_name": "dwp",
         "source_measure_id": "universal_credit_households_by_children",
         "record_set_spec_id": "uk.local_geography.uc_households.children_1.v1"
-      }
+      },
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_by_area_children_2",
@@ -13286,7 +13659,8 @@
         "source_name": "dwp",
         "source_measure_id": "universal_credit_households_by_children",
         "record_set_spec_id": "uk.local_geography.uc_households.children_2.v1"
-      }
+      },
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "dwp.uc.households_by_area_children_3plus",
@@ -13323,7 +13697,8 @@
         "source_name": "dwp",
         "source_measure_id": "universal_credit_households_by_children",
         "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1"
-      }
+      },
+      "category_id": "dwp.universal_credit"
     },
     {
       "target_id": "ons.equiv_net_income_bhc",
@@ -13351,7 +13726,8 @@
         "source_measure_id": "equivalised_net_income_before_housing_costs",
         "record_set_spec_id": "uk.local_geography.msoa_income.equivalised_bhc.v1"
       },
-      "selector_note": "Facts are MSOA-grain mean-valued targets; local-authority rows are signed deferrals in the local reference compiler."
+      "selector_note": "Facts are MSOA-grain mean-valued targets; local-authority rows are signed deferrals in the local reference compiler.",
+      "category_id": "ons.income"
     },
     {
       "target_id": "ons.equiv_net_income_ahc",
@@ -13379,7 +13755,8 @@
         "source_measure_id": "equivalised_net_income_after_housing_costs",
         "record_set_spec_id": "uk.local_geography.msoa_income.equivalised_ahc.v1"
       },
-      "selector_note": "Facts are MSOA-grain mean-valued targets; local-authority rows are signed deferrals in the local reference compiler."
+      "selector_note": "Facts are MSOA-grain mean-valued targets; local-authority rows are signed deferrals in the local reference compiler.",
+      "category_id": "ons.income"
     },
     {
       "target_id": "ons.equiv_housing_costs",
@@ -13413,7 +13790,8 @@
           "uk.local_geography.msoa_income.equivalised_ahc.v1"
         ]
       },
-      "selector_note": "Computed BHC-AHC quantity; no standalone publisher measure exists."
+      "selector_note": "Computed BHC-AHC quantity; no standalone publisher measure exists.",
+      "category_id": "ons.income"
     },
     {
       "target_id": "ons.tenure.owned_outright",
@@ -13451,7 +13829,8 @@
       "ledger_selector": {
         "source_measure_id": "households",
         "record_set_spec_id": "uk.local_geography.tenure.owned_outright.v1"
-      }
+      },
+      "category_id": "ons.housing"
     },
     {
       "target_id": "ons.tenure.owned_mortgage",
@@ -13489,7 +13868,8 @@
       "ledger_selector": {
         "source_measure_id": "households",
         "record_set_spec_id": "uk.local_geography.tenure.owned_mortgage.v1"
-      }
+      },
+      "category_id": "ons.housing"
     },
     {
       "target_id": "ons.tenure.private_rent",
@@ -13527,7 +13907,8 @@
       "ledger_selector": {
         "source_measure_id": "households",
         "record_set_spec_id": "uk.local_geography.tenure.private_rent.v1"
-      }
+      },
+      "category_id": "ons.housing"
     },
     {
       "target_id": "ons.tenure.social_rent",
@@ -13571,7 +13952,8 @@
       "ledger_selector": {
         "source_measure_id": "households",
         "record_set_spec_id": "uk.local_geography.tenure.social_rent.v1"
-      }
+      },
+      "category_id": "ons.housing"
     },
     {
       "target_id": "ons.rent.private_rent",
@@ -13608,7 +13990,8 @@
         "source_measure_id": "private_rent",
         "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1"
       },
-      "selector_note": "Private rent is a price-level target; non-English and masked rows are signed deferrals in the local reference compiler."
+      "selector_note": "Private rent is a price-level target; non-English and masked rows are signed deferrals in the local reference compiler.",
+      "category_id": "ons.housing"
     },
     {
       "target_id": "voa.council_tax_stock.by_area.band_a",
@@ -13648,7 +14031,8 @@
         "source_measure_id": "band_a",
         "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
       },
-      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame.",
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.by_area.band_b",
@@ -13688,7 +14072,8 @@
         "source_measure_id": "band_b",
         "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
       },
-      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame.",
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.by_area.band_c",
@@ -13728,7 +14113,8 @@
         "source_measure_id": "band_c",
         "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
       },
-      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame.",
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.by_area.band_d",
@@ -13768,7 +14154,8 @@
         "source_measure_id": "band_d",
         "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
       },
-      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame.",
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.by_area.band_e",
@@ -13808,7 +14195,8 @@
         "source_measure_id": "band_e",
         "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
       },
-      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame.",
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.by_area.band_f",
@@ -13848,7 +14236,8 @@
         "source_measure_id": "band_f",
         "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
       },
-      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame.",
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.by_area.band_g",
@@ -13888,7 +14277,8 @@
         "source_measure_id": "band_g",
         "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
       },
-      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame.",
+      "category_id": "voa.council_tax_stock"
     },
     {
       "target_id": "voa.council_tax_stock.by_area.band_h",
@@ -13928,7 +14318,8 @@
         "source_measure_id": "band_h",
         "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
       },
-      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame.",
+      "category_id": "voa.council_tax_stock"
     }
   ]
 }
