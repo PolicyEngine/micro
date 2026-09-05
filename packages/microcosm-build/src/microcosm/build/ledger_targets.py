@@ -872,10 +872,6 @@ def _calibration_hierarchy(
     seed = reference.hierarchy
     if seed is None:
         return None
-    representative = _value_representative_fact(
-        facts,
-        operation=reference.value_operation,
-    )
     geography_pairs = {
         (
             _str_at(fact, "geography", "level"),
@@ -895,9 +891,9 @@ def _calibration_hierarchy(
             f"Ledger target reference {reference.name!r}: Chronicle geography "
             "level and id are required for the calibration hierarchy."
         )
-    geography_names = {
-        _str_at(fact, "geography", "name").strip() for fact in facts
-    } - {""}
+    geography_names = {_str_at(fact, "geography", "name").strip() for fact in facts} - {
+        ""
+    }
     geography_label = (
         next(iter(geography_names))
         if len(geography_names) == 1
@@ -920,9 +916,7 @@ def _calibration_hierarchy(
     )
 
 
-def _chronicle_target_label(
-    facts: tuple[object, ...], *, target_period: object
-) -> str:
+def _chronicle_target_label(facts: tuple[object, ...], *, target_period: object) -> str:
     if len(facts) != 1:
         return ""
     fact = facts[0]
@@ -1022,7 +1016,9 @@ def _dimension_label(facts: tuple[object, ...], dimension_id: str) -> str:
         for label in (_mapping_value(fact, "dimension_labels", dimension_id),)
         if label is not None and str(label).strip()
     }
-    return next(iter(labels)) if len(labels) == 1 else _humanize_identifier(dimension_id)
+    return (
+        next(iter(labels)) if len(labels) == 1 else _humanize_identifier(dimension_id)
+    )
 
 
 def _dimension_value_label(

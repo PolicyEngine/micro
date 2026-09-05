@@ -374,9 +374,9 @@ def test_every_uk_reference_has_a_declared_provider_and_category() -> None:
     )
     assert all(
         providers[
-            categories[
-                target_categories[reference["metadata"]["contract_target_id"]]
-            ]["provider_id"]
+            categories[target_categories[reference["metadata"]["contract_target_id"]]][
+                "provider_id"
+            ]
         ]["label"]
         for reference in references
     )
@@ -963,8 +963,7 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
         if row["hierarchy"]["provider"]["id"] == "obr"
     } == {"Office for Budget Responsibility"}
     assert {
-        name: hierarchy["category"]["id"]
-        for name, hierarchy in obr_hierarchies.items()
+        name: hierarchy["category"]["id"] for name, hierarchy in obr_hierarchies.items()
     } == {
         "obr.esa@2025": "obr.efo_expenditure",
         "obr.income_tax@2025": "obr.efo_receipts",
@@ -978,13 +977,12 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
     diagnostic_rows = {row["target_name"]: row for row in diagnostics["targets"]}
     dwp_dimensions = {
         dimension["id"]: dimension
-        for dimension in diagnostic_rows[
-            "dwp.uc.two_child_limit.households_affected"
-        ]["hierarchy"]["dimensions"]
+        for dimension in diagnostic_rows["dwp.uc.two_child_limit.households_affected"][
+            "hierarchy"
+        ]["dimensions"]
     }
     assert dwp_dimensions["dwp.two_child_limit_status"]["value_label"] == (
-        "Affected UC Household (has third or subsequent child on or after "
-        "6 April 2017)"
+        "Affected UC Household (has third or subsequent child on or after 6 April 2017)"
     )
     hmrc_dimensions = diagnostic_rows[
         "hmrc/employment_income_income_band_12_570_to_15_000"
@@ -995,20 +993,22 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
         "value_id": "band_12570",
         "value_label": "Total income from GBP 12 570",
     }
-    assert diagnostic_rows["obr.income_tax"]["hierarchy"]["target"][
-        "label"
-    ] == next(
+    assert diagnostic_rows["obr.income_tax"]["hierarchy"]["target"]["label"] == next(
         row["label"]
         for row in feed_rows
         if row["aggregate_fact_key"]
         == diagnostic_rows["obr.income_tax"]["metadata"]["ledger_fact_key"]
     )
-    assert diagnostic_rows["dwp.uc.two_child_limit.households_affected"][
-        "hierarchy"
-    ]["target"]["label"] == "Households affected"
-    assert diagnostic_rows["slc.repayments.england_plan_2"]["hierarchy"]["target"][
-        "label"
-    ] == "England plan 2"
+    assert (
+        diagnostic_rows["dwp.uc.two_child_limit.households_affected"]["hierarchy"][
+            "target"
+        ]["label"]
+        == "Households affected"
+    )
+    assert (
+        diagnostic_rows["slc.repayments.england_plan_2"]["hierarchy"]["target"]["label"]
+        == "England plan 2"
+    )
 
 
 def _real_uk_consumer_fact_rows() -> list[dict]:

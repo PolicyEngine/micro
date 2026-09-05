@@ -3531,8 +3531,7 @@ def _check_hierarchy_diagnostics_target(
             value = node.get(required)
             if not isinstance(value, str) or not value.strip():
                 failures.append(
-                    f"{owner} hierarchy.{field}.{required} must be a non-empty "
-                    "string."
+                    f"{owner} hierarchy.{field}.{required} must be a non-empty string."
                 )
     if isinstance(category, Mapping) and isinstance(provider, Mapping):
         if category.get("provider_id") != provider.get("id"):
@@ -3558,9 +3557,7 @@ def _check_hierarchy_diagnostics_target(
         return
     seen: set[str] = set()
     for dimension_index, dimension in enumerate(dimensions):
-        dimension_owner = (
-            f"{owner} hierarchy.dimensions[{dimension_index}]"
-        )
+        dimension_owner = f"{owner} hierarchy.dimensions[{dimension_index}]"
         if not isinstance(dimension, Mapping):
             failures.append(f"{dimension_owner} must be an object.")
             continue

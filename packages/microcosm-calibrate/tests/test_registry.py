@@ -32,9 +32,7 @@ def _hierarchy(name: str = "census/population") -> CalibrationHierarchy:
         category=HierarchyCategory(
             id="population", label="Population", provider_id="census"
         ),
-        geography=HierarchyGeography(
-            id="us", label="United States", level="country"
-        ),
+        geography=HierarchyGeography(id="us", label="United States", level="country"),
         dimensions=(
             HierarchyDimension(
                 id="sex",

@@ -19,13 +19,13 @@ import pytest
 
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    TARGET_LOSS_ATTRIBUTION_WARNING_CODES,
+    TARGET_LOSS_BASIS_HASH_ALGORITHM,
     CalibrationHierarchy,
     HierarchyCategory,
     HierarchyDimension,
     HierarchyGeography,
     HierarchyNode,
-    TARGET_LOSS_ATTRIBUTION_WARNING_CODES,
-    TARGET_LOSS_BASIS_HASH_ALGORITHM,
     Target,
     TargetDiagnostic,
     TargetRegistry,
@@ -68,9 +68,7 @@ def _hierarchy(
     return CalibrationHierarchy(
         provider=HierarchyNode(provider_id, provider_label),
         category=HierarchyCategory(category_id, category_label, provider_id),
-        geography=HierarchyGeography(
-            geography_id, geography_label, geography_level
-        ),
+        geography=HierarchyGeography(geography_id, geography_label, geography_level),
         dimensions=dimensions,
         target=HierarchyNode(name, target_label or name.capitalize()),
     )

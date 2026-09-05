@@ -100,7 +100,7 @@ class CalibrationHierarchySeed:
             )
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "CalibrationHierarchySeed":
+    def from_dict(cls, raw: dict[str, Any]) -> CalibrationHierarchySeed:
         return cls(
             provider=HierarchyNode(**raw["provider"]),
             category=HierarchyCategory(**raw["category"]),
@@ -137,7 +137,7 @@ class CalibrationHierarchy:
             )
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "CalibrationHierarchy":
+    def from_dict(cls, raw: dict[str, Any]) -> CalibrationHierarchy:
         """Deserialize the canonical registry/diagnostics representation."""
 
         return cls(

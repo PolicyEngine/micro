@@ -2941,11 +2941,7 @@ def _ssa_ssi_reference_from_fact(
         metadata=metadata,
         hierarchy=_us_hierarchy_seed(
             _source_name(fact),
-            (
-                "ssi_recipients"
-                if measure_id == "recipient_count"
-                else "ssi_payments"
-            ),
+            ("ssi_recipients" if measure_id == "recipient_count" else "ssi_payments"),
         ),
     )
 
