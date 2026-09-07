@@ -1,5 +1,18 @@
 # PR 879: matched national comparison after measurement corrections
 
+> Integration note, 7 September 2026: PR #879 now targets `main`, rebased onto
+> `396df96fe7889777f3a7dd737e3305298219e6fa`. The four SPI/measurement and evidence
+> commits replayed with identical patches; their rebased tip is `4f000458`.
+> The branch also carries the 14 unmerged UK publication-stack prerequisite
+> commits on which these experiments depend. The rebase changes no executable
+> Python behavior relative to the previously tested PR head `4ccaabba`.
+> Calibration receipts, target/exclusion registers and the lockfile are unchanged.
+> The calibrations below were not rerun for the rebase: their original source
+> commits and artifact identities remain the provenance of the reported results.
+> Rebase validation: 458 focused tests passed with four skips; repository Ruff
+> lint and CI test-inventory verification passed, and all 51 changed Python files
+> passed the formatting check. This is not a full-suite or certification claim.
+
 Both requested measurement corrections are implemented and the matched national calibrations are complete. The corrected SPI comparison reduces loss by **39.81%**, but remains release-blocked. England council-tax measurements now fit closely. The two high-payment childless-couple bands are empty in both corrected spines, establishing a support gap rather than a treatment-only regression.
 
 ## What changed
