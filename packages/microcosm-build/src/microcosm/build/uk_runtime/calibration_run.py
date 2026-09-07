@@ -922,8 +922,8 @@ def uk_aggregate_admin_totals(
 
 
 #: The manifest fields the UK run seals into ``run_config``. Narrower than
-#: the artifact's whole manifest on purpose: only the fields that identify
-#: *which* published artifact was compiled belong in the identity digest.
+#: the artifact's whole manifest on purpose: the identity digest should name
+#: *which* published artifact was compiled, not re-hash its manifest.
 _LEDGER_MANIFEST_IDENTITY_FIELDS = (
     "artifact_id",
     "profile",
@@ -953,8 +953,12 @@ def _ledger_provenance(artifact: Any) -> dict[str, object]:
     which era resolved the targets and the UK run kept reporting only the
     hashes. Anything the shared block gains, this block gains.
 
-    Only the manifest sub-block is UK-shaped, and it stays narrow because it
-    feeds the run's identity digest.
+    The whole block is sealed into ``run_config`` and so into the run's
+    identity digest: the epoch witnesses enter it beside the hashes, which is
+    why this delegation is a change to the digest of an otherwise identical
+    configuration, once. Only the manifest sub-block is UK-shaped, and it
+    stays narrow so the digest names the artifact rather than re-hashing its
+    whole manifest.
 
     A bare ``consumer_facts.jsonl`` feed carries no manifest, so its
     Chronicle-side provenance is recorded as absent rather than invented. So

@@ -35,16 +35,22 @@ which era. The rules it encodes:
    (``ledger_aggregate_fact_key``, ``ledger_commit``), H5 attributes,
    ``populace_*`` ids, goldens, and fixtures are frozen at v1.
 
-Provenance for the ledger-era half of the table was read out of
+Provenance for the table. The ledger-era half was read out of
 ``PolicyEngine/chronicle`` at ``origin/main`` rather than restated from a
 plan: ``policyengine_chronicle/consumer.py`` for the artifact id,
 ``chronicle/consumer_contract.py`` for the per-row id and the ``.v2`` fact
 domains, ``chronicle/core.py`` and ``chronicle/sources/`` for the ``.v1``
-source domains. The chronicle-era half is the successor each of those takes
-under the rule chronicle#143 states for the rename — same family, new
-namespace, version bumped by one — with the two ids the consumer migration
-pins spelled out explicitly. Chronicle has published no per-family
-enumeration of its own; when it does, this table is what changes.
+source domains. The chronicle-era half was first declared under the rule
+chronicle#143 states for the rename — same family, new namespace, version
+bumped by one — and Chronicle has since published its own per-family
+enumeration: ``chronicle/epoch.py`` (``HASH_DOMAINS`` and ``SCHEMA_IDS``,
+PolicyEngine/chronicle#228, merged 2026-09-04). Every pair below matches
+it. Chronicle's registry also carries families no consumer-fact row field
+carries (``build``, ``build_artifact``, the ``bundle*`` and fetch-manifest
+schema ids, ``relational``, ``source_package``, ``approved_agents``); they
+are deliberately not declared here, because nothing in
+:data:`FACT_KEY_FIELDS` or the lineage lists can hold them. When Chronicle's
+table changes, this one is what changes to match.
 """
 
 from __future__ import annotations
@@ -185,7 +191,8 @@ MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION = "policyengine_ledger.consumer_artif
 
 #: The consumer-artifact manifest ``schema_version`` **Chronicle** stamps
 #: today (``policyengine_chronicle/consumer.py`` on chronicle ``main``). Still
-#: ledger-era: chronicle#143 has not flipped the namespace yet.
+#: ledger-era: chronicle#143 has not flipped the namespace yet
+#: (``chronicle/epoch.py`` keeps ``EMIT_EPOCH = Epoch.LEDGER``).
 PUBLISHED_CONSUMER_ARTIFACT_SCHEMA_VERSION = "policyengine_ledger.consumer_artifact.v2"
 
 #: The chronicle-era successor of the id above: same payload, chronicle

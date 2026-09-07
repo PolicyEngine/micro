@@ -27,6 +27,19 @@ new namespace, same family, version bumped by one — and the brief pins the two
 that matter: `policyengine_chronicle.consumer_artifact.v3` and
 `chronicle.consumer_fact.v2`.
 
+## Post-rebase note (2026-09-07)
+
+Rebased onto `main` `c1b83241` (185 commits past the original base; the
+three commits that only edited the lane's root `out.md` were dropped, since
+`main`'s `out.md` now belongs to another lane and this branch no longer
+touches it; `tests/conftest.py` keeps both `main`'s worker-identity fixtures
+and this branch's Logbook guard). The ground-truth gap above has closed:
+PolicyEngine/chronicle#228 (merged 2026-09-04) added `chronicle/epoch.py`
+with `HASH_DOMAINS` and `SCHEMA_IDS`, and every pair `chronicle_epoch.py`
+declares matches it — including `policyengine_chronicle.consumer_artifact.v3`
+and `chronicle.consumer_fact.v2`. Chronicle still emits ledger-era ids
+(`EMIT_EPOCH = Epoch.LEDGER`). The module docstring now cites that file.
+
 ## State
 
 Round 2 complete and pushed to `chronicle-dual-accept`; the PR body carries a
