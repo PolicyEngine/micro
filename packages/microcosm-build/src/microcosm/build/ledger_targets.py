@@ -23,12 +23,21 @@ SUPPORTED_LEDGER_AGGREGATIONS = frozenset(("sum",))
 ALLOWED_ASSERTION_POLICIES = frozenset(("observed_only", "allow_source_projection"))
 ALLOWED_PERIOD_MATCH_POLICIES = frozenset(("latest_not_after", "exact"))
 ALLOWED_VALUE_OPERATIONS = frozenset(
-    ("identity", "sum", "calendar_year_average", "latest_plateau", "count_x_mean")
+    (
+        "identity",
+        "sum",
+        "difference",
+        "calendar_year_average",
+        "latest_plateau",
+        "count_x_mean",
+    )
 )
 MULTI_FACT_VALUE_OPERATIONS = frozenset(
-    ("sum", "calendar_year_average", "latest_plateau", "count_x_mean")
+    ("sum", "difference", "calendar_year_average", "latest_plateau", "count_x_mean")
 )
-EXACT_PERIOD_VALUE_OPERATIONS = frozenset(("identity", "sum", "count_x_mean"))
+EXACT_PERIOD_VALUE_OPERATIONS = frozenset(
+    ("identity", "sum", "difference", "count_x_mean")
+)
 DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS = ("entity", "period", "family", "filter")
 
 
@@ -71,6 +80,8 @@ class LedgerTargetReference:
     ledger_source_record_id: str = ""
     ledger_selector: Mapping[str, object] = field(default_factory=dict)
     value_operation: str = "identity"
+    value_operands: tuple[Mapping[str, object], ...] = ()
+    expected_member_count: int | None = None
     entity: str = ""
     measure: str | None = None
     filter: str | None = None
@@ -111,6 +122,22 @@ class LedgerTargetReference:
                 f"LedgerTargetReference {self.name!r}: ledger_selector must be a "
                 f"mapping, got {type(self.ledger_selector).__name__}."
             )
+        if self.expected_member_count is not None and (
+            isinstance(self.expected_member_count, bool)
+            or not isinstance(self.expected_member_count, int)
+            or self.expected_member_count <= 0
+        ):
+            raise ValueError(
+                f"LedgerTargetReference {self.name!r}: expected_member_count "
+                "must be a positive integer."
+            )
+        if self.value_operation == "difference":
+            roles = [str(operand.get("role")) for operand in self.value_operands]
+            if roles != ["minuend", "subtrahend"]:
+                raise ValueError(
+                    f"LedgerTargetReference {self.name!r}: difference requires "
+                    "exactly ordered minuend/subtrahend operands."
+                )
         if self.assertion_policy not in ALLOWED_ASSERTION_POLICIES:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: unsupported "
@@ -590,6 +617,13 @@ def target_spec_from_ledger_reference(
         numeric_value = numeric_values[0] * numeric_values[1]
     elif reference.value_operation == "sum":
         numeric_value = sum(numeric_values)
+    elif reference.value_operation == "difference":
+        numeric_value = numeric_values[0] - numeric_values[1]
+        if not math.isfinite(numeric_value) or numeric_value < 0:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: difference "
+                f"produced invalid value {numeric_value!r}."
+            )
     else:
         numeric_value = numeric_values[0]
     representative_fact = _value_representative_fact(
@@ -948,6 +982,8 @@ def _resolve_reference_fact(
         eligible_matches = _eligible_selector_matches(reference, matches)
         if reference.value_operation == "sum" and eligible_matches:
             return _resolve_sum_reference_facts(reference, eligible_matches)
+        if reference.value_operation == "difference" and eligible_matches:
+            return _resolve_difference_reference_facts(reference, eligible_matches)
         if reference.value_operation == "calendar_year_average" and eligible_matches:
             return _resolve_calendar_year_average_reference_facts(
                 reference, eligible_matches
@@ -1020,12 +1056,69 @@ def _resolve_sum_reference_facts(
         if period_key == latest_period
         for fact in facts
     ]
+    if (
+        reference.expected_member_count is not None
+        and len(latest_matches) != reference.expected_member_count
+    ):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_operation=sum "
+            f"expected {reference.expected_member_count} members at the latest "
+            f"period but resolved {len(latest_matches)}; a declared member is missing."
+        )
     return tuple(
         sorted(
             latest_matches,
             key=lambda fact: _fact_key(fact) or _source_record_id(fact),
         )
     )
+
+
+def _resolve_difference_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+) -> tuple[object, ...]:
+    resolved: list[object] = []
+    for operand in reference.value_operands:
+        dimensions = operand.get("dimension_values")
+        if not isinstance(dimensions, Mapping):
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: difference operand "
+                "requires dimension_values."
+            )
+        shared_dimensions = reference.ledger_selector.get("dimension_values")
+        selector = {
+            **dict(reference.ledger_selector),
+            **{
+                str(key): value
+                for key, value in operand.items()
+                if key not in {"role", "dimension_values"}
+            },
+            "dimension_values": {
+                **(
+                    dict(shared_dimensions)
+                    if isinstance(shared_dimensions, Mapping)
+                    else {}
+                ),
+                **dict(dimensions),
+            },
+        }
+        matches = [
+            fact for fact in eligible_matches if _fact_matches_selector(fact, selector)
+        ]
+        match = _latest_period_selector_match(reference, matches)
+        if match is None:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: difference operand "
+                f"{operand.get('role')!r} did not resolve exactly once."
+            )
+        resolved.append(match)
+    periods = {_period_key(fact) for fact in resolved}
+    if len(periods) != 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: difference operands "
+            "must resolve at the same latest period."
+        )
+    return tuple(resolved)
 
 
 def _resolve_calendar_year_average_reference_facts(
@@ -1292,6 +1385,13 @@ def _validate_resolved_reference_fact(
                 f"vintage {vintage_pin!r}, but resolved fact has vintage "
                 f"{_at(fact, 'geography', 'vintage')!r}."
             )
+    entity_pin = reference.ledger_selector.get("entity_name")
+    if entity_pin is not None and _str_at(fact, "entity", "name") != entity_pin:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} requires entity_name "
+            f"{entity_pin!r}, but resolved fact has entity "
+            f"{_at(fact, 'entity', 'name')!r}."
+        )
 
 
 def _validate_reference_period(fact: object, reference: LedgerTargetReference) -> None:
@@ -1333,7 +1433,9 @@ def _latest_period_selector_match(
     reference: LedgerTargetReference,
     matches: list[object],
 ) -> object | None:
-    if len(matches) < 2:
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
         return None
     semantic_keys = {_selector_period_invariant_key(fact) for fact in matches}
     if len(semantic_keys) != 1:
@@ -1409,6 +1511,8 @@ def _is_period_fragment(value: str) -> bool:
     normalized = value.lower().replace("-", "_")
     if _is_period_token(normalized):
         return True
+    if normalized.startswith("year") and _is_period_token(normalized[4:]):
+        return True
     month_names = (
         "jan",
         "january",
@@ -1449,15 +1553,39 @@ def _is_period_token(value: str) -> bool:
     return bool(period_key[0]) and 1000 <= period_key[1] // 100 <= 9999
 
 
+def _comparable_period_value(fact: object) -> object:
+    """The period value the surface compares a fact on.
+
+    Every fiscal-year label on the surface is read as the opening year
+    (OBR's and HMRC's ``2025`` is FY2025-26). DfT labels its reporting year
+    by the March end year (``2025`` is YE March 2025, FY2024-25) and says so
+    in the fact's own coverage dates, so a fiscal-year fact that carries
+    ``period_coverage.start_date`` is keyed on that start year. Facts without
+    coverage keep their label; the publisher's label is recorded beside the
+    comparable value (``ledger_fact_period_label``) whenever they differ.
+    """
+
+    value = _at(fact, "period", "value")
+    if _str_at(fact, "period", "type") != "fiscal_year":
+        return value
+    start = _str_at(fact, "period_coverage", "start_date")
+    if len(start) < 4 or not start[:4].isdigit():
+        return value
+    label = str(value).strip()
+    if not label.isdigit():
+        return value
+    return int(start[:4])
+
+
 def _period_key(fact: object) -> tuple[int, int, str]:
-    return _period_key_from_value(_at(fact, "period", "value"))
+    return _period_key_from_value(_comparable_period_value(fact))
 
 
 def _exact_period_matches(fact: object, reference: LedgerTargetReference) -> bool:
     """Match exact periods by semantic value while retaining period-kind pins."""
 
     expected_value = reference.period
-    actual_value = _at(fact, "period", "value")
+    actual_value = _comparable_period_value(fact)
     actual_type = _str_at(fact, "period", "type")
     selector_type = str(reference.ledger_selector.get("period_type", ""))
     expected_type_hint = period_type_hint(expected_value)
@@ -1482,7 +1610,7 @@ def _reference_period_partition_key(
 ) -> tuple[int, int, str]:
     period_key = (
         _normalize_period_value(
-            _at(fact, "period", "value"),
+            _comparable_period_value(fact),
             declared_type=_str_at(fact, "period", "type"),
         )[0]
         if reference.period_match_policy == "exact"
@@ -1641,6 +1769,8 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     metadata["ledger_value_operation"] = reference.value_operation
     metadata["ledger_assertion_policy"] = reference.assertion_policy
     metadata["ledger_period_match_policy"] = reference.period_match_policy
+    if reference.value_operation == "difference":
+        metadata["ledger_value_formula"] = "minuend - subtrahend"
     for key, value in sorted(reference.ledger_selector.items()):
         if isinstance(value, Mapping):
             continue
@@ -1982,7 +2112,14 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         "ledger_legal_vintage": _str_at(fact, "measure", "legal_vintage")
         or _str_at(fact, "concept_alignment", "legal_vintage"),
         "ledger_period_type": _str_at(fact, "period", "type"),
-        "ledger_fact_period": _str_at(fact, "period", "value"),
+        "ledger_fact_period": str(_comparable_period_value(fact)),
+        # Stamped only when the publisher's label differs from the comparable
+        # period (DfT's March-end fiscal labels); absent otherwise.
+        "ledger_fact_period_label": (
+            _str_at(fact, "period", "value")
+            if str(_comparable_period_value(fact)) != _str_at(fact, "period", "value")
+            else ""
+        ),
         # Recorded only when the fact asserts it; legacy rows that omit the
         # field are not stamped (readers treat absence as
         # observation-by-default, same as the artifact loader).

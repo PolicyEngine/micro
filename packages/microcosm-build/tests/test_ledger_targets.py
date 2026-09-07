@@ -667,6 +667,94 @@ def test__given_selector_matches_multiple_years__then_latest_source_period_is_us
     )
 
 
+def _fiscal_year_row(label: int, *, value: float, coverage: bool):
+    row = _consumer_fact_row_for_period(label, value=value)
+    row["period"] = {"type": "fiscal_year", "value": label}
+    if coverage:
+        # DfT labels the reporting year by its March end year: label 2025
+        # covers April 2024 to March 2025.
+        row["period_coverage"] = {
+            "basis": "fiscal",
+            "start_date": f"{label - 1}-04-01",
+            "end_date": f"{label}-03-31",
+            "notes": "DfT labels the reporting year by its March end year.",
+        }
+    return row
+
+
+def test__given_fiscal_year_facts_with_coverage__then_the_start_year_is_compared() -> (
+    None
+):
+    # Given: a closing-year publisher (label 2026 covers FY2025-26) and the
+    # 2025 calibration period.
+    reference = LedgerTargetReference(
+        name="latest SOI AGI total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2025,
+        family="irs_soi",
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [
+            _fiscal_year_row(2025, value=1.0, coverage=True),
+            _fiscal_year_row(2026, value=2.0, coverage=True),
+            _fiscal_year_row(2027, value=3.0, coverage=True),
+        ],
+        [reference],
+        country="us",
+    )
+
+    # Then: the label-2026 fact is FY2025-26, the latest not after 2025.
+    spec = registry.specs[0]
+    assert spec.value == 2.0
+    assert spec.metadata["ledger_fact_period"] == "2025"
+    assert spec.metadata["ledger_fact_period_label"] == "2026"
+
+
+def test__given_fiscal_year_facts_without_coverage__then_the_label_is_compared() -> (
+    None
+):
+    reference = LedgerTargetReference(
+        name="latest SOI AGI total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2025,
+        family="irs_soi",
+    )
+
+    registry = compile_ledger_target_references(
+        [
+            _fiscal_year_row(2025, value=1.0, coverage=False),
+            _fiscal_year_row(2026, value=2.0, coverage=False),
+        ],
+        [reference],
+        country="us",
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == 1.0
+    assert spec.metadata["ledger_fact_period"] == "2025"
+    assert "ledger_fact_period_label" not in spec.metadata
+
+
 def test__given_exact_period_policy__then_only_the_target_period_is_used() -> None:
     registry = compile_ledger_target_references(
         [
@@ -1055,6 +1143,152 @@ def test__given_academic_year_record_sets__then_latest_source_period_is_used() -
     )
 
     assert registry.specs[0].value == 1_159_761
+
+
+def test__given_year_prefixed_record_sets__then_latest_source_period_is_used() -> None:
+    older = _consumer_fact_row_for_period(2024, value=95_031)
+    newer = _consumer_fact_row_for_period(2025, value=85_629)
+    older["layout"]["record_set_id"] = "dfe.release2026.year2024.early_learning"
+    newer["layout"]["record_set_id"] = "dfe.release2026.year2025.early_learning"
+    reference = LedgerTargetReference(
+        name="latest DfE childcare count",
+        ledger_selector={"source_name": "irs_soi"},
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    registry = compile_ledger_target_references(
+        [older, newer], [reference], country="uk"
+    )
+
+    assert registry.specs[0].value == 85_629
+
+
+def test__given_one_difference_fact_per_operand__then_difference_compiles() -> None:
+    minuend = _consumer_fact_row_for_period(2025, value=775_994)
+    subtrahend = _consumer_fact_row_for_period(2025, value=379_029)
+    minuend["dimensions"] = {"entitlement_type": "Universal"}
+    subtrahend["dimensions"] = {"entitlement_type": "Working parents"}
+    reference = LedgerTargetReference(
+        name="universal-only childcare",
+        ledger_selector={"source_name": "irs_soi"},
+        value_operation="difference",
+        value_operands=(
+            {
+                "role": "minuend",
+                "dimension_values": {"entitlement_type": "Universal"},
+            },
+            {
+                "role": "subtrahend",
+                "dimension_values": {"entitlement_type": "Working parents"},
+            },
+        ),
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    registry = compile_ledger_target_references(
+        [minuend, subtrahend], [reference], country="uk"
+    )
+
+    assert registry.specs[0].value == 396_965
+    assert registry.specs[0].metadata["ledger_value_formula"] == (
+        "minuend - subtrahend"
+    )
+    assert json.loads(registry.specs[0].metadata["ledger_member_fact_keys"]) == [
+        minuend["aggregate_fact_key"],
+        subtrahend["aggregate_fact_key"],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("minuend_value", "subtrahend_value"),
+    [(1.0, 2.0), (1e308, -1e308)],
+)
+def test__given_invalid_difference__then_compilation_refuses_it(
+    minuend_value: float, subtrahend_value: float
+) -> None:
+    minuend = _consumer_fact_row_for_period(2025, value=minuend_value)
+    subtrahend = _consumer_fact_row_for_period(2025, value=subtrahend_value)
+    minuend["dimensions"] = {"role": "whole"}
+    subtrahend["dimensions"] = {"role": "part"}
+    reference = LedgerTargetReference(
+        name="invalid difference",
+        ledger_selector={"source_name": "irs_soi"},
+        value_operation="difference",
+        value_operands=(
+            {"role": "minuend", "dimension_values": {"role": "whole"}},
+            {"role": "subtrahend", "dimension_values": {"role": "part"}},
+        ),
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    with pytest.raises(ValueError, match="difference produced invalid value"):
+        compile_ledger_target_references(
+            [minuend, subtrahend], [reference], country="uk"
+        )
+
+
+def test__given_difference_operands_at_different_periods__then_compilation_fails() -> (
+    None
+):
+    minuend = _consumer_fact_row_for_period(2025, value=10.0)
+    subtrahend = _consumer_fact_row_for_period(2024, value=2.0)
+    minuend["dimensions"] = {"role": "whole"}
+    subtrahend["dimensions"] = {"role": "part"}
+    reference = LedgerTargetReference(
+        name="period-mismatched difference",
+        ledger_selector={"source_name": "irs_soi"},
+        value_operation="difference",
+        value_operands=(
+            {"role": "minuend", "dimension_values": {"role": "whole"}},
+            {"role": "subtrahend", "dimension_values": {"role": "part"}},
+        ),
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    with pytest.raises(ValueError, match="same latest period"):
+        compile_ledger_target_references(
+            [minuend, subtrahend], [reference], country="uk"
+        )
+
+
+def test__given_sum_member_shortfall__then_compilation_fails_loudly() -> None:
+    only_member = _consumer_fact_row_for_period(2025, value=10.0)
+    reference = LedgerTargetReference(
+        name="guarded sum",
+        ledger_selector={"source_name": "irs_soi"},
+        value_operation="sum",
+        expected_member_count=2,
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    with pytest.raises(ValueError, match="expected 2 members.*resolved 1"):
+        compile_ledger_target_references([only_member], [reference], country="uk")
+
+
+def test__given_identifier_bypasses_selector__then_entity_pin_still_applies() -> None:
+    fact = _consumer_fact_row_for_period(2025, value=10.0)
+    fact["entity"] = {"name": "government"}
+    reference = LedgerTargetReference(
+        name="entity-guarded reference",
+        ledger_fact_key=fact["aggregate_fact_key"],
+        ledger_selector={"entity_name": "person"},
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    with pytest.raises(ValueError, match="requires entity_name 'person'"):
+        compile_ledger_target_references([fact], [reference], country="uk")
 
 
 def test__given_selector_matches_future_year__then_latest_eligible_period_is_used() -> (
