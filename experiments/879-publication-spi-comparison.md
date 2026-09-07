@@ -1,5 +1,7 @@
 # SPI comparison on the UK publication baseline
 
+Historical measurement baseline. The [subsequent matched comparison](879-corrected-calibration-comparison.md) corrects the national VOA geography and UC family measurements and supersedes the headline fit interpretation below. This report and its original receipt preserve the earlier runs.
+
 This experiment ports the reviewed SPI changes in [#879](https://github.com/PolicyEngine/microcosm/pull/879)
 onto the UK publication stack identified in [Max's 7 September handoff](https://github.com/PolicyEngine/microcosm/issues/665#issuecomment-5562794129).
 The treatment preserves observed FRS inputs below age 16, rebases selected SPI
