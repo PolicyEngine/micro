@@ -788,14 +788,14 @@ def _uc_composition_frame():
             "benunit": pd.DataFrame(
                 {
                     "benunit_id": np.arange(4),
-                    "family_type": [
+                    "uc_calibration_family_type": [
                         "LONE_PARENT",
                         "SINGLE",
                         "LONE_PARENT",
                         "SINGLE",
                     ],
                     "universal_credit": [100.0, 0.0, 0.0, 100.0],
-                    "num_children": [1, 0, 1, 0],
+                    "uc_calibration_child_count": [1, 0, 1, 0],
                 }
             ),
             "household": pd.DataFrame({"household_id": np.arange(2)}),
