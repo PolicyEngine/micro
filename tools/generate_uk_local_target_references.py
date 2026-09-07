@@ -64,7 +64,8 @@ def main() -> None:
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
         # Keep the explicit display-name option and default to an artifact-relative
         # name, never the operator's absolute local path.
-        source_fact_feed=args.source_fact_feed or f"{args.ledger_facts.resolve().parent.name}/{args.ledger_facts.name}",
+        source_fact_feed=args.source_fact_feed
+        or f"{args.ledger_facts.resolve().parent.name}/{args.ledger_facts.name}",
     )
     authored = author_area_target_references(
         contract,
