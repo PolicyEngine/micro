@@ -7,24 +7,39 @@ income flows to the build period, and conditions the FRS-only imputation on a
 pension-receipt proxy. Source review also identified an omitted OTHERINV index
 and corrected the interpretation of the age boundary.
 
-**Status: the combined native-validation verdict and genuine matched-build
-results are pending.** This report defines the comparison before those results
-are available. The old experiment's loss reduction does not measure this port.
-No candidate is certified by this report.
+**Matched result: national loss falls 35.8%, from 0.02346446 to 0.01506890,
+and targets within 10% rise from 334/371 to 338/371. The candidate remains a
+draft with release-blocking failures.** The ONS interest row accounts for
+98.8% of the net objective gain. Aggregate income tax and state pension worsen;
+three new target-fit failures appear. These results support the source
+corrections but do not resolve the joint tax/pension/UC problem or establish an
+overall release improvement. This is a combined SPI treatment, including the
+reviewed OTHERINV correction; its effects are not attributed to the pension
+bridge alone.
+
+The [paired aggregate receipt](receipts/uk-publication-spi-comparison.json)
+contains every one of the 371 target estimates, fixed bindings and loss weights,
+contributions by target and family, source-quality summaries and gate verdicts.
+It supersedes the historical experiment for judging this publication-stack port.
+The [receipt generator](build_879_publication_receipt.py) rechecks those
+identities against retained local runs and licensed input hashes. Its explicit
+contract/manifest arguments and local paths are documented in the script;
+regeneration reproduces the paired receipt byte-for-byte.
 
 ## Publication and runtime provenance
 
 | Item | Pin or status |
 |---|---|
 | Control publication commit | `d43b4203c6ebe10e062cb3ef3034e66731ea055d` on `uk-publication-stack-834` |
-| Earlier #874 head | `8de6bf44d7bd4a5b6ce5c8c24add4501c0944824` |
+| Earlier [#874](https://github.com/PolicyEngine/microcosm/pull/874) head | `8de6bf44d7bd4a5b6ce5c8c24add4501c0944824` |
 | Original SPI delta | `bc11803f915fe72afd724515a27a3863035f4efc` → `194111af32b265b226dcbefe33cc735f362461dc` |
-| Treatment identification | Publication control plus the reviewed SPI delta, the source-review corrections below, and its recorded implementation hashes; final commit and genuine-run hashes pending |
+| Treatment source commit | `fc49b48200e1e15fe35bb4e15b948992bf03c28d`, directly atop the publication control; later report-only commits do not identify the executed source |
 | PolicyEngine-UK / Core | `2.94.0` / `3.31.0` |
 | NumPy / pandas / scikit-learn | `2.4.6` / `3.0.3` / `1.8.0` |
 | Both environments' `uv.lock` SHA-256 | `ca9305fcebb5854d8d8369eb10fd134c918da7a79ab90f21c932c946b35165e5` |
 | SPI source period / FRS build period / calibration year | `2022` / `2024` / `2025` |
-| Genuine control/treatment H5 hashes | Pending |
+| Control H5 SHA-256 | `2e68a13fc066c4b0b8b240361922596f9c268275e91223a49f66e3c8442ab157` |
+| Treatment H5 SHA-256 | `a674409ea6c27919f02c267c06f5af24ee0628cbf2213ad8b7e8e37032eb0180` |
 
 The port applies the declared-base SPI delta selectively. The publication stack
 is not a descendant of the old SPI base, so inheriting the entire old branch
@@ -160,7 +175,7 @@ outside this experiment.
 | Target weighting | `family_equal` |
 | Solver seed | 0 |
 | Maximum weight ratio | 10 |
-| Gate evaluation date | Record each run's actual date; use the same day for the pair |
+| Gate evaluation date | 7 September 2026 in both actual run receipts |
 | Target, measure-exclusion, gate, take-up and CGT-source definitions | Preserve the publication control's definitions |
 
 Both runs use the canonical Chronicle consumer artifact produced from source
@@ -172,12 +187,72 @@ Both runs use the canonical Chronicle consumer artifact produced from source
 
 The publication loader verifies both hashes. Its runtime compiles the national
 reference declarations and then applies the reviewed measure exclusions.
-The prior #874 receipts reported 415 active references and 371 matrix targets;
-these are historical counts to check, not substitutes for compiling this
-publication tip. Before interpreting the genuine results, record and compare
-the actual target names, target values, binding provenance, excluded measures
-and loss weights from both runs. A changed target surface cannot establish an
-SPI improvement.
+Both genuine runs independently compile 415 active references, exclude the
+same 44 measures and calibrate the same 371 targets under registry
+`794e11262011`. The paired receipt verifies the complete target names, values,
+periods, entities, measure/filter bindings, source metadata and loss weights,
+plus runtime, lock, canonical feed and manifest, actual raw-file hashes,
+resource pins, seeds, fit-weight algorithms and gate definitions. Names and
+values have SHA-256 `a5a76f92ddc56b267505301ba7933f50ef7ce2ba0724f898b4f13d7896c8ffb8`
+and `9b96ff695a6b75f66d966cab452aedd06043f56eac4d692261405b571195c16a`.
+Changed generated support changes the matrix values; that measured treatment
+outcome is not a change to the target contract.
+
+### Reproducing the aggregate receipt
+
+The generator accepts the two retained run directories, this repository and
+two explicit local input manifests. Reconstruct their reviewed metadata from
+the committed receipt as follows, choosing an output directory outside the
+repository and filling in local paths to the licensed inputs and Chronicle
+artifact. This extraction uses input metadata only; the generator independently
+pins its canonical hashes and never reads a previous numeric output.
+
+```python
+import json
+from pathlib import Path
+
+receipt = json.loads(Path(
+    "experiments/receipts/uk-publication-spi-comparison.json"
+).read_text())
+local = Path("/path/outside/repository/reproduction")
+local.mkdir(parents=True, exist_ok=True)
+contract = dict(receipt["comparison_contract"])
+contract["raw_source_locations_file"] = str(local / "source-paths.json")
+contract["chronicle_path"] = "/path/to/chronicle-uk-6fb700e"
+(local / "comparison-contract.json").write_text(json.dumps(contract, indent=2))
+(local / "protected-manifest.json").write_text(json.dumps(
+    receipt["protected_publication_files"], indent=2
+))
+raw = receipt["raw_source_verification"]
+print(raw["raw_acquisition_repository"], raw["raw_acquisition_revision"])
+print(*raw["verified_files"], sep="\n")  # All 21 required input basenames.
+```
+
+Create `source-paths.json` with shape
+`{"repo": "<raw_acquisition_repository>", "revision": "<raw_acquisition_revision>", "files": {"inputs": ["/absolute/path/to/input1", "/absolute/path/to/input2"]}}`.
+Use the repository/revision printed above and list every required basename
+under `verified_files`, retaining each actual filename. Groups can have any
+name because the reader flattens their path lists. Include the HMRC ODS paths
+in `files`, or place those ODS files beside `source-paths.json`. The Chronicle
+directory must contain `consumer_facts.jsonl` and `manifest.json` with the
+recorded hashes. The generator verifies the actual raw-file sizes/hashes and
+both Chronicle files; paths alone do not establish provenance.
+
+Then run the documented CLI in the pinned treatment environment, for example:
+
+```sh
+uv run --no-sync python experiments/build_879_publication_receipt.py \
+  --repo . --control /path/to/pub879-control --treatment /path/to/pub879-spi \
+  --contract /path/outside/repository/reproduction/comparison-contract.json \
+  --protected-manifest /path/outside/repository/reproduction/protected-manifest.json \
+  --output /path/outside/repository/reproduction/paired-receipt.json
+```
+
+Later evidence-only commits may be checked out: the generator binds the
+recorded executed source commits `d43b4203` and `fc49b482`, not the current
+HEAD. Keep the runtime/source files and locked environment at those reviewed
+versions. Both the repository invocation and a standalone generator copy
+without an existing receipt directory reproduced the committed receipt bytes.
 
 ## Protected publication decisions
 
@@ -222,37 +297,244 @@ No new binding, exclusion, expiry extension, take-up change or gate suppression
 is part of the SPI comparison. A release gate becoming stale remains a reported
 failure until its existing decision is separately reviewed.
 
-## Validation and results
+## Native validation
 
-Combined native validation is pending. The required checks include normal UK
-package initialization, source/schema/coverage contracts, full invented
-country/graph execution against the live legacy oracle, and actual UK-engine
-uprating contracts. Invented parity fixtures establish executable contracts;
-they do not establish population fit. Any inherited failure must be reported
-alongside its same-runtime control reproduction.
+Normal package import and `CountryTaxBenefitSystem` initialization succeed in
+both locked environments. The native matrix exercises the shared compiler,
+source/schema/coverage contracts, full invented graph against the live legacy
+oracle, and actual installed UK-engine uprating. Invented fixtures test execution
+and contracts; the genuine builds below test population fit.
 
-Genuine control/treatment builds and national calibration results are pending.
-The completed comparison will report the following outcomes without dropping
-regressions:
+| Invocation | Passed | Failed | Skipped | Classification |
+|---|---:|---:|---:|---|
+| Publication focused contracts, 370 cases | 363 | 1 | 6 | Historical cached-evidence engine pin 2.89.0 versus installed 2.94.0. |
+| Treatment focused contracts before pin repair, 386 cases | 378 | 2 | 6 | Same historical failure plus the omitted UK specification hash expectation. |
+| Affected country-bundle file after exact pin repair, 18 cases | 18 | 0 | 0 | Resolves the introduced expectation failure; the original invocation remains recorded. |
+| Treatment SPI file after formatting, 38 cases | 37 | 0 | 1 | Includes actual engine mapping/failure tests and explicit age 15/16 boundaries. |
+| Publication full graph/legacy oracle, 336 cases | 335 | 0 | 1 | Optional US-engine case skips. |
+| Treatment full graph/legacy oracle, 336 cases | 335 | 0 | 1 | Same scope and optional skip. |
+| Treatment data contract, 229 cases | 229 | 0 | 0 | Checks the downstream specification identity dependency. |
 
-| Outcome | Control | SPI treatment |
+After later targeted reruns supersede the same logical cases, the treatment has
+943 passing, one inherited failing and seven skipped distinct cases. The 18- and
+38-case reruns are not additional distinct tests. This is not a clean whole-suite
+rerun or an all-tests-pass claim. The historical failure is
+`test_cached_candidate_regeneration_matches_committed_evidence`; both untouched
+publication and treatment reproduce the same cached 2.89.0/installed 2.94.0
+engine mismatch. The comparison retains that golden evidence. Source-owned
+coverage regeneration/check, changed-file Ruff formatting/lint and test inventory
+checks pass. The [native receipt](receipts/uk-publication-spi-native-validation.json)
+records invocations, counts and the exact failure classification.
+
+## Genuine build and calibration results
+
+Both full national spines complete all 28 production stages and pass all 15
+spine gates. Both 1,500-epoch calibration solves finish. Terminal gate failure
+returns exit code 1 and prevents export of `calibrated.h5` in both runs.
+
+Each selected run emits a signed HMAC-SHA256 attestation using an ephemeral
+local developer key, with no signing error. These producer signatures are not
+production certificates or independently reproducible verification after key
+disposal. An earlier control invocation used the wrong key encoding and is
+retained separately as an excluded unsigned attempt. Every diagnostics field
+outside build provenance matches the selected control rerun exactly. Calibration
+and diagnostic readers verify unchanged H5 hashes before/after; an observed
+mtime change did not change the control's bytes.
+
+### Fit and concentration
+
+| Metric | Publication control | SPI treatment |
+|---|---:|---:|
+| Final loss | 0.023464462 | 0.015068903 |
+| Targets within 10% | 334 / 371 | 338 / 371 |
+| Effective sample size | 5,868.4 | 5,758.9 |
+| Top 1% share of calibrated weight | 18.867% | 19.032% |
+| Maximum calibrated/prior weight ratio | 10.0 | 10.0 |
+| Positive-weight households | 52,846 | 52,846 |
+| Total calibrated household weight | 29,848,124.77 | 29,811,148.67 |
+
+Absolute relative error improves for 181 targets, worsens for 189 and is
+unchanged for one (equality tolerance 1e-12). Nine targets enter the 10% band
+while five leave it. The fixed `family_equal` objective weights families
+equally and targets within each family equally; one interest row is the entire
+ONS national-accounts family. Its contribution falls from 0.008294907490 to
+0.000003178594, accounting for 0.008291728896 of the net 0.008395558522 loss
+reduction (98.763%). The remaining 370 targets contribute a net reduction of
+0.000103829626. The aggregate objective therefore cannot stand in for a joint
+tax/pension/UC success criterion.
+
+Signed target error is `(estimate - target) / target`. The receipt also contains
+the target amounts and every before/after estimate.
+
+| Target | Control error | Treatment error |
+|---|---:|---:|
+| OBR income tax | -12.151% | -12.562% |
+| OBR total state pension | -8.136% | -11.695% |
+| HMRC pension amount, £20–30k income band | +25.323% | +25.211% |
+| HMRC pension amount, £50–70k income band | +34.563% | +16.867% |
+| HMRC private-pension count, £100–150k income band | +24.716% | +14.256% |
+| ONS savings interest | -18.249% | +0.007% |
+| UC households | -13.400% | -12.975% |
+| UC single with children | -35.309% | -34.525% |
+| UC one child | -28.924% | -31.551% |
+| UC two children | -38.872% | -30.671% |
+| UC five or more children | -28.600% | -28.618% |
+| OBR CGT | +44.180% | +43.744% |
+| HMRC gains total | -0.248% | -0.520% |
+| HMRC CGT taxpayer count | -0.349% | -0.312% |
+| TFC government top-up | -0.136% | +0.299% |
+| TFC children with used accounts | -0.148% | +0.381% |
+| Targeted childcare, two-year-olds | -0.335% | +0.099% |
+| Working-parent childcare, ages 2–4 | +0.033% | -0.072% |
+| Universal-only childcare | -0.451% | -0.079% |
+
+Income tax falls from £291.165bn to £289.802bn against a £331.438bn target;
+state pension falls from £134.293bn to £129.090bn against £146.186bn. The
+£50–70k pension band improves enough to pass the unchanged 25% fit bound,
+while the £20–30k band remains just outside it. UC with-children residuals are
+mixed and remain substantial. Better source coherence has not resolved the
+calibration tension.
+
+### Objective contributions and regressions
+
+The following table includes every target family. Positive reduction means
+less contribution to final loss; negative reduction means deterioration.
+
+| Family | Targets | Control contribution | Treatment contribution | Reduction |
+|---|---:|---:|---:|---:|
+| `obr` | 21 | 0.003864297 | 0.003806251 | +0.000058046 |
+| `isc` | 1 | 0.000048858 | 0.000001314 | +0.000047544 |
+| `hmrc_salary_sacrifice` | 3 | 0.000204716 | 0.000212828 | -0.000008112 |
+| `hmrc_spi` | 129 | 0.001372467 | 0.001048345 | +0.000324122 |
+| `hmrc_cgt` | 2 | 0.000135737 | 0.000189119 | -0.000053382 |
+| `dwp_benefit_cap` | 1 | 0.000072313 | 0.000025936 | +0.000046377 |
+| `dwp_legacy_benefits` | 4 | 0.002312393 | 0.002360476 | -0.000048084 |
+| `dwp_universal_credit` | 95 | 0.000884966 | 0.001291308 | -0.000406342 |
+| `dwp_two_child_limit` | 15 | 0.000075536 | 0.000043369 | +0.000032167 |
+| `ons_population` | 50 | 0.000404484 | 0.000368509 | +0.000035975 |
+| `ons_household_composition` | 7 | 0.000025831 | 0.000037483 | -0.000011652 |
+| `council_tax_stock` | 18 | 0.002347491 | 0.002300426 | +0.000047065 |
+| `scotgov_social_security` | 1 | 0.000085076 | 0.000090198 | -0.000005122 |
+| `ons_national_accounts` | 1 | 0.008294907 | 0.000003179 | +0.008291729 |
+| `ons_employment` | 1 | 0.000037085 | 0.000020812 | +0.000016273 |
+| `ons_land` | 3 | 0.000975697 | 0.000974123 | +0.000001574 |
+| `slc_repayments` | 3 | 0.000036065 | 0.000028184 | +0.000007881 |
+| `slc_borrowers` | 3 | 0.000021739 | 0.000039943 | -0.000018204 |
+| `slc_student_support` | 6 | 0.002018843 | 0.001995919 | +0.000022924 |
+| `hmrc_tfc` | 2 | 0.000064663 | 0.000154545 | -0.000089882 |
+| `dfe_funded_childcare` | 3 | 0.000124053 | 0.000037850 | +0.000086203 |
+| `dft_local_bus` | 2 | 0.000057244 | 0.000038786 | +0.000018458 |
+
+The five largest target-level increases in loss contribution are:
+
+| Target | Control error | Treatment error | Added loss |
+|---|---:|---:|---:|
+| `dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800@2025` | -0.014% | -100.000% | 0.000478404 |
+| `voa.council_tax_stock.band_a@2025` | +22.804% | +28.182% | 0.000135810 |
+| `obr.state_pension@2025` | -8.136% | -11.695% | 0.000077043 |
+| `hmrc.cgt.gains_total@2025` | -0.248% | -0.520% | 0.000061837 |
+| `hmrc/self_employment_income_income_band_50_000_to_70_000@2025` | +19.850% | +35.413% | 0.000054837 |
+
+The UC couple-without-children £27.6–28.8k annual-payment cell has a target of
+746.333 benefit units. Its control estimate moves from 586.0 before calibration
+to 746.232 afterward; treatment is zero both before and after. All 52,846 final
+household weights are positive. For a nonnegative count this implies no positive
+realized treatment support in that cell, rather than a zero-weight collapse.
+This is an inference from aggregate diagnostics; the prepared matrix was not
+retained. It does not identify which SPI or downstream support change removed
+the cell. Reweighting its current empty support cannot recover the target.
+
+### Generated support and source quality
+
+| Final generated spine | Publication control | SPI treatment |
+|---|---:|---:|
+| Households | 52,846 | 52,846 |
+| People | 113,626 | 113,590 |
+| Benefit units | 61,234 | 61,213 |
+| Total household prior weight | 29,247,433 | 29,247,433 |
+
+Both use importance weights after combining source support. Household counts
+and total prior mass agree, but the final household ID sets and prior-weight
+vectors ordered by household ID differ. The same input sample and design-weight
+algorithms therefore do not imply identical final generated support. The full
+rebuild propagates the SPI changes into 36 fewer people and 21 fewer benefit
+units, including downstream CGT cloning effects.
+
+At final source-spine prior weights, employment assigned to SPI-channel
+under-16s falls from £66.176bn to zero; their private pension falls from
+£0.515bn to zero. These are imputation-quality diagnostics, not estimates of
+actual children's income. Among SPI recipients aged 16 and older, the pension
+receipt proxy mismatch affects 3.797% of prior-weighted person mass in the
+control. The treatment has fewer than three mismatching records, so its small
+cell and weighted amount are suppressed. This does not establish pension
+entitlement accuracy, and qualifying FRS children aged 16–19 remain exposed to
+the SPI draw as described above.
+
+The UC income screen is `max(0, uc_maximum_amount - uc_income_reduction) > 0`
+at 2025 policies and source-spine prior weights. It precedes take-up and other
+award conditions; passing it is not complete UC eligibility. For SPI support:
+
+| Family | Control passing mass | Treatment passing mass | Control share | Treatment share |
+|---|---:|---:|---:|---:|
+| Couple with children | 211,143 | 477,527 | 9.42% | 21.32% |
+| Single with children | 385,679 | 709,599 | 27.17% | 49.40% |
+
+The separate CGT treatment remains excluded. Nevertheless, the changed SPI
+spine propagates through the unchanged CGT algorithm: prior-weighted total
+gains change from £97.351bn to £97.591bn and £5m-plus gains from £24.603bn to
+£22.182bn. That is an induced-support result, not evidence for #878's tail
+correction. After calibration, OBR CGT remains +43.744% above target, while
+HMRC gains and taxpayer counts remain within 1%; #875's vintage/timing
+reconciliation remains relevant.
+
+### Gate and decision verdicts
+
+All 15 spine gates pass on both runs. For terminal gates:
+
+| Gate | Publication control | SPI treatment |
 |---|---|---|
-| Person, benefit-unit and household counts; generated prior weight totals | Pending | Pending |
-| Final national loss and contributions by target/family | Pending | Pending |
-| Aggregate income tax and state pension | Pending | Pending |
-| HMRC pension amounts in the £20–30k and £50–70k income bands | Pending | Pending |
-| ONS savings-interest fit | Pending | Pending |
-| UC with-children support and fit | Pending | Pending |
-| CGT level/fit and downstream support changes | Pending | Pending |
-| Weight concentration and effective sample size | Pending | Pending |
-| Every terminal-gate verdict and stale/expired decision | Pending | Pending |
+| Aggregate administration | Passed | Passed |
+| Calibration reference coverage | Passed | Passed |
+| Target fit | Failed | Failed |
+| Weight ESS | Passed | Passed |
+| Weight ratio | Passed | Passed |
+| Zero-weight strata | Passed | Passed |
+
+The control fails the £20–30k and £50–70k state-pension amount bands and the
+stale private-pension exclusion. The treatment removes the £50–70k failure,
+retains the £20–30k failure (+25.211%) and adds three failures:
+
+- UC couples without children, £27.6–28.8k annual payment: −100.000%.
+- Self-employment income, £50–70k income band: +35.413%.
+- Council-tax stock, band A: +28.182%.
+
+The private-pension £100–150k count exclusion is stale in both runs: its
+residual is already within the 25% bound in the control (+24.716%) and improves
+to +14.256%. The retained entry therefore continues to fail the native stale
+decision check. It should be adjudicated separately; deleting it would not
+resolve the other target-fit failures. Neither run has expired, premature or
+dormant exclusions. UC and CGT reviewed deferrals retain their original reasons
+and dates.
+
+A22/A23 remain holds at TFC 0.88 and targeted childcare 0.597; the landed
+extended/universal values stay 0.6054/0.4539. The new childcare target errors
+are small at these fixed rates, but calibration fit does not re-estimate
+take-up or rerun the historical eligible-base ceiling analysis. The experiment
+does not justify replacing those decisions. No target, exclusion, gate, expiry,
+take-up setting or solver tuning was changed to obtain this comparison.
 
 The shared quality schema/exporter described in the handoff is not present on
 the selected publication tree. Its existing `tools/emit_lineage_dashboard.py`
-exports US imputation lineage. Exporting a genuine UK candidate requires the
-actual shared schema/adapter and the completed run's grain, decisions and
-incomplete checks. The invented UK dashboard prototype is not genuine dataset
-evidence. Release publication remains a separate decision.
+exports US imputation lineage. This aggregate experiment receipt does not
+create a shared dashboard contract, and the invented UK dashboard prototype
+is not genuine dataset evidence. Both native runs refuse calibrated export;
+release publication remains blocked.
 
-Refs #665, #736, #796, #840, #866 and #862; independent CGT work remains in
-#878 and #875.
+Refs [#665](https://github.com/PolicyEngine/microcosm/issues/665),
+[#736](https://github.com/PolicyEngine/microcosm/issues/736),
+[#796](https://github.com/PolicyEngine/microcosm/issues/796),
+[#840](https://github.com/PolicyEngine/microcosm/issues/840),
+[#866](https://github.com/PolicyEngine/microcosm/issues/866) and
+[#862](https://github.com/PolicyEngine/microcosm/issues/862); independent CGT
+work remains in [#878](https://github.com/PolicyEngine/microcosm/pull/878) and
+[#875](https://github.com/PolicyEngine/microcosm/issues/875).
