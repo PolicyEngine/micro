@@ -31,7 +31,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
-from microcosm.data.contract import validate_release_dir
+from microcosm.data.contract import (
+    _check_uk_incumbent_surface_evaluation,
+    validate_release_dir,
+)
 
 _REPO_ID = "policyengine/populace-uk-private"
 _NAMESPACE = "uk_dense"
@@ -199,12 +202,16 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     diagnostics_path = output_path("calibration_diagnostics")
     report_path = output_path("local_gate_report")
     score_path = candidate_dir / "score_vs_incumbent.json"
+    surface_path = candidate_dir / "incumbent_surface_evaluation.json"
     inputs = {
         "candidate": candidate_h5,
         "diagnostics": diagnostics_path,
         "gate report": report_path,
         "score receipt": score_path,
         "spine H5": args.spine_h5,
+        "incumbent surface": surface_path,
+        "candidate manifest": candidate_dir / "rowwise_candidate_manifest.json",
+        "incumbent manifest": args.incumbent_manifest,
     }
     for label, path in inputs.items():
         if not path.is_file():
@@ -281,6 +288,31 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
                 f"--incumbent-manifest outputs.{output_key}",
             ).get("sha256"),
         )
+    evaluation = _load_json(surface_path, label="incumbent surface evaluation")
+    ledger = _mapping(identity.get("ledger"), "manifest.identity.ledger")
+    expected_surface_identity = {
+        "candidate_dataset_sha256": measured["candidate"],
+        "candidate_manifest_sha256": measured["candidate manifest"],
+        "candidate_diagnostics_sha256": measured["diagnostics"],
+        "ledger_facts_sha256": ledger.get("facts_sha256"),
+        "ledger_manifest_sha256": ledger.get("manifest_sha256"),
+        "incumbent_manifest_sha256": measured["incumbent manifest"],
+        "incumbent_metrics_sha256": _mapping(
+            incumbent_outputs.get("metrics"), "incumbent metrics"
+        ).get("sha256"),
+        "incumbent_weights_sha256": _mapping(
+            incumbent_outputs.get("weights"), "incumbent weights"
+        ).get("sha256"),
+    }
+    surface_failures = []
+    _check_uk_incumbent_surface_evaluation(
+        evaluation, surface_failures, expected_identity=expected_surface_identity
+    )
+    if surface_failures:
+        raise SystemExit(
+            "error: incumbent surface evaluation failed:\n"
+            + "\n".join(surface_failures)
+        )
     runtime_block = _mapping(identity.get("runtime"), "manifest.identity.runtime")
     runtime = {}
     for package in _RUNTIME_PACKAGES:
@@ -288,6 +320,10 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         if not isinstance(value, str) or not value:
             raise SystemExit(f"error: manifest.identity.runtime.{package} is missing")
         runtime[package] = value
+    if _mapping(identity.get("code"), "identity.code").get("git_dirty") is not False:
+        raise SystemExit(
+            "error: manifest.identity.code.git_dirty must be false for release"
+        )
     code_pin = str(
         _mapping(identity.get("code"), "identity.code").get("git_commit") or ""
     )
@@ -334,6 +370,13 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             report_path=report_path,
             score_path=score_path,
             logbook_row=logbook_row,
+            source_paths={
+                "incumbent_surface_evaluation.json": surface_path,
+                "rowwise_candidate_manifest.json": candidate_dir
+                / "rowwise_candidate_manifest.json",
+                "incumbent_manifest.json": args.incumbent_manifest,
+                "source_calibration_diagnostics.json": diagnostics_path,
+            },
         )
     finally:
         shutil.rmtree(staging_parent, ignore_errors=True)
@@ -357,10 +400,13 @@ def _stage_and_finalize(
     report_path: Path,
     score_path: Path,
     logbook_row: Mapping[str, object],
+    source_paths: Mapping[str, Path],
 ) -> dict[str, object]:
     created_at = datetime.now(UTC).isoformat()
     release_dir = staging_parent / UK_DENSE_RELEASE_ID
     release_dir.mkdir(parents=True)
+    for name, source in source_paths.items():
+        shutil.copyfile(source, release_dir / name)
     identity = _mapping(manifest.get("identity"), "identity")
     parameters = _mapping(manifest.get("parameters"), "parameters")
     solve = _mapping(manifest.get("solve"), "solve")
@@ -449,7 +495,7 @@ def _stage_and_finalize(
         },
         "doctrine": dict(_mapping(parameters.get("doctrine"), "parameters.doctrine")),
         "measure_exclusions": {
-            name: {"expires_on": rec.get("expires_on"), "tracking": rec.get("tracking")}
+            name: dict(rec)
             for name, rec in (manifest.get("measure_exclusions") or {}).items()
             if isinstance(rec, Mapping)
         },
@@ -558,6 +604,7 @@ def _stage_and_finalize(
         "score_vs_incumbent.json",
         "build_manifest.json",
     )
+    evidence_files = (*evidence_files, *source_paths)
     evidence_sha = {name: _sha256(release_dir / name) for name in evidence_files}
     release_manifest = {
         "schema_version": 1,

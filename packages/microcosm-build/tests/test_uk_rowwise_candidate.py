@@ -1213,7 +1213,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
         pd.testing.assert_frame_equal(
             got[sorted(got.columns)].reset_index(drop=True),
             expected[sorted(expected.columns)].reset_index(drop=True),
-            check_dtype=False,
+            check_dtype=True,
         )
     assert f100["solve"]["n_targets_by_kind"] == {
         "local": 1,
@@ -1567,7 +1567,7 @@ def _joint_f100_args(input_h5: Path, ladder_path: Path, output_dir: Path) -> lis
     ]
 
 
-def test_candidate_diagnostic_gate_failure_is_reported_not_blocking(
+def test_candidate_weight_ratio_failure_is_reported_and_blocks(
     monkeypatch, tmp_path, capsys
 ) -> None:
     pytest.importorskip("tables")
@@ -1606,23 +1606,23 @@ def test_candidate_diagnostic_gate_failure_is_reported_not_blocking(
         },
     )
 
-    assert builder.main(_joint_f100_args(input_h5, ladder_path, output_dir)) == 0
+    assert builder.main(_joint_f100_args(input_h5, ladder_path, output_dir)) == 1
 
     capsys.readouterr()
     manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
     assert manifest["failing_gate_ids"] == ["uk_local_weight_ratio"]
-    assert manifest["blocked_at_f100"] is False
-    assert manifest["blocking_failures"] == []
-    assert manifest["diagnostic_failures"] == [
+    assert manifest["blocked_at_f100"] is True
+    assert manifest["diagnostic_failures"] == []
+    assert manifest["blocking_failures"] == [
         "[uk_local_weight_ratio] ratio 104.6 > 100"
     ]
-    assert manifest["releasable"] is True
+    assert manifest["releasable"] is False
     report = json.loads(
         Path(manifest["outputs"]["local_gate_report"]["path"]).read_text()
     )
-    assert report["gates"]["uk_local_weight_ratio"]["criticality"] == "diagnostic"
+    assert report["gates"]["uk_local_weight_ratio"]["criticality"] == "release_blocking"
     assert report["gates"]["uk_local_weight_ratio"]["status"] == "failed"
-    assert _spool_rows(output_dir)[0].disposition == "iterating"
+    assert _spool_rows(output_dir)[0].disposition == "failed"
 
 
 def test_candidate_block_partitions_failures_by_criticality(
@@ -1669,10 +1669,11 @@ def test_candidate_block_partitions_failures_by_criticality(
         "uk_local_weight_ratio",
     ]
     assert manifest["blocked_at_f100"] is True
-    assert manifest["blocking_failures"] == ["[uk_local_area_support] ESS 42.3 < 50"]
-    assert manifest["diagnostic_failures"] == [
-        "[uk_local_weight_ratio] ratio 578 > 100"
+    assert manifest["blocking_failures"] == [
+        "[uk_local_area_support] ESS 42.3 < 50",
+        "[uk_local_weight_ratio] ratio 578 > 100",
     ]
+    assert manifest["diagnostic_failures"] == []
     assert manifest["releasable"] is False
     assert _spool_rows(output_dir)[0].disposition == "failed"
 

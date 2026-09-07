@@ -54,9 +54,35 @@ def _good_candidate(tmp_path: Path) -> Path:
         "fit": {"rotated_holdout": {"n_folds": 5, "mean_holdout_loss": 0.2}},
         "ladder_household_uprating": {
             "applied": True,
-            "tenure_cells": {"applied": True},
+            "tenure_cells": {
+                "applied": True,
+                "cells": 1,
+                "total_cells": 1,
+                "attempted_cells": 1,
+                "eligible_cells": 1,
+                "skipped_cells": 0,
+                "holds": [
+                    {
+                        "attempted": True,
+                        "eligible": True,
+                        "applied": True,
+                        "skipped": False,
+                        "ladder_oa_vintage": "2021_census",
+                        "reason": "census_vintage_hold_uprated",
+                    }
+                ],
+            },
         },
-        "measure_exclusions": {"obr.housing_benefit": {"expires_on": "2026-10-03"}},
+        "measure_exclusions": {
+            "obr.housing_benefit": {
+                "reason": "synthetic gap",
+                "tracking": "microcosm#869",
+                "approved_by": "synthetic_reviewer",
+                "adjudication": "synthetic decision",
+                "approved_on": "2026-09-03",
+                "expires_on": "2026-10-03",
+            }
+        },
         "identity": {"spine": {"pin_verified": True}, "ladder": {"pin_verified": True}},
         "outputs": {
             "dataset": {"path": str(h5), "sha256": hashlib.sha256(b"h5").hexdigest()}
@@ -254,3 +280,28 @@ def test_env_check_names_the_missing_key_and_pins(tmp_path: Path) -> None:
         environ=good_env,
     )
     assert any("digest mismatch" in f for f in failures)
+
+
+def test_preflight_does_not_infer_tenure_success_from_ladder_uprating(tmp_path):
+    candidate = _good_candidate(tmp_path)
+    path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(path.read_text())
+    tenure = manifest["ladder_household_uprating"]["tenure_cells"]
+    tenure["holds"][0].update(
+        {
+            "applied": False,
+            "eligible": False,
+            "skipped": True,
+            "ladder_oa_vintage": "",
+            "reason": "missing_ladder_oa_vintage",
+        }
+    )
+    tenure.update(
+        {"applied": False, "cells": 0, "eligible_cells": 0, "skipped_cells": 1}
+    )
+    path.write_text(json.dumps(manifest))
+    failures = _load().check_candidate_dir(candidate, today=date(2026, 9, 7))
+    assert any(
+        "A17" in failure and "skipped attempted" in failure for failure in failures
+    )
+    assert not any("A15" in failure for failure in failures)

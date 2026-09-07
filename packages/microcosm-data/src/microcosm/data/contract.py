@@ -41,6 +41,7 @@ import math
 import os
 import re
 from collections.abc import Callable, Mapping
+from datetime import date
 from pathlib import Path
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
@@ -376,13 +377,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "5a596f72e5412d97d7938864ce44426634f22622655b2a3efcc76aaa4274d485"
+    "0f271dd91e25ec43cc24d39c4a5e11e3b54ff883d5fa2f691bf82b0229eca301"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "9debdfbc78c4f48734c9851ff14fa88f84788d184ae05bb54558c43e82cc6345"
+    "1c47e74e91d7684aa91f6b4ec92f55365b119f4325eb4cfd0628c50e81a99b6a"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "c405d55f92528775565f8f6c9807bc187de42662e71b59132bf0ec3f5d2caae2"
+    "80e73c97e48bad99cc03dcde5bc0b71a738db3c6f8c5c76b2be6d83e86c5381b"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -489,14 +490,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_local_weight_ess": ("weight_ess", "terminal"),
 }
 _UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
-_UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset(
-    {
-        "uk_local_target_fit",
-        "uk_local_per_family_fit",
-        "uk_local_weight_ratio",
-        "uk_local_weight_ess",
-    }
-)
+_UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset()
 #: The entries whose bindings contribute an evidence digest; their keys are
 #: the only ones a schema-4 ``evidence_sha256`` may carry, and each appears
 #: exactly when its entry evaluated.
@@ -580,6 +574,10 @@ _UK_DENSE_REQUIRED_RELEASE_FILES = (
     _UK_DENSE_SOURCE_COVERAGE_FILE,
     _UK_DENSE_GATE_REPORT_FILE,
     _UK_DENSE_SCORE_RECEIPT_FILE,
+    "incumbent_surface_evaluation.json",
+    "rowwise_candidate_manifest.json",
+    "incumbent_manifest.json",
+    "source_calibration_diagnostics.json",
     "sha256sums.txt",
 )
 # The local battery scope (microcosm.build.uk_runtime.calibration_run
@@ -595,20 +593,12 @@ _UK_DENSE_GATE_ENTRY_IDS = frozenset(
         "uk_local_weight_ratio",
     }
 )
-_UK_DENSE_RELEASE_BLOCKING_IDS = frozenset(
-    {"uk_local_area_support", "uk_local_geography_ladder_post_calibration"}
-)
+_UK_DENSE_RELEASE_BLOCKING_IDS = _UK_DENSE_GATE_ENTRY_IDS
 _UK_DENSE_GATE_PHASES = ("terminal",)
 _UK_DENSE_GATE_DIGESTS = {
-    "policy_sha256": (
-        "095b8d34152d45e07e626826ce397f73e4881fc9d870dc2ab0405d8b5f62bd71"
-    ),
-    "gates_manifest_sha256": (
-        "ee2adc33cb3aaf485dbb5d42225a8f9bcc621c971084b299126e8e842ebc34eb"
-    ),
-    "spec_fingerprint": (
-        "6d64fac7605ab22149bcc1c780c0b3989c5cd943c942489c3ddc7dc5e9e07114"
-    ),
+    "gates_manifest_sha256": "c900204bbc59bb58d5cf0fb0e5c703236f82618c0ebc737279e49774e6641604",
+    "policy_sha256": "ad63a0aa05ac127d45a42d82c5a0e376f23cf0f708c7b6d25958479b3483bbeb",
+    "spec_fingerprint": "33ca1741241fe936d5148bf170b4d040d640df070857822c7d490382778243f0",
 }
 _UK_DENSE_SOURCE_COVERAGE_KEYS = (
     "spine",
@@ -4232,6 +4222,11 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     if build_manifest_path.is_file():
         build_manifest = _load_json(build_manifest_path, failures)
         if build_manifest is not None:
+            code = build_manifest.get("code")
+            if not isinstance(code, Mapping) or code.get("git_dirty") is not False:
+                failures.append(
+                    "build_manifest.json code.git_dirty must be false for release."
+                )
             candidate_attempt = build_manifest.get("attempt_id")
             if isinstance(candidate_attempt, str) and candidate_attempt:
                 attempt_id = candidate_attempt
@@ -4276,6 +4271,8 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
         coverage = _load_json(coverage_path, failures)
         if coverage is not None:
             _check_uk_dense_source_coverage(coverage, failures)
+            _check_uk_measure_exclusions(coverage.get("measure_exclusions"), failures)
+    _check_uk_dense_surface_files(release_dir, release_manifest or {}, failures)
     _check_local_area_checksum_ledger(
         release_dir,
         release_manifest,
@@ -5568,3 +5565,363 @@ def _check_root_artifact_matches_build_manifest(
             f"release_manifest.json artifact for {description} root artifact "
             f"{path!r} must have sha256 matching build_manifest.json."
         )
+
+
+def _check_uk_measure_exclusions(
+    exclusions: object, failures: list[str], *, today: date | None = None
+) -> None:
+    """Validate time-limited measure approvals using the current validation date.
+
+    The optional clock is for tests. Production assembly and upload
+    validation call this without a date and never trust a saved assembly date.
+    This does not govern separate support or binding adjudication registers.
+    """
+    today = date.today() if today is None else today
+    if not isinstance(exclusions, Mapping) or not exclusions:
+        failures.append("measure_exclusions must carry time-limited approval records.")
+        return
+    for name, record in exclusions.items():
+        label = f"measure exclusion {name!r}"
+        if not isinstance(record, Mapping):
+            failures.append(f"{label} must be an approval record.")
+            continue
+        for field in ("reason", "tracking", "approved_by", "adjudication"):
+            if not isinstance(record.get(field), str) or not record[field].strip():
+                failures.append(f"{label} requires {field} provenance.")
+        dates = {}
+        for field in ("approved_on", "expires_on"):
+            value = record.get(field)
+            try:
+                if (
+                    not isinstance(value, str)
+                    or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None
+                ):
+                    raise ValueError
+                dates[field] = date.fromisoformat(value)
+            except ValueError:
+                failures.append(f"{label} requires valid ISO {field}, got {value!r}.")
+        if len(dates) == 2:
+            if dates["approved_on"] > dates["expires_on"]:
+                failures.append(f"{label} approved_on is after expires_on.")
+            if today < dates["approved_on"]:
+                failures.append(f"{label} approved_on is in the future.")
+            if today > dates["expires_on"]:
+                failures.append(f"{label} expired {record['expires_on']}.")
+
+
+# Mirrors the existing local target-fit/per-family limits, lockstep-tested.
+_UK_DENSE_SURFACE_LIMITS = {
+    "max_abs_relative_error": 0.25,
+    "within": 0.1,
+    "min_family_share": 0.5,
+    "hard_within": 0.25,
+    "min_hard_family_share": 0.5,
+    "min_family_size": 5,
+}
+_UK_DENSE_SURFACE_INVENTORIES = {
+    "national": {
+        "rows": 637,
+        "sha256": "2ac67154d96a45900ba96f1fdf934d144560557d4afe692f2c71151792e0dffb",
+    },
+    "local": {
+        "rows": 23545,
+        "sha256": "1d783e5933ca632250a9e38f8ddd00223f8be93e4878973b148fb72620cf1e23",
+    },
+}
+_UK_DENSE_SURFACE_FILE = "incumbent_surface_evaluation.json"
+
+
+def _uk_incumbent_row_identity(row: Mapping, grain: str) -> dict:
+    fields = (
+        ("incumbent_name", "incumbent_target", "family")
+        if grain == "national"
+        else (
+            "incumbent_name",
+            "incumbent_target",
+            "area_type",
+            "geography_id",
+            "incumbent_metric",
+        )
+    )
+    return {field: row.get(field) for field in fields}
+
+
+def uk_incumbent_surface_assessment(payload: Mapping) -> dict:
+    """Recompute unchanged absolute quality limits over the full incumbent surface.
+
+    National comparisons use incumbent target values, not invented realized
+    incumbent estimates. Local comparisons additionally require the incumbent's
+    measured estimates. Deferred and unmeasurable rows never disappear.
+    """
+    failures = []
+    grains = {}
+    limits = _UK_DENSE_SURFACE_LIMITS
+    for grain in ("national", "local"):
+        rows = payload.get(f"{grain}_rows")
+        if (
+            not isinstance(rows, list)
+            or not rows
+            or any(not isinstance(r, Mapping) for r in rows)
+        ):
+            failures.append(f"{grain} rows must be a complete nonempty row list.")
+            continue
+        identities = sorted(
+            (_uk_incumbent_row_identity(r, grain) for r in rows),
+            key=lambda r: str(r["incumbent_name"]),
+        )
+        inventory = {"rows": len(rows), "sha256": _canonical_sha256(identities)}
+        if inventory != _UK_DENSE_SURFACE_INVENTORIES.get(grain):
+            failures.append(
+                f"{grain} rows do not match the pinned incumbent target inventory."
+            )
+        names = [r.get("incumbent_name") for r in rows]
+        if any(not isinstance(n, str) or not n for n in names) or len(
+            set(names)
+        ) != len(names):
+            failures.append(f"{grain} row names must be nonempty and unique.")
+        measured = 0
+        errors = []
+        families = {}
+        for row in rows:
+            name = row.get("incumbent_name")
+            family = (
+                row.get("family")
+                if grain == "national"
+                else row.get("incumbent_metric")
+            )
+            if not isinstance(family, str) or not family:
+                failures.append(f"{grain}/{name}: family is missing.")
+                continue
+            bucket = families.setdefault(
+                family, {"rows": 0, "measured": 0, "within_10": 0, "within_25": 0}
+            )
+            bucket["rows"] += 1
+            if not isinstance(row.get("status"), str) or not row["status"]:
+                failures.append(f"{grain}/{name}: measurement status is missing.")
+            values = ("incumbent_target", "candidate_estimate") + (
+                ("incumbent_estimate",) if grain == "local" else ()
+            )
+            invalid = [
+                k
+                for k in values
+                if isinstance(row.get(k), bool)
+                or not isinstance(row.get(k), int | float)
+                or not math.isfinite(row[k])
+            ]
+            if invalid:
+                failures.append(
+                    f"{grain}/{name}: missing/non-finite required measurement {invalid}; status={row.get('status')!r}, reason={row.get('skip_reason') or row.get('status_detail')!r}."
+                )
+                continue
+            target = row["incumbent_target"]
+            error = (
+                abs(row["candidate_estimate"] - target) / abs(target)
+                if target
+                else abs(row["candidate_estimate"])
+            )
+            errors.append(error)
+            measured += 1
+            bucket["measured"] += 1
+            bucket["within_10"] += error <= limits["within"]
+            bucket["within_25"] += error <= limits["hard_within"]
+            if error > limits["max_abs_relative_error"]:
+                failures.append(
+                    f"{grain}/{name}: absolute relative error {error:.8g} > {limits['max_abs_relative_error']}."
+                )
+        for family, bucket in sorted(families.items()):
+            # Full family denominator: missing measurements cannot improve fit.
+            for field, threshold in (("within_25", "min_hard_family_share"),):
+                if (
+                    bucket["rows"] >= limits["min_family_size"]
+                    and bucket[field] / bucket["rows"] < limits[threshold]
+                ):
+                    failures.append(
+                        f"{grain}/{family}: {field} share {bucket[field] / bucket['rows']:.8g} < {limits[threshold]}."
+                    )
+        grains[grain] = {
+            "rows": len(rows),
+            "measured": measured,
+            "maximum_abs_relative_error": max(errors) if errors else None,
+            "families": dict(sorted(families.items())),
+        }
+    return {
+        "limits": dict(limits),
+        "comparison_basis": {
+            "national": "candidate_vs_pinned_incumbent_targets",
+            "local": "candidate_and_incumbent_estimates_vs_pinned_incumbent_targets",
+        },
+        "grains": grains,
+        "passed": not failures,
+        "failures": failures,
+    }
+
+
+def _check_uk_incumbent_surface_evaluation(
+    payload: Mapping, failures: list[str], *, expected_identity: Mapping
+) -> None:
+    label = _UK_DENSE_SURFACE_FILE
+    if (
+        payload.get("schema_version") != 2
+        or payload.get("kind") != "uk_incumbent_surface_evaluation"
+    ):
+        failures.append(
+            f"{label} requires schema 2 with authenticated input identities."
+        )
+    identity = payload.get("identity")
+    if not isinstance(identity, Mapping):
+        failures.append(f"{label} requires identity.")
+    else:
+        for key, expected in expected_identity.items():
+            actual = identity.get(key)
+            if key.endswith("sha256") and (
+                not isinstance(actual, str)
+                or re.fullmatch(r"[0-9a-f]{64}", actual) is None
+            ):
+                failures.append(f"{label} identity.{key} must be a SHA256 digest.")
+            if expected is None or actual != expected:
+                failures.append(
+                    f"{label} identity.{key} does not match its source artifact."
+                )
+    resolution = payload.get("measure_resolution")
+    if (
+        not isinstance(resolution, Mapping)
+        or type(resolution.get("blocks")) is not int
+        or resolution.get("blocks") != 1
+    ):
+        failures.append(f"{label} requires single-block engine measurement.")
+    assessment = uk_incumbent_surface_assessment(payload)
+    if payload.get("summary") != assessment:
+        failures.append(f"{label} summary does not match its measured rows.")
+    failures.extend(f"{label}: {failure}" for failure in assessment["failures"])
+
+
+def _check_uk_dense_surface_files(
+    release_dir: Path, release_manifest: Mapping, failures: list[str]
+) -> None:
+    names = (
+        _UK_DENSE_SURFACE_FILE,
+        "rowwise_candidate_manifest.json",
+        "incumbent_manifest.json",
+        "source_calibration_diagnostics.json",
+    )
+    loaded = {}
+    hashes = {}
+    for name in names:
+        path = release_dir / name
+        if not path.is_file():
+            continue
+        loaded[name] = _load_json(path, failures)
+        hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if _artifact_by_path(release_manifest, name) is None:
+            failures.append(
+                f"release_manifest.json must declare {name!r} as an artifact."
+            )
+    if len(loaded) != len(names) or any(v is None for v in loaded.values()):
+        return
+    candidate = loaded["rowwise_candidate_manifest.json"]
+    incumbent = loaded["incumbent_manifest.json"]
+    try:
+        ledger = candidate["identity"]["ledger"]
+        dataset = _artifact_by_path(release_manifest, "microcosm_uk_2025_dense.h5")
+        expected = {
+            "candidate_dataset_sha256": dataset["sha256"],
+            "candidate_manifest_sha256": hashes["rowwise_candidate_manifest.json"],
+            "candidate_diagnostics_sha256": hashes[
+                "source_calibration_diagnostics.json"
+            ],
+            "ledger_facts_sha256": ledger["facts_sha256"],
+            "ledger_manifest_sha256": ledger["manifest_sha256"],
+            "incumbent_manifest_sha256": hashes["incumbent_manifest.json"],
+            "incumbent_metrics_sha256": incumbent["outputs"]["metrics"]["sha256"],
+            "incumbent_weights_sha256": incumbent["outputs"]["weights"]["sha256"],
+        }
+        for key, identity_key in (
+            ("dataset", "candidate_dataset_sha256"),
+            ("calibration_diagnostics", "candidate_diagnostics_sha256"),
+        ):
+            if candidate["outputs"][key]["sha256"] != expected[identity_key]:
+                failures.append(
+                    f"rowwise_candidate_manifest.json {key} hash does not match released evidence."
+                )
+        build = _load_json(release_dir / "build_manifest.json", failures)
+        report = _load_json(release_dir / _UK_DENSE_GATE_REPORT_FILE, failures)
+        if (
+            candidate["outputs"]["local_gate_report"]["sha256"]
+            != hashlib.sha256(
+                (release_dir / _UK_DENSE_GATE_REPORT_FILE).read_bytes()
+            ).hexdigest()
+        ):
+            failures.append(
+                "rowwise_candidate_manifest.json gate report does not match released attempt."
+            )
+        if build and candidate["identity"]["code"].get("git_dirty") is not False:
+            failures.append(
+                "rowwise_candidate_manifest.json identity.code.git_dirty must be false."
+            )
+        if build and build.get("code", {}).get("git_commit") != candidate["identity"][
+            "code"
+        ].get("git_commit"):
+            failures.append(
+                "build_manifest.json code does not match the evaluated candidate manifest."
+            )
+        _check_uk_measure_exclusions(candidate.get("measure_exclusions"), failures)
+        coverage = _load_json(release_dir / _UK_DENSE_SOURCE_COVERAGE_FILE, failures)
+        if coverage:
+            if coverage.get("measure_exclusions") != candidate.get(
+                "measure_exclusions"
+            ):
+                failures.append(
+                    "uk_source_coverage.json measure_exclusions do not match the original candidate approvals."
+                )
+            for key in ("facts_sha256", "manifest_sha256"):
+                if coverage.get("ledger_artifact", {}).get(key) != ledger[key]:
+                    failures.append(
+                        f"uk_source_coverage.json Ledger {key} does not match the evaluated source."
+                    )
+            if coverage.get("incumbent", {}).get("snapshot") != incumbent.get("inputs"):
+                failures.append(
+                    "uk_source_coverage.json incumbent snapshot does not match the evaluated source."
+                )
+        shipped_diagnostics = _load_json(
+            release_dir / "calibration_diagnostics.json", failures
+        )
+        original_diagnostics = loaded["source_calibration_diagnostics.json"]
+        if shipped_diagnostics:
+            if (
+                shipped_diagnostics.get("source_diagnostics_sha256")
+                != expected["candidate_diagnostics_sha256"]
+            ):
+                failures.append(
+                    "calibration_diagnostics.json source hash does not match the evaluated source."
+                )
+            if any(
+                shipped_diagnostics.get(key) != value
+                for key, value in original_diagnostics.items()
+            ):
+                failures.append(
+                    "calibration_diagnostics.json changed original evaluated diagnostic values."
+                )
+        score = _load_json(release_dir / _UK_DENSE_SCORE_RECEIPT_FILE, failures)
+        for key, identity_key in (
+            ("candidate_diagnostics", "candidate_diagnostics_sha256"),
+            ("incumbent_household_metrics", "incumbent_metrics_sha256"),
+            ("incumbent_wide_weights", "incumbent_weights_sha256"),
+        ):
+            if (
+                not score
+                or score.get("artifacts", {}).get(key, {}).get("sha256")
+                != expected[identity_key]
+            ):
+                failures.append(
+                    f"score_vs_incumbent.json {key} does not match the evaluated source."
+                )
+        if build and report and report.get("release_id") != build.get("attempt_id"):
+            failures.append(
+                "incumbent evaluation source manifest is not bound to released attempt."
+            )
+    except (KeyError, TypeError) as error:
+        failures.append(f"incumbent surface source identities are incomplete: {error}.")
+        return
+    _check_uk_incumbent_surface_evaluation(
+        loaded[_UK_DENSE_SURFACE_FILE], failures, expected_identity=expected
+    )

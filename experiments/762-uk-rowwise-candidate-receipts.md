@@ -1,5 +1,22 @@
 # First calibrated rowwise UK local candidate — receipts (#762, #495 increment 6)
 
+
+> Review annotation, 2026-09-07 (PR #870): these are historical measurements
+> under the code and policies named in each run. R16/R17's signed shippable
+> verdict and R17's contract-valid directory do not pass today's contract.
+> Their max/median weight ratio of 400 exceeds the unchanged blocking limit
+> of 100, and target-fit misses exceed the unchanged 25% limit. R18 must also
+> pass the now-required complete incumbent-surface measurement contract;
+> missing measurements and signed-deferred misses cannot be omitted. No run
+> was recalibrated or re-signed for this review.
+>
+> The historical holdout 0.1895 and incumbent fitted loss 0.1815 have different
+> weighting and population bases: held local grains versus uniform fitted
+> rows. A common cap is insufficient for ranking them. Their numeric values
+> below are preserved, but no fitted/holdout ranking follows. The historical
+> JSA prose saying 1.8× is an arithmetic error: 199k / 71k = 2.8×. The current
+> exclusion reason corrects this without changing its approval.
+
 Plan: `repos/uk-762-rowwise-candidate-plan.md` (approved 2026-09-02). Machinery: PR #852 (PR A). Registers, deferrals and these receipts: PR B (`uk-rowwise-candidate-762-b`). Spine of record: spine-m. Every run below is the **joint solve**: local register cells + ladder census household rows + the activated national families as rows of one matrix over the K-cloned spine, engine resolved on every cloned row, one `calibrate()` call under the local doctrine.
 
 ## R0 — identity
@@ -352,7 +369,7 @@ Readings: A17 closes the tenure seam (owned outright 65.7 → 97.2 % within 10 %
 uv run python -m microcosm.data.publish_cli <releases>/microcosm-uk-2024-25-dense --repo-id policyengine/populace-uk-private --artifact-root <candidate-dir> --no-latest --tag-name microcosm-uk-2024-25-dense-20260903T192959Z-3bcacf74
 ```
 
-This closes the plan's I8: the machinery (PR A), the rulings and registers (PR B), the measured doctrine, the release candidate, the incumbent comparison and the contract-valid release directory all exist; what remains before any publication is María's review of both PRs and her go on the human step. I9 (the evaluator on the incumbent's target surface) and I10 (L0 sparsity) follow.
+Historical I8 assessment (superseded by the 2026-09-07 review requirements): the machinery (PR A), the rulings and registers (PR B), the measured doctrine, the release candidate, the incumbent comparison and the contract-valid release directory all exist; what remains before any publication is María's review of both PRs and her go on the human step. I9 (the evaluator on the incumbent's target surface) and I10 (L0 sparsity) follow.
 
 ## R18 — The candidate on the incumbent's target surface, every grain, signed items included (2026-09-04; PR B c7c20581; `tools/evaluate_uk_incumbent_surface.py` over R17)
 

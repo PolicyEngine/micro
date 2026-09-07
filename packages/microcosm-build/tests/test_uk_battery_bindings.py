@@ -680,7 +680,7 @@ class TestUnevidencedArms:
             o.entry.id for o in battery.blocking_outcomes(release_candidate=True)
         }
         assert blocked == {
-            *(set(absent) - {"uk_local_target_fit", "uk_local_per_family_fit"}),
+            *set(absent),
             "uk_local_geography_ladder_post_calibration",
             "uk_qrf_tail_concentration",
         }
@@ -1262,3 +1262,58 @@ class TestBindingUnits:
         )
         assert result.passed is False
         assert "reference_registry" in result.failures[0]
+
+
+@pytest.mark.parametrize(
+    "gate_id,weights,relative_error",
+    [
+        ("uk_local_target_fit", [1.0] * 200, 0.30),
+        ("uk_local_per_family_fit", [1.0] * 200, 0.30),
+        ("uk_local_weight_ratio", [1000.0] + [1.0] * 199, 0.0),
+        ("uk_local_weight_ess", [1e9] + [1.0] * 199, 0.0),
+    ],
+)
+def test_measured_local_quality_failure_blocks_release(
+    gate_id, weights, relative_error, tmp_path
+):
+    """Use real program errors and weights, then exercise battery enforcement."""
+    from microcosm.build.uk_runtime.calibration_run import uk_scoped_gate_manifest
+
+    manifest = uk_scoped_gate_manifest(
+        frozenset({gate_id}), phases=("terminal",), policy_suffix="local_candidate"
+    )
+    person, benunit, household = _tables(n=len(weights), weights=weights)
+    frame = uk_national_frame(
+        person=person, benunit=benunit, household=household, time_period="2025"
+    )
+    diagnostics = pd.DataFrame(
+        [
+            {
+                "family": "obr",
+                "area_code": "UK",
+                "metric": f"program_{i}",
+                "relative_error": relative_error,
+            }
+            for i in range(5)
+        ]
+    )
+    report_path = tmp_path / "gates.json"
+    battery = GateBatteryRun(
+        manifest,
+        release_id="synthetic-quality-refusal",
+        report_path=report_path,
+        release_candidate=True,
+        registry=UK_GATE_REGISTRY,
+    )
+    battery.run_phase(
+        "terminal",
+        EvidenceContext(
+            frame=frame, artifacts={"local_target_diagnostics": diagnostics}
+        ),
+    )
+    with pytest.raises(GateBatteryBlockedError):
+        battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+    report = battery.report_payload()
+    assert report["shippable"] is False
+    assert report["gates"][gate_id]["status"] == "failed"
+    assert report["gates"][gate_id]["criticality"] == "release_blocking"

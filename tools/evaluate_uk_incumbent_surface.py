@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import hashlib
 import importlib.util
 import json
 import sys
@@ -52,6 +53,7 @@ from microcosm.build.uk_runtime.measure_simulation import (
 from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.matrix import build_constraint_matrix
+from microcosm.data.contract import uk_incumbent_surface_assessment
 
 
 def _driver():
@@ -72,11 +74,12 @@ def _parse_args(argv):
     p.add_argument("--ledger-facts", required=True, type=Path)
     p.add_argument("--ledger-facts-sha256", required=True)
     p.add_argument("--ledger-manifest-sha256", required=True)
+    p.add_argument("--incumbent-manifest", type=Path)
     p.add_argument("--incumbent-metrics-csv", type=Path)
     p.add_argument("--incumbent-weights-csv", type=Path)
     p.add_argument("--out-json", required=True, type=Path)
     p.add_argument("--out-md", required=True, type=Path)
-    p.add_argument("--engine-blocks", type=int, default=1)
+    p.add_argument("--engine-blocks", type=int, choices=(1,), default=1)
     return p.parse_args(argv)
 
 
@@ -130,10 +133,55 @@ def main(argv=None) -> int:
         [s for s in registry.specs if s.name not in unresolvable], country="uk"
     )
     manifest = json.loads(args.candidate_manifest.read_text())
+    diagnostics_path = Path(str(manifest["outputs"]["calibration_diagnostics"]["path"]))
+    if not diagnostics_path.is_absolute():
+        diagnostics_path = args.candidate_manifest.parent / diagnostics_path
+    diagnostics = json.loads(diagnostics_path.read_text())
+
+    def digest(path):
+        if path is None:
+            return None
+        h = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    identity = {
+        "candidate_dataset_sha256": digest(args.candidate_h5),
+        "candidate_manifest_sha256": digest(args.candidate_manifest),
+        "candidate_diagnostics_sha256": digest(diagnostics_path),
+        "ledger_facts_sha256": args.ledger_facts_sha256,
+        "ledger_manifest_sha256": args.ledger_manifest_sha256,
+        "incumbent_manifest_sha256": digest(args.incumbent_manifest),
+        "incumbent_metrics_sha256": digest(args.incumbent_metrics_csv),
+        "incumbent_weights_sha256": digest(args.incumbent_weights_csv),
+    }
+    for key, measured in (
+        ("dataset", identity["candidate_dataset_sha256"]),
+        ("calibration_diagnostics", identity["candidate_diagnostics_sha256"]),
+    ):
+        if manifest["outputs"][key]["sha256"] != measured:
+            raise ValueError(
+                f"candidate manifest {key} digest does not match measured bytes"
+            )
+    for key in ("facts_sha256", "manifest_sha256"):
+        if manifest["identity"]["ledger"][key] != identity[f"ledger_{key}"]:
+            raise ValueError(
+                f"candidate manifest Ledger {key} does not match evaluation input"
+            )
+    if args.incumbent_manifest is not None:
+        incumbent_manifest = json.loads(args.incumbent_manifest.read_text())
+        for key in ("metrics", "weights"):
+            if (
+                incumbent_manifest["outputs"][key]["sha256"]
+                != identity[f"incumbent_{key}_sha256"]
+            ):
+                raise ValueError(
+                    f"incumbent manifest {key} digest does not match measured bytes"
+                )
     bound = set()
-    for name in json.loads(
-        Path(str(manifest["outputs"]["calibration_diagnostics"]["path"])).read_text()
-    )["targets"]:
+    for name in diagnostics["targets"]:
         bound.add(str(name["name"]).rsplit("@", 1)[0])
     exclusions = exclusions_all
 
@@ -320,6 +368,14 @@ def main(argv=None) -> int:
         )
         inc_metrics = pd.read_csv(args.incumbent_metrics_csv).set_index("household_id")
         inc_weights = pd.read_csv(args.incumbent_weights_csv).set_index("household_id")
+        if (
+            not inc_metrics.index.is_unique
+            or not inc_weights.index.is_unique
+            or set(inc_metrics.index) != set(inc_weights.index)
+        ):
+            raise ValueError(
+                "incumbent metrics and weights must identify the same unique households"
+            )
         inc_weights = inc_weights.reindex(inc_metrics.index)
         inc_est: dict[tuple[str, str], float] = {}
         metric_cols = [
@@ -337,10 +393,13 @@ def main(argv=None) -> int:
             inc_est.get((g, m)) if isinstance(m, str) else None
             for g, m in zip(local["geography_id"], local["our_metric"], strict=True)
         ]
+    if "incumbent_estimate" not in local:
+        local["incumbent_estimate"] = None
     summary = evaluation_summary(national, local)
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "uk_incumbent_surface_evaluation",
+        "identity": identity,
         "candidate_h5": str(args.candidate_h5),
         "calibration_year": period,
         "incumbent_fixtures": {
@@ -349,11 +408,14 @@ def main(argv=None) -> int:
         },
         "measure_resolution": dict(resolution),
         "regional_rollup": rollup_receipt,
-        "summary": summary,
+        "diagnostic_summary": summary,
         "national_rows": national.replace({np.nan: None}).to_dict(orient="records"),
         "local_rows": local.replace({np.nan: None}).to_dict(orient="records"),
     }
-    args.out_json.write_text(json.dumps(payload, indent=1, default=str))
+    payload["summary"] = uk_incumbent_surface_assessment(payload)
+    args.out_json.write_text(
+        json.dumps(payload, indent=1, default=str, allow_nan=False)
+    )
     args.out_md.write_text(render_markdown(summary, national, local))
     print(
         json.dumps(

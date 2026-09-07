@@ -395,7 +395,7 @@ class TestDenseLineMirrors:
         from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
 
         assert data_contract._UK_DENSE_GATE_ENTRY_IDS == frozenset(UK_LOCAL_GATE_SCOPE)
-        assert data_contract._UK_DENSE_RELEASE_BLOCKING_IDS < (
+        assert data_contract._UK_DENSE_RELEASE_BLOCKING_IDS == (
             data_contract._UK_DENSE_GATE_ENTRY_IDS
         )
 
@@ -515,3 +515,51 @@ class TestResignCanonicalForm:
         failures = []
         data_contract._check_uk_dense_gate_report(tampered, failures=failures)
         assert any("signature does not authenticate" in f for f in failures)
+
+
+def test_dense_incumbent_surface_inventory_and_limits_match_build_sources():
+    from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
+        load_incumbent_local_fixture,
+        load_incumbent_national_fixture,
+    )
+
+    for grain, fixture in (
+        ("national", load_incumbent_national_fixture()),
+        ("local", load_incumbent_local_fixture()),
+    ):
+        rows = []
+        for row in fixture["rows"]:
+            item = {
+                "incumbent_name": row["name"],
+                "incumbent_target": float(row["value"]),
+            }
+            item.update(
+                {"family": row["family"]}
+                if grain == "national"
+                else {
+                    "area_type": row["area_type"],
+                    "geography_id": row["geography_id"],
+                    "incumbent_metric": row["metric"],
+                }
+            )
+            rows.append(item)
+        expected = {
+            "rows": len(rows),
+            "sha256": data_contract._canonical_sha256(
+                sorted(rows, key=lambda r: r["incumbent_name"])
+            ),
+        }
+        assert expected == data_contract._UK_DENSE_SURFACE_INVENTORIES[grain]
+    params = {g.id: g.parameters for g in load_country_spec("uk").gates.gates}
+    limits = dict(params["uk_local_per_family_fit"])
+    limits["max_abs_relative_error"] = params["uk_local_target_fit"][
+        "max_abs_relative_error"
+    ]
+    from inspect import signature
+
+    from microcosm.build.gates import per_family_fit_gate
+
+    limits["min_family_size"] = (
+        signature(per_family_fit_gate).parameters["min_family_size"].default
+    )
+    assert data_contract._UK_DENSE_SURFACE_LIMITS == limits

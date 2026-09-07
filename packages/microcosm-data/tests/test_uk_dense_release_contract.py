@@ -134,7 +134,9 @@ def write_dense_bundle(
         del diagnostics["households"]
     gate_summary = {
         "gates": {
-            entry_id: {"passed": report["gates"][entry_id]["status"] == "passed"}
+            entry_id: {
+                "passed": report["gates"].get(entry_id, {}).get("status") == "passed"
+            }
             for entry_id in dc._UK_DENSE_RELEASE_BLOCKING_IDS
         },
         "diagnostic_gates": {},
@@ -151,7 +153,16 @@ def write_dense_bundle(
         "geography_ladder": {"sha256": "d" * 64},
         "incumbent": {"snapshot": {"incumbent_h5": {"sha256": "e" * 64}}},
         "doctrine": {"max_weight_ratio": 10.0},
-        "measure_exclusions": {"obr.housing_benefit": {"expires_on": "2026-10-03"}},
+        "measure_exclusions": {
+            "obr.housing_benefit": {
+                "reason": "synthetic gap",
+                "tracking": "microcosm#869",
+                "approved_by": "synthetic_reviewer",
+                "adjudication": "synthetic decision",
+                "approved_on": "2026-09-03",
+                "expires_on": "2026-10-03",
+            }
+        },
         "signed_deferrals": {"binding_adjudications": {"x": {}}},
         "holdout": {"mean_holdout_loss": 0.2, "n_folds": 5},
         "uprating": {"applied": True, "factor": 1.03},
@@ -161,6 +172,7 @@ def write_dense_bundle(
     build_manifest = {
         "build_id": release_id,
         "build_sha": "abc1234",
+        "code": {"git_commit": "a" * 40, "git_dirty": False},
         "attempt_id": attempt_id if attempt_id is not None else report["release_id"],
     }
     score = {
@@ -175,6 +187,54 @@ def write_dense_bundle(
         "score_vs_incumbent.json": json.dumps(score, indent=1).encode(),
         "build_manifest.json": json.dumps(build_manifest, indent=1).encode(),
     }
+    source_diagnostics = payloads["calibration_diagnostics.json"]
+    candidate = {
+        "identity": {
+            "code": {"git_commit": "a" * 40, "git_dirty": False},
+            "ledger": {"facts_sha256": "b" * 64, "manifest_sha256": "c" * 64},
+        },
+        "outputs": {
+            "dataset": {"sha256": _sha(b"dense-h5-stand-in")},
+            "calibration_diagnostics": {"sha256": _sha(source_diagnostics)},
+            "local_gate_report": {"sha256": _sha(payloads["uk_local_gates.json"])},
+        },
+    }
+    candidate["measure_exclusions"] = coverage.get("measure_exclusions", {})
+    incumbent = {
+        "inputs": {"incumbent_h5": {"sha256": "e" * 64}},
+        "outputs": {"metrics": {"sha256": "6" * 64}, "weights": {"sha256": "7" * 64}},
+    }
+    payloads["rowwise_candidate_manifest.json"] = json.dumps(candidate).encode()
+    payloads["incumbent_manifest.json"] = json.dumps(incumbent).encode()
+    payloads["source_calibration_diagnostics.json"] = source_diagnostics
+    evaluation = {
+        "schema_version": 2,
+        "kind": "uk_incumbent_surface_evaluation",
+        "measure_resolution": {"blocks": 1},
+        **_surface_rows(),
+        "identity": {
+            "candidate_dataset_sha256": _sha(b"dense-h5-stand-in"),
+            "candidate_manifest_sha256": _sha(
+                payloads["rowwise_candidate_manifest.json"]
+            ),
+            "candidate_diagnostics_sha256": _sha(source_diagnostics),
+            "ledger_facts_sha256": "b" * 64,
+            "ledger_manifest_sha256": "c" * 64,
+            "incumbent_manifest_sha256": _sha(payloads["incumbent_manifest.json"]),
+            "incumbent_metrics_sha256": "6" * 64,
+            "incumbent_weights_sha256": "7" * 64,
+        },
+    }
+    diagnostics["source_diagnostics_sha256"] = _sha(source_diagnostics)
+    payloads["calibration_diagnostics.json"] = json.dumps(diagnostics).encode()
+    score["artifacts"] = {
+        "candidate_diagnostics": {"sha256": _sha(source_diagnostics)},
+        "incumbent_household_metrics": {"sha256": "6" * 64},
+        "incumbent_wide_weights": {"sha256": "7" * 64},
+    }
+    payloads["score_vs_incumbent.json"] = json.dumps(score).encode()
+    evaluation["summary"] = dc.uk_incumbent_surface_assessment(evaluation)
+    payloads["incumbent_surface_evaluation.json"] = json.dumps(evaluation).encode()
     for name, payload in payloads.items():
         (release_dir / name).write_bytes(payload)
     h5_bytes = b"dense-h5-stand-in"
@@ -271,7 +331,7 @@ def test_tampered_signature_is_rejected(tmp_path: Path) -> None:
 
 def test_report_edited_after_signing_is_rejected(tmp_path: Path) -> None:
     report = _signed_report()
-    report["gates"]["uk_local_target_fit"]["status"] = "passed"
+    report["gates"]["uk_local_target_fit"]["status"] = "failed"
     text = _failures(write_dense_bundle(tmp_path, report=report))
     assert "gate_outcomes_sha256" in text
 
@@ -328,3 +388,285 @@ def test_build_manifest_without_attempt_id_is_rejected(tmp_path: Path) -> None:
         json.dumps(build_manifest, indent=1)
     )
     assert "must carry the calibration 'attempt_id'" in _failures(release_dir)
+
+
+@pytest.mark.parametrize("dirty", [True, None, "false", 0, "missing"])
+def test_dense_contract_requires_measured_clean_code(tmp_path, dirty):
+    release_dir = write_dense_bundle(tmp_path)
+    path = release_dir / "build_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["code"] = {} if dirty == "missing" else {"git_dirty": dirty}
+    path.write_text(json.dumps(manifest))
+    assert "code.git_dirty" in _failures(release_dir)
+
+
+@pytest.mark.parametrize(
+    "when,passes",
+    [
+        ("2026-09-02", False),
+        ("2026-09-03", True),
+        ("2026-10-03", True),
+        ("2026-10-04", False),
+    ],
+)
+def test_measure_exclusion_time_window_is_checked_at_validation(when, passes):
+    from datetime import date
+
+    record = {
+        "name": "example",
+        "reason": "measured gap",
+        "tracking": "microcosm#869",
+        "approved_by": "reviewer",
+        "adjudication": "review decision",
+        "approved_on": "2026-09-03",
+        "expires_on": "2026-10-03",
+    }
+    failures = []
+    dc._check_uk_measure_exclusions(
+        {"example": record}, failures, today=date.fromisoformat(when)
+    )
+    assert (not failures) is passes
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("expires_on", None),
+        ("expires_on", ""),
+        ("expires_on", "2026-99-03"),
+        ("approved_on", None),
+        ("approved_on", "20260903"),
+        ("approved_by", ""),
+    ],
+)
+def test_measure_exclusion_requires_full_approval_provenance(field, value):
+    from datetime import date
+
+    record = {
+        "reason": "gap",
+        "tracking": "microcosm#869",
+        "approved_by": "reviewer",
+        "adjudication": "decision",
+        "approved_on": "2026-09-03",
+        "expires_on": "2026-10-03",
+    }
+    record[field] = value
+    failures = []
+    dc._check_uk_measure_exclusions(
+        {"example": record}, failures, today=date(2026, 9, 7)
+    )
+    assert any(field in failure for failure in failures)
+
+
+def _surface_rows():
+    return {
+        "national_rows": [
+            {
+                "incumbent_name": "synthetic_national",
+                "incumbent_target": 100.0,
+                "family": "synthetic_program",
+                "candidate_estimate": 100.0,
+                "status": "measure_excluded",
+            }
+        ],
+        "local_rows": [
+            {
+                "incumbent_name": "synthetic_local",
+                "incumbent_target": 100.0,
+                "area_type": "local_authority",
+                "geography_id": "SYNTHETIC",
+                "incumbent_metric": "synthetic_metric",
+                "candidate_estimate": 100.0,
+                "incumbent_estimate": 99.0,
+                "status": "signed_deferred",
+            }
+        ],
+    }
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_surface_inventory(monkeypatch):
+    from datetime import date
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 9, 7)
+
+    monkeypatch.setattr(dc, "date", FixedDate)
+    monkeypatch.setattr(
+        dc,
+        "_UK_DENSE_SURFACE_INVENTORIES",
+        {
+            grain: {
+                "rows": len(rows),
+                "sha256": dc._canonical_sha256(
+                    [dc._uk_incumbent_row_identity(r, grain) for r in rows]
+                ),
+            }
+            for grain, rows in (
+                ("national", _surface_rows()["national_rows"]),
+                ("local", _surface_rows()["local_rows"]),
+            )
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation,expected",
+    [
+        ("missing_file", "required file 'incumbent_surface_evaluation.json'"),
+        ("missing_row", "complete nonempty row list"),
+        ("nonfinite_candidate", "not valid JSON"),
+        ("missing_comparator", "incumbent_estimate"),
+        ("changed_identity", "identity.candidate_dataset_sha256"),
+        ("changed_summary", "summary does not match"),
+        ("deferred_miss", "absolute relative error"),
+    ],
+)
+def test_dense_release_refuses_bad_incumbent_surface_evidence(
+    tmp_path, mutation, expected
+):
+    release_dir = write_dense_bundle(tmp_path)
+    path = release_dir / "incumbent_surface_evaluation.json"
+    if mutation == "missing_file":
+        path.unlink()
+    else:
+        payload = json.loads(path.read_text())
+        if mutation == "missing_row":
+            payload["national_rows"] = []
+        elif mutation == "nonfinite_candidate":
+            payload["national_rows"][0]["candidate_estimate"] = float("nan")
+        elif mutation == "missing_comparator":
+            payload["local_rows"][0]["incumbent_estimate"] = None
+        elif mutation == "changed_identity":
+            payload["identity"]["candidate_dataset_sha256"] = "9" * 64
+        elif mutation == "changed_summary":
+            payload["summary"]["grains"]["local"]["measured"] = 100
+        elif mutation == "deferred_miss":
+            payload["local_rows"][0]["candidate_estimate"] = 1.8
+            payload["summary"] = dc.uk_incumbent_surface_assessment(payload)
+        path.write_text(json.dumps(payload))
+    assert expected in _failures(release_dir)
+
+
+def test_incumbent_surface_limits_keep_exact_existing_boundaries():
+    payload = _surface_rows()
+    payload["national_rows"][0]["candidate_estimate"] = 125.0
+    result = dc.uk_incumbent_surface_assessment(payload)
+    # At 25% the row limit passes. The within-10 share remains diagnostic.
+    assert not any(
+        "absolute relative error" in failure for failure in result["failures"]
+    )
+    assert result["passed"] is True
+    payload["national_rows"][0]["candidate_estimate"] = 125.0001
+    assert any(
+        "absolute relative error" in failure
+        for failure in dc.uk_incumbent_surface_assessment(payload)["failures"]
+    )
+    payload["national_rows"][0]["candidate_estimate"] = 110.0
+    assert dc.uk_incumbent_surface_assessment(payload)["passed"] is True
+
+
+@pytest.mark.parametrize(
+    "when,passes",
+    [
+        ("2026-09-02", False),
+        ("2026-09-03", True),
+        ("2026-10-03", True),
+        ("2026-10-04", False),
+    ],
+)
+def test_dense_directory_rechecks_exclusion_dates_on_each_validation(
+    tmp_path, monkeypatch, when, passes
+):
+    from datetime import date
+
+    release_dir = write_dense_bundle(tmp_path)
+
+    class ValidationDate(date):
+        @classmethod
+        def today(cls):
+            return date.fromisoformat(when)
+
+    monkeypatch.setattr(dc, "date", ValidationDate)
+    if passes:
+        validate_release_dir(release_dir)
+    else:
+        assert "measure exclusion" in _failures(release_dir)
+
+
+@pytest.mark.parametrize(
+    "name,mutate,expected",
+    [
+        ("uk_source_coverage.json", "ledger", "Ledger facts_sha256"),
+        ("uk_source_coverage.json", "incumbent", "incumbent snapshot"),
+        ("calibration_diagnostics.json", "diagnostics", "changed original evaluated"),
+        ("score_vs_incumbent.json", "score", "candidate_diagnostics does not match"),
+    ],
+)
+def test_dense_release_joins_every_receipt_to_the_evaluated_sources(
+    tmp_path, name, mutate, expected
+):
+    release_dir = write_dense_bundle(tmp_path)
+    path = release_dir / name
+    data = json.loads(path.read_text())
+    if mutate == "ledger":
+        data["ledger_artifact"]["facts_sha256"] = "9" * 64
+    elif mutate == "incumbent":
+        data["incumbent"]["snapshot"] = {"other": "snapshot"}
+    elif mutate == "diagnostics":
+        data["targets"][0]["final_estimate"] = 11.0
+    else:
+        data["artifacts"]["candidate_diagnostics"]["sha256"] = "9" * 64
+    path.write_text(json.dumps(data))
+    assert expected in _failures(release_dir)
+
+
+def _refresh_packaging_checksums(release_dir):
+    """Unsigned packaging edits cannot replace original approval provenance."""
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for artifact in manifest["artifacts"].values():
+        local = release_dir / artifact["path"]
+        if local.is_file():
+            artifact["sha256"] = _sha(local.read_bytes())
+    manifest_path.write_text(json.dumps(manifest))
+    sums_path = release_dir / "sha256sums.txt"
+    sums = {}
+    for line in sums_path.read_text().splitlines():
+        digest, name = line.split("  ", 1)
+        local = release_dir / name
+        sums[name] = _sha(local.read_bytes()) if local.is_file() else digest
+    sums_path.write_text(
+        "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
+    )
+
+
+@pytest.mark.parametrize("mutation", ["extend", "delete"])
+def test_refreshing_unsigned_coverage_cannot_renew_original_approvals(
+    tmp_path, monkeypatch, mutation
+):
+    from datetime import date
+
+    release_dir = write_dense_bundle(tmp_path)
+
+    class AfterExpiry(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 10, 4)
+
+    monkeypatch.setattr(dc, "date", AfterExpiry)
+    path = release_dir / "uk_source_coverage.json"
+    coverage = json.loads(path.read_text())
+    if mutation == "extend":
+        coverage["measure_exclusions"]["obr.housing_benefit"]["expires_on"] = (
+            "2099-01-01"
+        )
+    else:
+        coverage["measure_exclusions"] = {}
+    path.write_text(json.dumps(coverage))
+    _refresh_packaging_checksums(release_dir)
+    failures = _failures(release_dir)
+    assert "original candidate approvals" in failures
+    assert "expired 2026-10-03" in failures

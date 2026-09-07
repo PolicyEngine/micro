@@ -160,20 +160,39 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     uprating = manifest.get("ladder_household_uprating", {})
     if uprating.get("applied") is not True:
         failures.append("A15 ladder household uprating not applied.")
-    if uprating.get("tenure_cells", {}).get("applied") is not True:
-        failures.append("A17 tenure-cell uprating not applied.")
-    exclusions = manifest.get("measure_exclusions") or {}
-    if not exclusions:
-        failures.append("manifest carries no measure_exclusions receipt.")
-    for name, record in exclusions.items():
-        expires = record.get("expires_on")
-        try:
-            if expires and (date.fromisoformat(expires) - today).days < 0:
-                failures.append(f"measure exclusion {name!r} expired {expires}.")
-        except ValueError:
+    tenure = uprating.get("tenure_cells", {})
+    if (
+        tenure.get("applied") is not True
+        or not isinstance(tenure.get("cells"), int)
+        or tenure.get("cells", 0) <= 0
+    ):
+        failures.append("A17 tenure-cell uprating not applied or unmeasured.")
+    holds = tenure.get("holds")
+    if not isinstance(holds, list) or not holds:
+        failures.append("A17 tenure-cell hold receipt is missing.")
+    else:
+        for key, field in (
+            ("cells", "applied"),
+            ("attempted_cells", "attempted"),
+            ("eligible_cells", "eligible"),
+            ("skipped_cells", "skipped"),
+        ):
+            if tenure.get(key) != sum(r.get(field) is True for r in holds):
+                failures.append(f"A17 tenure-cell {key} does not close over its holds.")
+        if tenure.get("total_cells") != len(holds):
             failures.append(
-                f"measure exclusion {name!r} has an unreadable expiry {expires!r}."
+                "A17 tenure-cell total_cells does not close over its holds."
             )
+        if any(
+            r.get("attempted") is True and r.get("applied") is not True for r in holds
+        ):
+            failures.append(
+                "A17 contains skipped attempted tenure holds; review vintage/reason evidence."
+            )
+    from microcosm.data.contract import _check_uk_measure_exclusions
+
+    exclusions = manifest.get("measure_exclusions") or {}
+    _check_uk_measure_exclusions(exclusions, failures, today=today)
     for name in ("spine", "ladder"):
         if manifest.get("identity", {}).get(name, {}).get("pin_verified") is not True:
             failures.append(f"identity.{name}.pin_verified is not true.")

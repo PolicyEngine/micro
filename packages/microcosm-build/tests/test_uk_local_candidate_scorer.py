@@ -38,7 +38,10 @@ def _case():
             period=2025,
             source="fixture",
             family="census_households",
-            metadata={"ledger_geography_id": "E1"},
+            metadata={
+                "ledger_geography_id": "E1",
+                "ledger_geography_level": "constituency",
+            },
         ),
         TargetSpec(
             name="income@W1",
@@ -48,7 +51,10 @@ def _case():
             period=2025,
             source="fixture",
             family="hmrc_income",
-            metadata={"ledger_geography_id": "W1"},
+            metadata={
+                "ledger_geography_id": "W1",
+                "ledger_geography_level": "local_authority",
+            },
         ),
     )
     registry = TargetRegistry(specs, country="uk")
@@ -62,6 +68,10 @@ def _case():
             "rotated_holdout": {
                 "report_only": True,
                 "method": "rotated_folds",
+                "target_weight_rule": "grain_equal",
+                "loss_weight_scale": "held_local_grains_only",
+                "population": "held_out_local_targets",
+                "grains": ["constituency", "local_authority"],
                 "n_folds": 5,
                 "seed": 20260529,
                 "target_loss_cap": UK_LOCAL_TARGET_LOSS_CAP,
@@ -471,3 +481,36 @@ def test_local_scorer_receipts_areas_the_incumbent_lacks() -> None:
             target_registry=registry,
             expected_reference_count=2,
         )
+
+
+@pytest.mark.parametrize(
+    "key", ["target_weight_rule", "loss_weight_scale", "population", "grains"]
+)
+def test_scorer_requires_holdout_weighting_and_surface_basis(key):
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    candidate["uk_diagnostics"]["rotated_holdout"].pop(key, None)
+    with pytest.raises(ValueError, match=key):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=2,
+        )
+
+
+def test_scorer_keeps_fitted_and_holdout_bases_separate():
+    registry, candidate, weights, metrics = _case()
+    result = _load_scorer().score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=2,
+    )
+    assert result["fitted_basis"]["target_weight_rule"] == "uniform"
+    assert result["candidate_holdout"]["target_weight_rule"] == "grain_equal"
+    assert result["candidate_holdout"]["population"] == "held_out_local_targets"
+    assert result["candidate_holdout"]["loss_weight_scale"] == "held_local_grains_only"
+    assert result["holdout_directly_comparable_to_fitted"] is False

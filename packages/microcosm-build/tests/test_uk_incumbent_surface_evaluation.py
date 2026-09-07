@@ -369,3 +369,42 @@ def test_local_rows_bind_through_either_bound_name_form() -> None:
         unmapped_concern={},
     )
     assert out["status"].tolist() == ["bound", "bound", "no_reference"]
+
+
+@pytest.mark.parametrize("blocks", ["0", "-1", "2", "1.5"])
+def test_evaluator_cli_rejects_blocks_before_opening_inputs(blocks):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    tool = (
+        Path(__file__).resolve().parents[3] / "tools/evaluate_uk_incumbent_surface.py"
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(tool),
+            "--engine-blocks",
+            blocks,
+            "--candidate-h5",
+            "/missing/candidate.h5",
+            "--candidate-manifest",
+            "/missing/manifest.json",
+            "--ledger-facts",
+            "/missing/facts.jsonl",
+            "--ledger-facts-sha256",
+            "a" * 64,
+            "--ledger-manifest-sha256",
+            "b" * 64,
+            "--out-json",
+            "/missing/out.json",
+            "--out-md",
+            "/missing/out.md",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "--engine-blocks" in result.stderr
+    assert "Traceback" not in result.stderr

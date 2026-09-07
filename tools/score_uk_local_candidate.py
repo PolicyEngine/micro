@@ -150,6 +150,24 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
             f"at {float(UK_LOCAL_TARGET_LOSS_CAP)!r}; re-measure the candidate "
             "rather than reporting the two on different scales."
         )
+    if holdout.get("target_weight_rule") not in ("uniform", "grain_equal"):
+        raise ValueError("candidate holdout target_weight_rule is missing or invalid.")
+    if holdout.get("loss_weight_scale") != "held_local_grains_only":
+        raise ValueError(
+            "candidate holdout loss_weight_scale must be held_local_grains_only."
+        )
+    if holdout.get("population") != "held_out_local_targets":
+        raise ValueError("candidate holdout population must be held_out_local_targets.")
+    grains = holdout.get("grains")
+    if (
+        not isinstance(grains, list)
+        or not grains
+        or any(g not in ("constituency", "local_authority", "la") for g in grains)
+        or len(set(grains)) != len(grains)
+    ):
+        raise ValueError(
+            "candidate holdout grains must name its distinct local grains."
+        )
     losses: dict[str, float] = {}
     for key in ("mean_holdout_loss", "worst_holdout_loss"):
         raw = holdout.get(key)
@@ -201,6 +219,10 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
     return {
         "basis": f"{method}:n_folds={n_folds}:seed={seed}",
         "method": method,
+        "target_weight_rule": holdout["target_weight_rule"],
+        "loss_weight_scale": holdout["loss_weight_scale"],
+        "population": holdout["population"],
+        "grains": grains,
         "target_loss_cap": float(declared_cap),
         "n_folds": n_folds,
         "seed": seed,
@@ -353,6 +375,21 @@ def score_uk_local_candidate(
             f"UK local scoring requires target period {target_period}; "
             f"mismatches={wrong_period[:10]}."
         )
+    fitted_grains = sorted(
+        {
+            str(
+                s.metadata.get(
+                    "ledger_geography_level", s.metadata.get("geography_level", "")
+                )
+            )
+            for s in target_registry.specs
+        }
+    )
+    if any(
+        grain not in ("constituency", "local_authority", "la")
+        for grain in fitted_grains
+    ):
+        raise ValueError("fitted target grains must identify the local surface.")
     holdout = _candidate_holdout(candidate_diagnostics)
     candidate, rows_outside_register = _candidate_estimates(
         candidate_diagnostics,
@@ -431,10 +468,9 @@ def score_uk_local_candidate(
                 "winner": winner,
             }
         )
-    # Both aggregates, and the holdout the candidate driver measured, go
-    # through the one canonical objective at the one declared doctrine cap,
-    # so the numbers in this receipt are on a single scale and stay there
-    # when microcosm#762 adjudicates the cap.
+    # The fitted scores use uniform rows. The holdout uses its separately
+    # recorded held-grain weighting and population; a common cap does not
+    # make these losses directly comparable.
     candidate_loss = relative_error_loss(
         candidate_estimates,
         targets,
@@ -470,6 +506,15 @@ def score_uk_local_candidate(
         "holdout_basis": holdout["basis"],
         "incumbent_holdout_basis": UK_LOCAL_INCUMBENT_HOLDOUT_BASIS,
         "candidate_holdout": holdout,
+        "fitted_basis": {
+            "target_weight_rule": "uniform",
+            "loss_weight_scale": "uniform_rows",
+            "population": "active_local_reference",
+            "grains": fitted_grains,
+            "n_targets": len(target_registry),
+            "n_compared_targets": int(compared_mask.sum()),
+        },
+        "holdout_directly_comparable_to_fitted": False,
         "loss": {
             # Names the function that actually produced every loss above,
             # including the candidate's holdout, at its declared cap.

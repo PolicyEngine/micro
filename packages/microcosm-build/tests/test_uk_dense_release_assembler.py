@@ -208,13 +208,33 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
             "applied": True,
             "factor": 1.0336,
             "reason": "x",
-            "tenure_cells": {"applied": True, "cells": 3},
+            "tenure_cells": {
+                "applied": True,
+                "cells": 1,
+                "total_cells": 1,
+                "attempted_cells": 1,
+                "eligible_cells": 1,
+                "skipped_cells": 0,
+                "holds": [
+                    {
+                        "attempted": True,
+                        "eligible": True,
+                        "applied": True,
+                        "skipped": False,
+                        "ladder_oa_vintage": "2021_census",
+                        "reason": "census_vintage_hold_uprated",
+                    }
+                ],
+            },
         },
         "measure_exclusions": {
             "obr.housing_benefit": {
                 "reason": "unreachable",
                 "tracking": "microcosm#736",
                 "expires_on": "2099-01-01",
+                "approved_on": "2026-09-03",
+                "approved_by": "synthetic_reviewer",
+                "adjudication": "synthetic decision",
             }
         },
         "identity": {
@@ -243,7 +263,7 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
                 "fact_row_count": 3,
                 "schema_version": "v1",
             },
-            "code": {"git_commit": "b" * 40},
+            "code": {"git_commit": "b" * 40, "git_dirty": False},
             "runtime": {
                 "policyengine-core": "3.31.0",
                 "policyengine-uk": "2.92.1",
@@ -278,6 +298,28 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
             }
         )
     )
+    evaluation = {
+        "schema_version": 2,
+        "kind": "uk_incumbent_surface_evaluation",
+        "measure_resolution": {"blocks": 1},
+        **_surface_rows(),
+        "identity": {
+            "candidate_dataset_sha256": _sha(h5),
+            "candidate_manifest_sha256": _sha(
+                candidate / "rowwise_candidate_manifest.json"
+            ),
+            "candidate_diagnostics_sha256": _sha(
+                candidate / "calibration_diagnostics.json"
+            ),
+            "ledger_facts_sha256": "1" * 64,
+            "ledger_manifest_sha256": "2" * 64,
+            "incumbent_manifest_sha256": _sha(incumbent_manifest),
+            "incumbent_metrics_sha256": "6" * 64,
+            "incumbent_weights_sha256": "7" * 64,
+        },
+    }
+    evaluation["summary"] = dc.uk_incumbent_surface_assessment(evaluation)
+    (candidate / "incumbent_surface_evaluation.json").write_text(json.dumps(evaluation))
     return candidate, spine, incumbent_manifest
 
 
@@ -434,33 +476,144 @@ def test_assembler_refuses_a_score_against_another_incumbent_extraction(
         assembler.main(_assemble_args(candidate, spine, incumbent, tmp_path / "r"))
 
 
-def test_assembler_records_git_dirty_as_measured_or_unmeasured(
-    tmp_path: Path, monkeypatch, capsys
-) -> None:
+@pytest.mark.parametrize("dirty", [True, None, "false", 0, "missing"])
+def test_assembler_refuses_unmeasured_or_dirty_code(tmp_path, monkeypatch, dirty):
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
     assembler = _load("assemble_uk_dense_release_dir")
-    # The fixture's candidate manifest records only git_commit: unmeasured.
     candidate, spine, incumbent = _candidate_dir(tmp_path)
-    assert (
-        assembler.main(_assemble_args(candidate, spine, incumbent, tmp_path / "a")) == 0
-    )
-    capsys.readouterr()
-    build = json.loads(
-        (tmp_path / "a" / UK_DENSE_RELEASE_ID / "build_manifest.json").read_text()
-    )
-    assert build["code"]["git_dirty"] is None
-    assert build["code"]["git_dirty_measured"] is False
-    # A candidate that measured it passes the measurement through.
     manifest_path = candidate / "rowwise_candidate_manifest.json"
     manifest = json.loads(manifest_path.read_text())
-    manifest["identity"]["code"]["git_dirty"] = True
+    if dirty == "missing":
+        manifest["identity"]["code"].pop("git_dirty")
+    else:
+        manifest["identity"]["code"]["git_dirty"] = dirty
     manifest_path.write_text(json.dumps(manifest))
+    evaluation_path = candidate / "incumbent_surface_evaluation.json"
+    evaluation = json.loads(evaluation_path.read_text())
+    evaluation["identity"]["candidate_manifest_sha256"] = _sha(manifest_path)
+    evaluation_path.write_text(json.dumps(evaluation))
+    with pytest.raises(SystemExit, match="code.git_dirty"):
+        assembler.main(_assemble_args(candidate, spine, incumbent, tmp_path / "a"))
+
+
+def _surface_rows():
+    return {
+        "national_rows": [
+            {
+                "incumbent_name": "synthetic_national",
+                "incumbent_target": 100.0,
+                "family": "synthetic_program",
+                "candidate_estimate": 100.0,
+                "status": "measure_excluded",
+            }
+        ],
+        "local_rows": [
+            {
+                "incumbent_name": "synthetic_local",
+                "incumbent_target": 100.0,
+                "area_type": "local_authority",
+                "geography_id": "SYNTHETIC",
+                "incumbent_metric": "synthetic_metric",
+                "candidate_estimate": 100.0,
+                "incumbent_estimate": 99.0,
+                "status": "signed_deferred",
+            }
+        ],
+    }
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_surface_inventory(monkeypatch):
+    from datetime import date
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 9, 7)
+
+    monkeypatch.setattr(dc, "date", FixedDate)
+    monkeypatch.setattr(
+        dc,
+        "_UK_DENSE_SURFACE_INVENTORIES",
+        {
+            grain: {
+                "rows": len(rows),
+                "sha256": dc._canonical_sha256(
+                    [dc._uk_incumbent_row_identity(r, grain) for r in rows]
+                ),
+            }
+            for grain, rows in (
+                ("national", _surface_rows()["national_rows"]),
+                ("local", _surface_rows()["local_rows"]),
+            )
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation,expected",
+    [
+        ("missing", "incumbent surface missing"),
+        ("summary", "summary does not match"),
+        ("input", "identity.ledger_facts_sha256"),
+        ("deferred_row", "absolute relative error"),
+    ],
+)
+def test_assembler_requires_complete_passing_incumbent_surface(
+    tmp_path, monkeypatch, mutation, expected
+):
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    candidate, spine, incumbent = _candidate_dir(tmp_path)
+    path = candidate / "incumbent_surface_evaluation.json"
+    if mutation == "missing":
+        path.unlink()
+    else:
+        payload = json.loads(path.read_text())
+        if mutation == "summary":
+            payload["summary"]["passed"] = False
+        elif mutation == "input":
+            payload["identity"]["ledger_facts_sha256"] = "9" * 64
+        else:
+            payload["local_rows"][0]["candidate_estimate"] = 1.8
+            payload["summary"] = dc.uk_incumbent_surface_assessment(payload)
+        path.write_text(json.dumps(payload))
+    with pytest.raises(SystemExit, match=expected):
+        _load("assemble_uk_dense_release_dir").main(
+            _assemble_args(candidate, spine, incumbent, tmp_path / "r")
+        )
+
+
+def test_assembler_preserves_full_measure_approval_provenance(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    candidate, spine, incumbent = _candidate_dir(tmp_path)
+    out = tmp_path / "release"
     assert (
-        assembler.main(_assemble_args(candidate, spine, incumbent, tmp_path / "b")) == 0
+        _load("assemble_uk_dense_release_dir").main(
+            _assemble_args(candidate, spine, incumbent, out)
+        )
+        == 0
     )
     capsys.readouterr()
-    build = json.loads(
-        (tmp_path / "b" / UK_DENSE_RELEASE_ID / "build_manifest.json").read_text()
+    original = json.loads((candidate / "rowwise_candidate_manifest.json").read_text())
+    coverage = json.loads(
+        (out / UK_DENSE_RELEASE_ID / "uk_source_coverage.json").read_text()
     )
-    assert build["code"]["git_dirty"] is True
-    assert build["code"]["git_dirty_measured"] is True
+    assert coverage["measure_exclusions"] == original["measure_exclusions"]
+
+
+@pytest.mark.parametrize("expiry", [None, "2026-09-01", "not-a-date"])
+def test_assembler_rejects_expired_or_missing_measure_approval(
+    tmp_path, monkeypatch, expiry
+):
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    candidate, spine, incumbent = _candidate_dir(tmp_path)
+    path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["measure_exclusions"]["obr.housing_benefit"]["expires_on"] = expiry
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(SystemExit, match="measure exclusion"):
+        _load("assemble_uk_dense_release_dir").main(
+            _assemble_args(candidate, spine, incumbent, tmp_path / "r")
+        )

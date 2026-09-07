@@ -1014,7 +1014,10 @@ def _census_vintage_years(oa_vintage: Any) -> frozenset[int]:
     """
 
     return frozenset(
-        int(year) for year in re.findall(r"(?<!\d)(\d{4})(?!\d)", str(oa_vintage or ""))
+        int(census_year or dz_year)
+        for census_year, dz_year in re.findall(
+            r"(?<!\d)(\d{4})_census\b|\bdz(\d{4})(?!\d)", str(oa_vintage or "")
+        )
     )
 
 
@@ -1092,6 +1095,7 @@ def uk_local_target_surface(
     # cell compiled from a fact at the calibration period carries no hold
     # and is never touched.
     tenure_uprated: dict[str, int] = {}
+    tenure_holds: list[dict[str, Any]] = []
 
     level_to_area_type = {
         level: area_type
@@ -1124,20 +1128,45 @@ def uk_local_target_surface(
                 )
             output_position = len(output_rows)
             value = float(spec.value)
-            if (
-                uprating_receipt.get("applied")
-                and contract_target_id.startswith("ons.tenure.")
-                and _is_census_vintage_hold(
-                    spec.metadata,
-                    period,
-                    census_years=_census_vintage_years(
-                        uprating_receipt.get("ladder_oa_vintage")
-                    ),
+            if contract_target_id.startswith("ons.tenure."):
+                from_period = spec.metadata.get("uprating_from_period")
+                to_period = spec.metadata.get("uprating_to_period")
+                vintage = uprating_receipt.get("ladder_oa_vintage")
+                years = _census_vintage_years(vintage)
+                attempted = from_period is not None or to_period is not None
+                eligible = attempted and _is_census_vintage_hold(
+                    spec.metadata, period, census_years=years
                 )
-            ):
-                value *= uprating_factor
-                from_period = str(spec.metadata.get("uprating_from_period"))
-                tenure_uprated[from_period] = tenure_uprated.get(from_period, 0) + 1
+                applied = bool(eligible and uprating_receipt.get("applied"))
+                if applied:
+                    value *= uprating_factor
+                    tenure_uprated[str(from_period)] = (
+                        tenure_uprated.get(str(from_period), 0) + 1
+                    )
+                    reason = "census_vintage_hold_uprated"
+                elif not attempted:
+                    reason = "no_identity_hold"
+                elif not vintage:
+                    reason = "missing_ladder_oa_vintage"
+                elif not years:
+                    reason = "non_census_ladder_vintage"
+                elif not eligible:
+                    reason = "hold_not_from_ladder_census_vintage_or_wrong_period"
+                else:
+                    reason = "ladder_household_uprating_not_applied"
+                tenure_holds.append(
+                    {
+                        "target_name": spec.name,
+                        "from_period": from_period,
+                        "to_period": to_period,
+                        "ladder_oa_vintage": vintage,
+                        "attempted": attempted,
+                        "eligible": eligible,
+                        "applied": applied,
+                        "skipped": not applied,
+                        "reason": reason,
+                    }
+                )
             output_rows.append(
                 {
                     "area_type": area_type,
@@ -1302,6 +1331,11 @@ def uk_local_target_surface(
     uprating_receipt["tenure_cells"] = {
         "applied": bool(tenure_uprated),
         "cells": int(sum(tenure_uprated.values())),
+        "total_cells": len(tenure_holds),
+        "attempted_cells": sum(r["attempted"] for r in tenure_holds),
+        "eligible_cells": sum(r["eligible"] for r in tenure_holds),
+        "skipped_cells": sum(r["skipped"] for r in tenure_holds),
+        "holds": tenure_holds,
         "by_census_vintage": dict(sorted(tenure_uprated.items())),
         "adjudication": "microcosm#762 (A17, ruling 2026-09-03)",
         "reason": (

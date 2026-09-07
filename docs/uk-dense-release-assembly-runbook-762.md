@@ -9,6 +9,11 @@ on the **inspect lane only**: a constant release id, an immutable per-cut tag,
 It is registered as `("uk", 2025, "dense")` in the private repo
 `policyengine/populace-uk-private`. Publication is a separate human step.
 
+The R16/R17 release verdicts recorded in the historical receipts used the
+previous gate policy. They do not satisfy the current contract: four quality
+gates now block release, and the incumbent-surface evaluation is mandatory.
+No historical run was re-signed or recalibrated by the PR #870 review fixes.
+
 ## Prerequisites
 
 - The four pins the run stood on (`spine`, `ladder`, `facts`, `manifest`) and
@@ -56,6 +61,39 @@ release-blocking gate passed, single-block engine, the doctrine values, the
 A15/A17 uprating, the measure exclusions and their windows, the holdout, the
 Logbook row, the artifact digest.
 
+Measure the full pinned incumbent surface before assembly:
+
+```bash
+uv run --no-sync python tools/evaluate_uk_incumbent_surface.py \
+  --candidate-h5 <candidate-dir>/microcosm_uk_2025_local.h5 \
+  --candidate-manifest <candidate-dir>/rowwise_candidate_manifest.json \
+  --ledger-facts <chronicle-uk-artifact-dir> --ledger-facts-sha256 <facts> \
+  --ledger-manifest-sha256 <manifest> --engine-blocks 1 \
+  --incumbent-manifest <incumbent-dir>/incumbent_local_surface_manifest.json \
+  --incumbent-metrics-csv <incumbent-dir>/household_metrics.csv \
+  --incumbent-weights-csv <incumbent-dir>/wide_weights.csv \
+  --out-json <candidate-dir>/incumbent_surface_evaluation.json \
+  --out-md <candidate-dir>/incumbent_surface_evaluation.md
+```
+
+Use the actual metrics and weights filenames from the extraction manifest.
+The evaluator remains diagnostic: missing optional incumbent inputs and poor
+fit produce a failed assessment, not permission to publish. Only one engine
+block is accepted. Assembly requires the complete authenticated evaluation,
+including finite candidate measurements on every national and local row and
+finite realized incumbent estimates on every local row. National comparisons
+use the pinned incumbent targets; they do not claim realized incumbent fit.
+Signed deferrals stay in this evaluation. A missing or unmeasurable row blocks
+release until its measurement is supplied.
+
+The same existing absolute quality limits apply to this surface: every row
+within 25%, and at least half each family's rows within 25% when the family
+has at least five rows. The within-10% family share remains diagnostic.
+The candidate's fitted score uses uniform rows on its active local surface.
+Its holdout uses the separately recorded weighting rule over held local
+grains. Their shared cap does not make the losses directly comparable; no
+ranking of fitted versus holdout losses is reported.
+
 ## 4. Assemble the release directory
 
 ```bash
@@ -72,10 +110,20 @@ the candidate pre-flight, mints the cut tag
 id, clones the H5 beside itself as `microcosm_uk_2025_dense.h5`, stages
 `build_manifest.json`, `release_manifest.json`, `calibration_diagnostics.json`,
 `gate_summary.json`, `uk_source_coverage.json`, the signed `uk_local_gates.json`,
-`score_vs_incumbent.json` and `sha256sums.txt`, validates the directory with
+`score_vs_incumbent.json`, `incumbent_surface_evaluation.json`, the original
+`rowwise_candidate_manifest.json`, `source_calibration_diagnostics.json`,
+`incumbent_manifest.json`, and `sha256sums.txt`, validates the directory with
 `microcosm.data.contract.validate_release_dir`, and only then renames it into
 `releases/microcosm-uk-2024-25-dense/`. Re-assembling requires removing the
 previous directory first. The JSON summary prints the publication command.
+
+Assembly and every later directory validation require measured clean code
+(`code.git_dirty` exactly `false`) and full measure-exclusion provenance.
+Approval and expiry dates must be valid ISO dates and in force on the current
+validation date; expiry-day validation is allowed, the following day is not.
+The upload path invokes this validator again before uploading bytes. Separate support
+and binding adjudications keep their own policies. The gate thresholds and
+existing approvals have not been widened or renewed.
 
 ## 5. Publish for inspection (human step)
 
