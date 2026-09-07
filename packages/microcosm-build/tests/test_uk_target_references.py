@@ -38,6 +38,9 @@ from microcosm.calibrate.diagnostics import diagnostics_payload
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.calibrate.score import score_targets
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from tools.generate_uk_calibration_hierarchy_fixture import (
+    synthetic_facts_for_reference,
+)
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
     _annual_uc_award_band_token,
@@ -714,7 +717,6 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     )
     assert income_tax.metadata["ledger_fact_label"] == income_tax_fact["label"]
     assert income_tax.metadata["diagnostic_target_label"] == income_tax_fact["label"]
-
     tcl_households = targets["dwp.uc.two_child_limit.households_affected"]
     assert tcl_households.value == 469_780
     assert tcl_households.metadata["ledger_fact_period"] == "2025-04"
@@ -759,6 +761,32 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     )
     assert family_type.metadata["ledger_source_month_count"] == "12"
     assert family_type.metadata["ledger_source_cell_count_per_month"] == "2"
+
+
+def test_schema_8_fixture_generator_exercises_chronicle_authored_labels() -> None:
+    reference = next(
+        reference
+        for reference in load_country_spec("uk").target_references
+        if reference.name == "hmrc/employment_income_income_band_12_570_to_15_000"
+    )
+    facts = synthetic_facts_for_reference(reference, 0)
+    assert facts
+    assert all(fact["geography"]["name"] == "United Kingdom" for fact in facts)
+    assert all(fact["dimension_labels"] for fact in facts)
+    assert all(fact["dimension_value_labels"] for fact in facts)
+
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+    hierarchy = registry.specs[0].hierarchy
+    assert hierarchy is not None
+    assert hierarchy.provider.label == "HM Revenue and Customs"
+    assert hierarchy.category.id == "hmrc.survey_of_personal_incomes"
+    assert hierarchy.geography.label == "United Kingdom"
+    assert [dimension.id for dimension in hierarchy.dimensions] == [
+        "hmrc.total_income_band",
+        "total_income_lower_bound",
+    ]
+    assert hierarchy.dimensions[0].label == "Total income band"
+    assert hierarchy.target.label == facts[0]["label"]
 
 
 def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operations() -> (
