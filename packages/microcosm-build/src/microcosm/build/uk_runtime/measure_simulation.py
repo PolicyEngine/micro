@@ -16,6 +16,12 @@ from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
+from microcosm.build.uk_runtime.uc_target_measurements import (
+    UC_TARGET_VARIABLES,
+    compute_uc_target_measure,
+    uc_tcl_comparison_contract,
+)
 from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
 )
@@ -52,24 +58,10 @@ def _uc_calibration_composition(
     benunit = frame.table("benunit")
     member_ids = person["person_benunit_id"].to_numpy()
     ids = benunit["benunit_id"].to_numpy()
-    dependent = (
-        pd.Series(benunit["dependent_children"].to_numpy(), index=ids)
-        .loc[member_ids]
-        .to_numpy()
-    )
-    claimant = (
-        person["is_benunit_head"].to_numpy(dtype=bool)
-        | person["is_parent"].to_numpy(dtype=bool)
-        | (dependent == 0)
-    )
+    claimant = frs_uc_claimant_mask(person, benunit)
     claimant_count = (
         pd.Series(claimant).groupby(member_ids).sum().reindex(ids).to_numpy()
     )
-    if not np.isin(claimant_count, [1, 2]).all():
-        raise ValueError(
-            "UC calibration families require one or two relationship-defined "
-            "claimants per benefit unit."
-        )
     qualifying = _values(
         simulation.calculate(
             "is_child_or_qualifying_young_person_for_universal_credit", year
@@ -94,6 +86,12 @@ def compute_uk_measure_input(
 ) -> tuple[np.ndarray, str]:
     """Compute one policyengine-uk variable at the requested entity grain."""
 
+    if variable in UC_TARGET_VARIABLES:
+        if entity != "benunit":
+            raise KeyError(f"UC statistical measurements are benunit-only: {entity}")
+        return compute_uc_target_measure(
+            frame, simulation, variable, year
+        ), "uc_claim_statistical_proxy"
     if variable in _UC_CALIBRATION_VARIABLES:
         if entity != "benunit":
             raise KeyError(f"UC calibration composition is benunit-only: {entity}")
@@ -192,6 +190,7 @@ class UKMeasureResolver:
             "policyengine_uk_version": _policyengine_uk_version(policyengine_uk),
         }
         self.contract_targets = _uk_contract_targets()
+        self._uc_tcl_measures_used: set[str] = set()
 
     def knows(self, entity: str, variable: str) -> bool:
         """Whether a route in :func:`compute_uk_measure_input` reaches here.
@@ -201,7 +200,7 @@ class UKMeasureResolver:
         provider exception instead of the fence's message.
         """
 
-        if variable in _UC_CALIBRATION_VARIABLES:
+        if variable in _UC_CALIBRATION_VARIABLES | UC_TARGET_VARIABLES:
             return entity == "benunit"
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None or entity not in _ENTITY_ID:
@@ -219,7 +218,7 @@ class UKMeasureResolver:
         return getattr(definition, "value_type", None) in (int, float)
 
     def entity_for(self, variable: str) -> str | None:
-        if variable in _UC_CALIBRATION_VARIABLES:
+        if variable in _UC_CALIBRATION_VARIABLES | UC_TARGET_VARIABLES:
             return "benunit"
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None:
@@ -227,12 +226,21 @@ class UKMeasureResolver:
         return str(definition.entity.key)
 
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
-        return compute_uk_measure_input(
+        result = compute_uk_measure_input(
             self.frame, self.simulation, entity, variable, self.year
         )
+        if variable.startswith("uc_tcl_") and variable in UC_TARGET_VARIABLES:
+            self._uc_tcl_measures_used.add(variable)
+        return result
 
-    def receipt(self) -> dict[str, str]:
-        return dict(self._receipt)
+    def receipt(self) -> dict[str, Any]:
+        receipt = dict(self._receipt)
+        if self._uc_tcl_measures_used:
+            receipt["uc_tcl_comparison_contract"] = {
+                **uc_tcl_comparison_contract(self.year),
+                "computed_measures": sorted(self._uc_tcl_measures_used),
+            }
+        return receipt
 
 
 #: Every field a reviewed measure exclusion must carry (the

@@ -117,12 +117,12 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
         ),
     ]
     # Match the published decimal lower edges, independently of _band_bounds.
-    # KNOWN source mismatch: the highest INCLUDED band is bounded in DWP's
-    # labels (£2,400.01–£2,500/month); a separate £2,500.01+ category is absent
-    # from this registry. Current interpretation opens the included band to
-    # infinity. The £50,000 case pins that behavior, not source correctness.
+    # DWP's last included band is £2,400.01–£2,500/month, inclusive:
+    # https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html
+    # The separately published £2,500.01+ category remains unbound. It must
+    # never be silently absorbed into the last finite reference.
     edges = [float(f"{100 * i}.01") * 12 for i in range(25)]
-    awards = [-1.0, 0.0, 0.1, 50_000.0]
+    awards = [-1.0, 0.0, 0.1, 30_000.0, np.nextafter(30_000.0, np.inf), 50_000.0]
     for edge in edges:
         awards.extend([np.nextafter(edge, -np.inf), edge, np.nextafter(edge, np.inf)])
     people, benunits, expected_families, qualifying = [], [], [], []
@@ -157,7 +157,9 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
     # Reverse person-row order to expose positional aggregation assumptions;
     # Frame requires sorted group ids.
     bu = pd.DataFrame(benunits)
-    hh = pd.DataFrame({"household_id": np.arange(len(benunits) // 2)})
+    hh = pd.DataFrame(
+        {"household_id": np.arange(len(benunits) // 2), "region": "LONDON"}
+    )
     frame = Frame(
         {
             "person": pd.DataFrame(people).iloc[::-1].reset_index(drop=True),
@@ -232,7 +234,9 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
         family_name, band_name = spec.name.split("/")[-1].split("_annual_payment_")
         band_index = int(band_name.split("_to_")[0].replace("_", "")) // 1200
         lower = edges[band_index]
-        upper = edges[band_index + 1] if band_index < 24 else np.inf
+        upper = (
+            edges[band_index + 1] if band_index < 24 else np.nextafter(30_000.0, np.inf)
+        )
         mask = (
             (expected_family == family_name) & (uc > 0) & (uc >= lower) & (uc < upper)
         )

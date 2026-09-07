@@ -58,6 +58,8 @@ POLICYENGINE_BINDING_KEYS = {
     "band",
     "band_filter_dimension",
     "band_period_factor",
+    "band_upper_bound",
+    "band_upper_bound_inclusive",
     "count_of",
     "filters",
     "folded_into",
@@ -469,6 +471,13 @@ def test_uk_population_targets_declare_chronicle_loader_guarantees() -> None:
                         target["target_id"],
                         predicate,
                     )
+                if "map_to" in predicate:
+                    assert field == "household_conditions", target["target_id"]
+                    assert predicate["map_to"] in PREDICATE_ENTITIES
+                    assert predicate["map_to"] == binding.get(
+                        "from_entity", "household"
+                    )
+                    assert "reduce" in predicate
 
         assertion_policy = target.get("assertion_policy")
         if assertion_policy is not None:
@@ -546,6 +555,7 @@ def test_uk_population_uc_households_target_counts_benunits() -> None:
     assert target["measurement"] == {
         "entity": "benunit",
         "concept": "uk.benefit_unit.count",
+        "source_months": [f"2025-{month:02}" for month in range(4, 13)],
         "filters": [
             {
                 "concept": "uk.benefits.universal_credit.amount",
@@ -596,22 +606,87 @@ def test_uk_uc_composition_and_disability_children_targets_are_rebound() -> None
         binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
         assert binding["from_entity"] == "benunit"
         assert binding["value_variable"] == "benunit_count"
-        assert "household_conditions" not in binding
+        assert all(
+            condition["variable"] == "region" and condition["map_to"] == "benunit"
+            for condition in binding.get("household_conditions", ())
+        )
         assert "reduce" not in binding
         assert all(
             predicate["variable"] in allowed_filter_variables
             for predicate in binding["filters"]
         )
 
-    for target_id in {
-        "dwp.uc.two_child_limit.children_claimant_pip",
-        "dwp.uc.two_child_limit.children_disabled_child_element",
-    }:
+    for target_id, flag in {
+        "dwp.uc.two_child_limit.children_claimant_pip": "uc_tcl_claimant_receives_pip",
+        "dwp.uc.two_child_limit.children_disabled_child_element": (
+            "uc_tcl_receives_disabled_child_element"
+        ),
+    }.items():
         binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
-        assert binding["value_variable"] == "is_child"
-        assert binding["value_reduction"]["variable"] == "is_child"
+        assert binding["from_entity"] == "benunit"
+        assert binding["value_variable"] == "uc_tcl_qualifying_child_count"
+        assert "value_reduction" not in binding
         assert binding["kind"] == "baseline_flag_crosstab"
-        assert binding["affected_flag_variable"] == "uc_is_child_limit_affected"
+        assert binding["affected_flag_variable"] == "uc_tcl_affected_benunit_proxy"
+        assert binding["filters"] == [{"variable": flag, "operator": ">", "value": 0}]
+
+
+def test_uc_gb_bindings_match_the_committed_source_geography_and_finite_bands():
+    """Source K03000001 is GB; DWP £2400.01–2500 is not its £2500.01+ row."""
+    resource = _load()
+    references = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("target_references.json")
+        .read_text()
+    )["target_references"]
+    gb_ids = {
+        row["metadata"]["contract_target_id"]
+        for row in references
+        if row["metadata"]["contract_target_id"].startswith("dwp.uc.")
+        and row["ledger_selector"]["geography_id"] == "K03000001"
+    }
+    assert len(gb_ids) == 29
+    for target_id in gb_ids:
+        binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
+        geographic = [
+            condition
+            for condition in binding["household_conditions"]
+            if condition["variable"] == "region"
+        ]
+        assert len(geographic) == 1
+        assert geographic[0]["entity"] == "household"
+        assert geographic[0]["operator"] == "in"
+        assert set(geographic[0]["value"]) == {
+            "NORTH_EAST",
+            "NORTH_WEST",
+            "YORKSHIRE",
+            "EAST_MIDLANDS",
+            "WEST_MIDLANDS",
+            "EAST_OF_ENGLAND",
+            "LONDON",
+            "SOUTH_EAST",
+            "SOUTH_WEST",
+            "WALES",
+            "SCOTLAND",
+        }
+        assert geographic[0].get("map_to", "household") == binding.get(
+            "from_entity", "household"
+        )
+        if target_id.startswith("dwp.uc.payment_distribution_"):
+            assert binding["band_upper_bound"] == 2500
+            assert binding["band_upper_bound_inclusive"] is True
+            assert binding["band_period_factor"] == 12
+    # The omitted source top-coded row is not introduced or merged into a
+    # finite reference by these measurement-only changes.
+    payment = [
+        row for row in references if row["name"].startswith("dwp/uc_payment_dist/")
+    ]
+    assert len(payment) == 100
+    assert all(
+        "or over"
+        not in row["ledger_selector"]["dimension_values"]["monthly_award_amount_bands"]
+        for row in payment
+    )
 
 
 def test_uk_population_cgt_contract_names_match_runtime_specs() -> None:

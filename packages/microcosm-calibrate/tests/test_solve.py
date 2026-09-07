@@ -1879,6 +1879,84 @@ def test__given_warm_start_weights__then_optimizer_starts_from_warm_loss(
     assert warm.diagnostics[0].initial_estimate == cold.diagnostics[0].initial_estimate
 
 
+def test_free_adam_preserves_a_better_warm_start_after_overshooting() -> None:
+    """A finite Adam budget must not discard an already better feasible fit.
+
+    The warm start nearly hits a count target. A deliberately large step jumps
+    past it, so returning the last update makes the accepted warm start worse.
+    """
+    frame = Frame(
+        {
+            "person": pd.DataFrame({"person_id": [0], "person_household_id": [0]}),
+            "household": pd.DataFrame({"household_id": [0], "household_count": [1]}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=np.array([1.0]), kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet((_population_target(2.0, 1.005),))
+    result = calibrate(
+        frame,
+        targets,
+        epochs=2,
+        learning_rate=0.2,
+        mass="free",
+        max_weight_ratio=3,
+        warm_start_weights=np.array([2.0]),
+    )
+    assert result.final_loss <= result.initial_loss + 1e-7
+    np.testing.assert_allclose(result.weights, [2.0], rtol=1e-7)
+    assert len(result.loss_trajectory) == 2
+    assert result.options["iterate_selection_receipt"]["selected_epoch"] == 0
+
+
+def test_free_adam_considers_the_final_post_update_candidate() -> None:
+    """The final allowed step still counts when it improves the feasible fit."""
+    frame = Frame(
+        {
+            "person": pd.DataFrame({"person_id": [0], "person_household_id": [0]}),
+            "household": pd.DataFrame({"household_id": [0], "household_count": [1]}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=np.array([1.0]), kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet((_population_target(2.0, 1.0),))
+    result = calibrate(
+        frame,
+        targets,
+        epochs=1,
+        learning_rate=0.1,
+        mass="free",
+        max_weight_ratio=1.05,
+    )
+    assert result.final_loss < result.initial_loss
+    np.testing.assert_allclose(result.weights, [1.05], rtol=1e-7)
+    assert result.weights[0] <= 1.05
+    assert result.options["iterate_selection_receipt"]["selected_epoch"] == 1
+
+
+def test_free_adam_retains_an_intermediate_fit_when_the_last_step_overshoots() -> None:
+    """Selection includes intermediate candidates, not only start and end."""
+    frame = Frame(
+        {
+            "person": pd.DataFrame({"person_id": [0], "person_household_id": [0]}),
+            "household": pd.DataFrame({"household_id": [0], "household_count": [1]}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=np.array([1.0]), kind=WeightKind.DESIGN)},
+    )
+    result = calibrate(
+        frame,
+        TargetSet((_population_target(1.5, 1.0),)),
+        epochs=3,
+        learning_rate=0.2,
+        mass="free",
+        max_weight_ratio=3,
+    )
+    assert result.final_loss <= result.loss_trajectory.min() + 1e-7
+    assert result.final_loss < 0.02
+    assert result.options["iterate_selection_receipt"]["selected_epoch"] == 2
+
+
 def test__given_bad_warm_start_shape__then_solver_rejects_it(feasible_frame) -> None:
     frame, truths = feasible_frame(n=20)
     targets = TargetSet((_population_target(truths["population"], 1.0),))

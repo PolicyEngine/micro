@@ -1,0 +1,1 @@
+Use retained FRS claimant and partner roles to classify couples in UC capital donor cells and reported-UC predictors, including cohabiting couples and excluding older dependent children. Preserve legal marital status, emit an explicit is_uc_claimant input from the raw FRS spine, and share the claimant-role derivation with UC calibration measurement.
