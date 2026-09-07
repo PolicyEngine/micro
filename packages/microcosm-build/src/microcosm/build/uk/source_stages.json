@@ -511,11 +511,13 @@
    "operations": [
     {
      "kind": "derive",
-     "parameters": "disability category thresholds from baseline.gov.dwp at Jan-1"
+     "parameters": "disability category thresholds from the fiscal-converted gov.dwp tree at the survey year",
+     "year_rule": "survey_year"
     },
     {
      "kind": "derive",
-     "parameters": "disability flags from gov.dwp at Jan-1"
+     "parameters": "disability flags from the fiscal-converted gov.dwp tree at the survey year",
+     "year_rule": "survey_year"
     }
    ],
    "outputs": [
@@ -669,11 +671,24 @@
       "parents_learning_allowance",
       "adult_dependants_grant"
      ],
-     "consumed_only": true
+     "consumed_only": true,
+     "year_rule": "survey_year"
+    },
+    {
+     "kind": "materialize_rules_engine_predictors",
+     "predictors": [
+      "maintenance_loan_in_england_system",
+      "disabled_students_allowance_course_eligible",
+      "disabled_students_allowance_has_qualifying_condition"
+     ],
+     "consumed_only": true,
+     "year_rule": "calibration_year"
     },
     {
      "kind": "derive",
-     "scope": "proportional split of aggregate education_grants and DSA residual capacity"
+     "scope": "proportional split of aggregate education_grants and DSA residual capacity",
+     "parameters": "DSA maximum from gov.dfe.disabled_students_allowance.maximum at the calibration year",
+     "year_rule": "calibration_year"
     }
    ],
    "outputs": [
@@ -685,7 +700,7 @@
    "nonnegative_outputs": [
     "disabled_students_allowance_eligible_expenses"
    ],
-   "notes": "Runs before BRMA and always runs; both are signed inert differences for 2023-24. Pre-2025 DSA capacity is an aligned zero vector rather than an engine shape-sizing read. EDUCQUAL grant-split compatibility is re-cited to the FRS 2024-25 SN 9563 dictionary; codes 1-87 are empirically present and code 87 remains undocumented/defaulted."
+   "notes": "Runs before BRMA and always runs; the DSA seed evaluates at the release calibration year (uk-data#478) and the modelling-start gate compares against that year, not the frame period. EDUCQUAL grant-split compatibility is re-cited to the FRS 2024-25 SN 9563 dictionary; codes 1-87 are empirically present and code 87 remains undocumented/defaulted."
   },
   {
    "stage": "frs_take_up",

@@ -435,6 +435,18 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                 ),
                 source_stage(
                     "frs_disability",
+                    operations=[
+                        {
+                            "kind": "derive",
+                            "parameters": "disability category thresholds from the fiscal-converted gov.dwp tree at the survey year",
+                            "year_rule": "survey_year",
+                        },
+                        {
+                            "kind": "derive",
+                            "parameters": "disability flags from the fiscal-converted gov.dwp tree at the survey year",
+                            "year_rule": "survey_year",
+                        },
+                    ],
                     outputs=(
                         "aa_category",
                         "dla_sc_category",
@@ -494,8 +506,25 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                                 "parents_learning_allowance",
                                 "adult_dependants_grant",
                             ],
+                            "consumed_only": True,
+                            "year_rule": "survey_year",
                         },
-                        {"kind": "derive"},
+                        {
+                            "kind": "materialize_rules_engine_predictors",
+                            "predictors": [
+                                "maintenance_loan_in_england_system",
+                                "disabled_students_allowance_course_eligible",
+                                "disabled_students_allowance_has_qualifying_condition",
+                            ],
+                            "consumed_only": True,
+                            "year_rule": "calibration_year",
+                        },
+                        {
+                            "kind": "derive",
+                            "scope": "proportional split of aggregate education_grants and DSA residual capacity",
+                            "parameters": "DSA maximum from gov.dfe.disabled_students_allowance.maximum at the calibration year",
+                            "year_rule": "calibration_year",
+                        },
                     ],
                     outputs=("disabled_students_allowance_eligible_expenses",),
                     rewrites=("education_grants",),
@@ -1032,8 +1061,8 @@ def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         frs_disability,
-        "uk_dwp_baseline_disability_rates",
-        lambda period: frs_disability.UKDWPBaselineDisabilityRates(
+        "uk_dwp_disability_category_rates",
+        lambda period: frs_disability.UKDWPDisabilityCategoryRates(
             aa_lower=68.1,
             aa_higher=101.75,
             dla_sc_lower=26.9,

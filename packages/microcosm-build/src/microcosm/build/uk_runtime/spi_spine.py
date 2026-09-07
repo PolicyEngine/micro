@@ -529,7 +529,6 @@ class UKSPIIncomeSpineStageTransform:
             seed=self.seed,
             n_estimators=self.qrf_estimators,
             donor_sample_size=self.donor_sample_size,
-            build_period=uk_time_period(frame),
             verified_donor=donor_identity,
             donor_table=self.donor_table,
             initialize_frs_channel_columns=stage1_op.parameters[

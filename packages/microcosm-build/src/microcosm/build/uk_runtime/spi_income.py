@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from functools import cache
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -366,7 +365,6 @@ def impute_uk_spi_income_support(
     seed: int = 42,
     n_estimators: int = 100,
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE,
-    build_period: int | str = 2023,
     verified_donor: VerifiedSPIDonorIdentity | None = None,
     donor_table: pd.DataFrame | None = None,
     initialize_frs_channel_columns: Mapping[str, float] | None = None,
@@ -653,10 +651,15 @@ def impute_uk_spi_income_support(
     )
     person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw + tax_free
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
+    from microcosm.build.uk_runtime import frs_disability
+    from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
+
+    year = resolve_uk_year_rule(frs_disability.YEAR_RULE)
     person = _refresh_disability_derived_inputs(
         person,
         spi_people=spi_people,
-        build_period=build_period,
+        category_rates=frs_disability.uk_dwp_disability_category_rates(year),
+        flag_rates=frs_disability.uk_dwp_disability_flag_rates(year),
     )
     return UKSPIIncomeImputationResult(
         person=person,
@@ -1261,143 +1264,31 @@ def _verify_spi_donor_identity(path: Path) -> VerifiedSPIDonorIdentity:
     return verify_spi_donor_identity(path)
 
 
-@cache
-def _disability_parameters(year: int):
-    from policyengine_uk import CountryTaxBenefitSystem
-    from policyengine_uk.model_api import WEEKS_IN_YEAR
-
-    system = CountryTaxBenefitSystem()
-    return (
-        system.parameters(year).baseline.gov.dwp,
-        system.parameters(year).gov.dwp,
-        float(WEEKS_IN_YEAR),
-    )
-
-
 def _refresh_disability_derived_inputs(
     person: pd.DataFrame,
     *,
     spi_people: pd.Series,
-    build_period: int | str,
+    category_rates,
+    flag_rates,
 ) -> pd.DataFrame:
     """Keep category/flag inputs coherent with stage-2 reported amounts."""
 
-    try:
-        year = int(str(build_period)[:4])
-    except ValueError as exc:
-        raise ValueError(f"Invalid UK SPI build period {build_period!r}.") from exc
-    baseline_dwp, dwp, weeks_in_year = _disability_parameters(year)
-    target = person.loc[spi_people].copy()
-    mappings = (
-        (
-            "attendance_allowance_reported",
-            "aa_category",
-            (
-                ("LOWER", baseline_dwp.attendance_allowance.lower),
-                ("HIGHER", baseline_dwp.attendance_allowance.higher),
-            ),
-        ),
-        (
-            "dla_sc_reported",
-            "dla_sc_category",
-            (
-                ("LOWER", baseline_dwp.dla.self_care.lower),
-                ("MIDDLE", baseline_dwp.dla.self_care.middle),
-                ("HIGHER", baseline_dwp.dla.self_care.higher),
-            ),
-        ),
-        (
-            "dla_m_reported",
-            "dla_m_category",
-            (
-                ("LOWER", baseline_dwp.dla.mobility.lower),
-                ("HIGHER", baseline_dwp.dla.mobility.higher),
-            ),
-        ),
-        (
-            "pip_m_reported",
-            "pip_m_category",
-            (
-                ("STANDARD", baseline_dwp.pip.mobility.standard),
-                ("ENHANCED", baseline_dwp.pip.mobility.enhanced),
-            ),
-        ),
-        (
-            "pip_dl_reported",
-            "pip_dl_category",
-            (
-                ("STANDARD", baseline_dwp.pip.daily_living.standard),
-                ("ENHANCED", baseline_dwp.pip.daily_living.enhanced),
-            ),
-        ),
-    )
-    for reported, category, thresholds in mappings:
-        if reported not in target:
-            continue
-        weekly = pd.to_numeric(target[reported], errors="coerce").fillna(0.0)
-        weekly = weekly.to_numpy(dtype=float) / weeks_in_year
-        values = np.full(len(target), "NONE", dtype=object)
-        for name, rate in thresholds:
-            threshold = max(0.0, float(rate) - 1.0)
-            values[weekly >= threshold] = name
-        _assign_spi_values(person, spi_people, category, values, default="NONE")
+    from microcosm.build.uk_runtime import frs_disability
 
-    reported_flag_columns = (
-        "attendance_allowance_reported",
-        "dla_sc_reported",
-        "dla_m_reported",
-        "pip_m_reported",
-        "pip_dl_reported",
-        "sda_reported",
-        "incapacity_benefit_reported",
-        "iidb_reported",
-        "afcs_reported",
-        "esa_contrib_reported",
-        "esa_income_reported",
+    derived = frs_disability.derive_frs_disability(
+        person.loc[spi_people],
+        category_rates=category_rates,
+        flag_rates=flag_rates,
     )
-    total = np.zeros(len(target), dtype=float)
-    for column in reported_flag_columns:
-        if column in target:
-            total += pd.to_numeric(target[column], errors="coerce").fillna(0.0)
-    _assign_spi_values(
-        person,
-        spi_people,
-        "is_disabled_for_benefits",
-        total > 0.0,
-        default=False,
-    )
-
-    def amount(column: str) -> np.ndarray:
-        if column not in target:
-            return np.zeros(len(target), dtype=float)
-        return pd.to_numeric(target[column], errors="coerce").fillna(0.0).to_numpy()
-
-    annual_weeks = 365.25 / 7.0
-    safety_gap = annual_weeks
-    attendance = amount("attendance_allowance_reported")
-    dla_sc = amount("dla_sc_reported")
-    pip_dl = amount("pip_dl_reported")
-    afcs = amount("afcs_reported")
-    aa_higher = float(dwp.attendance_allowance.higher) * annual_weeks - safety_gap
-    dla_higher = float(dwp.dla.self_care.higher) * annual_weeks - safety_gap
-    pip_enhanced = float(dwp.pip.daily_living.enhanced) * annual_weeks - safety_gap
-    _assign_spi_values(
-        person,
-        spi_people,
-        "is_enhanced_disabled_for_benefits",
-        (attendance >= aa_higher) | (dla_sc > dla_higher) | (pip_dl >= pip_enhanced),
-        default=False,
-    )
-    _assign_spi_values(
-        person,
-        spi_people,
-        "is_severely_disabled_for_benefits",
-        (attendance > 0.0)
-        | (dla_sc >= dla_higher)
-        | (pip_dl >= pip_enhanced)
-        | (afcs > 0.0),
-        default=False,
-    )
+    for column in frs_disability.FRS_DISABILITY_OUTPUT_COLUMNS:
+        default = "NONE" if column.endswith("_category") else False
+        _assign_spi_values(
+            person,
+            spi_people,
+            column,
+            derived[column].to_numpy(),
+            default=default,
+        )
     return person
 
 
