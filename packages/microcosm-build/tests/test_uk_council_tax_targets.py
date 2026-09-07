@@ -93,7 +93,9 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
     assert len(expected_english) == 296
     assert band_h[0]["defer_if_compiles"] is True
     assert "170 band-H households from 49 raw FRS households" in band_h[0]["rationale"]
-    assert "84 of 296 authorities" in band_h[0]["rationale"]
+    # K=15 is the ruled clone count; the K=10 figure rides as history.
+    assert "76 of the 296 authorities draw no band-H household" in band_h[0]["rationale"]
+    assert "84 of 296 at K=10" in band_h[0]["rationale"]
     assert "council_tax_wales_band_h_absent" not in by_reason
 
 
