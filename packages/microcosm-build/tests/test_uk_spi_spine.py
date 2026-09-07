@@ -402,7 +402,7 @@ def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_sta
     monkeypatch.setattr(
         spi_income,
         "_refresh_disability_derived_inputs",
-        lambda person, *, spi_people, category_rates, flag_rates: person,
+        lambda person, *, spi_people, category_rates=None, flag_rates=None: person,
     )
     support = build_uk_spi_support_channel(
         person=_base_frame().table("person"),
@@ -464,7 +464,7 @@ def test_reviewed_absent_incapacity_signal_raises(tmp_path: Path) -> None:
     monkeypatch.setattr(
         spi_income,
         "_refresh_disability_derived_inputs",
-        lambda person, *, spi_people, category_rates, flag_rates: person,
+        lambda person, *, spi_people, category_rates=None, flag_rates=None: person,
     )
     support = build_uk_spi_support_channel(
         person=_base_frame()
@@ -532,7 +532,7 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
     monkeypatch.setattr(
         spi_income,
         "_refresh_disability_derived_inputs",
-        lambda person, *, spi_people, category_rates, flag_rates: person,
+        lambda person, *, spi_people, category_rates=None, flag_rates=None: person,
     )
 
     # This test checks parsed/path source resolution, independently of the engine.

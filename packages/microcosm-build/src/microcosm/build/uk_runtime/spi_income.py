@@ -13,6 +13,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
+from microcosm.build.uk_runtime.frs_disability import (
+    UKDWPDisabilityCategoryRates,
+    UKDWPDisabilityFlagRates,
+)
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     FRS_HMRC_INCPBEN_COLUMN,
     FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
@@ -651,16 +655,7 @@ def impute_uk_spi_income_support(
     )
     person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw + tax_free
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
-    from microcosm.build.uk_runtime import frs_disability
-    from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
-
-    year = resolve_uk_year_rule(frs_disability.YEAR_RULE)
-    person = _refresh_disability_derived_inputs(
-        person,
-        spi_people=spi_people,
-        category_rates=frs_disability.uk_dwp_disability_category_rates(year),
-        flag_rates=frs_disability.uk_dwp_disability_flag_rates(year),
-    )
+    person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
@@ -1268,13 +1263,28 @@ def _refresh_disability_derived_inputs(
     person: pd.DataFrame,
     *,
     spi_people: pd.Series,
-    category_rates,
-    flag_rates,
+    category_rates: UKDWPDisabilityCategoryRates | None = None,
+    flag_rates: UKDWPDisabilityFlagRates | None = None,
 ) -> pd.DataFrame:
-    """Keep category/flag inputs coherent with stage-2 reported amounts."""
+    """Keep category/flag inputs coherent with stage-2 reported amounts.
+
+    Re-derives the eight disability columns for the SPI-redrawn rows with the
+    FRS stage's own derivation and, unless rates are injected, the FRS stage's
+    declared year rule, so the two paths cannot disagree on the parameter
+    tree or the week constant (uk-data#475, uk-data#476). The engine is only
+    touched when rates are not supplied.
+    """
 
     from microcosm.build.uk_runtime import frs_disability
 
+    if category_rates is None or flag_rates is None:
+        from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
+
+        year = resolve_uk_year_rule(frs_disability.YEAR_RULE)
+        if category_rates is None:
+            category_rates = frs_disability.uk_dwp_disability_category_rates(year)
+        if flag_rates is None:
+            flag_rates = frs_disability.uk_dwp_disability_flag_rates(year)
     derived = frs_disability.derive_frs_disability(
         person.loc[spi_people],
         category_rates=category_rates,
