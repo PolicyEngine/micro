@@ -1,11 +1,23 @@
 # PR 879: matched national comparison after measurement corrections
 
+> Integration update, 7 September 2026: the second rebase is onto `main`
+> `5ab1b056f4d3e8a71873b13fe566f0bb899899b6`, which includes merged PR #874.
+> Ten publication prerequisite commits dropped because they are already merged;
+> four earlier fit-deferral/clock commits remain carried by this branch.
+> The review-fix patch replayed unchanged at code tip
+> `de606c218cb8446dc2b81477cbae56aae3cf897c` (previously `9ac8d9c1`).
+> This integration brings upstream `659adb1a` fiscal-year target selection,
+> DfT geography and take-up-contract fixes. The historical calibrations below
+> were **not rerun for this head**: their original measurement/spine code pins,
+> artifact identities and numerical results remain the scope of the evidence.
+> Post-rebase code validation is separate from those historical calibration runs.
+
 > Historical first-rebase note, 7 September 2026: at this stage PR #879 targeted
 > `main` and was rebased onto
 > `396df96fe7889777f3a7dd737e3305298219e6fa`. The four SPI/measurement and evidence
-> commits replayed with identical patches; their rebased tip is `4f000458`.
+> commits replayed with identical patches; their rebased tip was `4f000458`.
 > At that stage the branch also carried the 14 unmerged UK publication-stack prerequisite
-> commits on which these experiments depend. The rebase changes no executable
+> commits on which these experiments depend. That first rebase changed no executable
 > Python behavior relative to the previously tested PR head `4ccaabba`.
 > That first rebase left calibration receipts, target/exclusion registers and the
 > lockfile unchanged. This note does not describe the base of later integrations.
@@ -19,6 +31,8 @@
 The England-scope and FRS-composition corrections are implemented and the matched national calibrations are complete. The UC published-band mismatch and native entitlement limitations below remain unresolved, so this is a conditional comparison, not complete administrative measurement validation. The corrected SPI comparison reduces loss by **39.81%**, but remains release-blocked. England council-tax measurements now fit closely. The two high-payment childless-couple bands are empty in both corrected spines, establishing a support gap rather than a treatment-only regression.
 
 ## What changed
+
+These are the changes measured in the retained comparison. The later upstream integration described above has separate code-validation results and no new calibration results.
 
 - National VOA bands A–H and total explicitly require `country == ENGLAND`, matching their `E92000001` facts. The selected `E92000001` facts cover England within the broader England-and-Wales [VOA publication](https://www.gov.uk/government/statistics/council-tax-stock-of-properties-2025/council-tax-stock-of-properties-statistical-commentary). Local VOA and Scottish bindings are unchanged. The existing use of household counts as a dwelling-stock proxy remains separate from this geography correction.
 - The UC payment-distribution and family-composition measurements use retained FRS claimant/parent roles rather than a generic adult count. This preserves cohabiting couples and prevents an older child becoming a partner. UC child counts include reported child members under 20 and native UC child/qualifying-young-person status, excluding the claimants themselves. The five child-count targets use the same child definition.
@@ -137,4 +151,14 @@ The SPI `hmrc_spi_state_pension_income` leaf remains nominal from 2022 even thou
 
 Historical measurement validation on 7 September 2026, with UK 2.94.0 / Core 3.31.0 installed, covered 305 distinct passing tests and two existing skips after updating two stale country-resource-roster assertions to include the already-registered reviewed target-fit exclusion resource. The initial measurement suite had 111 passes and two skips; the additional country-package/calibration/gate suite had 192 passes and two inherited roster failures, both then repaired and rerun successfully. This is not a full-repository test claim. Repository Ruff, CI test-inventory verification and the pinned-feed target-reference regeneration test passed in that historical scope. The separate 458-pass/four-skip rebase validation above covered a later focused set; neither count describes engine-free CI. No release gate, exclusion policy, take-up input or original spine was altered.
 
-Review-repair validation on 7 September is separate: the two SPI test files pass without engines on Python 3.13 and 3.14 (39 passes, 14 skips each), and with the existing UK 2.94.0 / Core 3.31.0 environment (52 passes, one skip). Real-engine tests retain `requires_uk` coverage; parsed/path-equivalence coverage stubs deterministic uprating data and runs without an engine. The independent UC file passes five tests; the evidence-builder file passes 15 tests, including tamper refusal for all retained inputs and exact-row/privacy checks. The retained-evidence builder completed both 84-row audits without rerunning calibration. These are focused checks, not data certification.
+Review-repair validation on 7 September, before the second rebase, is separate: the two SPI test files pass without engines on Python 3.13 and 3.14 (39 passes, 14 skips each), and with the existing UK 2.94.0 / Core 3.31.0 environment (52 passes, one skip). Real-engine tests retain `requires_uk` coverage; parsed/path-equivalence coverage stubs deterministic uprating data and runs without an engine. The independent UC file passes five tests; the evidence-builder file passes 15 tests, including tamper refusal for all retained inputs and exact-row/privacy checks. The retained-evidence builder completed both 84-row audits without rerunning calibration. These are focused checks, not data certification.
+
+Post-rebase validation on 7 September covers the integrated code based on `main` at `5ab1b056f4d3e8a71873b13fe566f0bb899899b6`, including the upstream fiscal-year selection, DfT geography and take-up-contract changes:
+
+| Scoped check | Environment | Passed | Skipped |
+|---|---|---:|---:|
+| 13 affected test files | Python 3.13, no country engines | 588 | 19 |
+| Same 13 affected test files | Python 3.14, no country engines | 588 | 19 |
+| Five affected test files | Existing UK 2.94.0 / Core 3.31.0 environment | 81 | 2 |
+
+These scopes overlap and are reported separately. The earlier 113-file fast group was interrupted for the user-requested `main` update; it did not complete and is not counted as a full-suite pass. The completed checks validate code contracts, not a recalibration or certified dataset.
