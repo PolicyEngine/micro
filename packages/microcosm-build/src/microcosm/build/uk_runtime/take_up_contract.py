@@ -184,6 +184,7 @@ def _entries(values: object, *, section: str) -> tuple[UKRateEntry, ...]:
         if not isinstance(source, Mapping):
             raise ValueError(f"UK take-up contract {key!r} requires source.")
         _validate_source(key, source)
+        _validate_fitting_receipt(key, item.get("fitting_receipt"))
         entries.append(
             UKRateEntry(
                 key=key,
@@ -193,6 +194,32 @@ def _entries(values: object, *, section: str) -> tuple[UKRateEntry, ...]:
             )
         )
     return tuple(entries)
+
+
+def _validate_fitting_receipt(key: str, receipt: object) -> None:
+    """Refuse a landed receipt minted without the engine.
+
+    The childcare fitter records the installed policyengine-uk version and
+    writes ``null`` when the engine is absent (its hermetic tests inject a
+    runner). A landed rate must come from a real fit, so a receipt that
+    carries the field must carry a version; receipts without the field
+    (the incumbent parity records) are unaffected.
+    """
+
+    if receipt is None:
+        return
+    if not isinstance(receipt, Mapping):
+        raise ValueError(
+            f"UK take-up contract {key!r} fitting_receipt must be an object."
+        )
+    if "engine_version" in receipt:
+        version = receipt.get("engine_version")
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError(
+                f"UK take-up contract {key!r} fitting_receipt.engine_version must "
+                "name the engine the rate was fitted on; a hermetic receipt "
+                "(engine absent) cannot be landed."
+            )
 
 
 def _continuous_entries(values: object) -> tuple[Mapping[str, Any], ...]:

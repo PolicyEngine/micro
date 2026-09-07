@@ -1553,15 +1553,39 @@ def _is_period_token(value: str) -> bool:
     return bool(period_key[0]) and 1000 <= period_key[1] // 100 <= 9999
 
 
+def _comparable_period_value(fact: object) -> object:
+    """The period value the surface compares a fact on.
+
+    Every fiscal-year label on the surface is read as the opening year
+    (OBR's and HMRC's ``2025`` is FY2025-26). DfT labels its reporting year
+    by the March end year (``2025`` is YE March 2025, FY2024-25) and says so
+    in the fact's own coverage dates, so a fiscal-year fact that carries
+    ``period_coverage.start_date`` is keyed on that start year. Facts without
+    coverage keep their label; the publisher's label is recorded beside the
+    comparable value (``ledger_fact_period_label``) whenever they differ.
+    """
+
+    value = _at(fact, "period", "value")
+    if _str_at(fact, "period", "type") != "fiscal_year":
+        return value
+    start = _str_at(fact, "period_coverage", "start_date")
+    if len(start) < 4 or not start[:4].isdigit():
+        return value
+    label = str(value).strip()
+    if not label.isdigit():
+        return value
+    return int(start[:4])
+
+
 def _period_key(fact: object) -> tuple[int, int, str]:
-    return _period_key_from_value(_at(fact, "period", "value"))
+    return _period_key_from_value(_comparable_period_value(fact))
 
 
 def _exact_period_matches(fact: object, reference: LedgerTargetReference) -> bool:
     """Match exact periods by semantic value while retaining period-kind pins."""
 
     expected_value = reference.period
-    actual_value = _at(fact, "period", "value")
+    actual_value = _comparable_period_value(fact)
     actual_type = _str_at(fact, "period", "type")
     selector_type = str(reference.ledger_selector.get("period_type", ""))
     expected_type_hint = period_type_hint(expected_value)
@@ -1586,7 +1610,7 @@ def _reference_period_partition_key(
 ) -> tuple[int, int, str]:
     period_key = (
         _normalize_period_value(
-            _at(fact, "period", "value"),
+            _comparable_period_value(fact),
             declared_type=_str_at(fact, "period", "type"),
         )[0]
         if reference.period_match_policy == "exact"
@@ -2088,7 +2112,14 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         "ledger_legal_vintage": _str_at(fact, "measure", "legal_vintage")
         or _str_at(fact, "concept_alignment", "legal_vintage"),
         "ledger_period_type": _str_at(fact, "period", "type"),
-        "ledger_fact_period": _str_at(fact, "period", "value"),
+        "ledger_fact_period": str(_comparable_period_value(fact)),
+        # Stamped only when the publisher's label differs from the comparable
+        # period (DfT's March-end fiscal labels); absent otherwise.
+        "ledger_fact_period_label": (
+            _str_at(fact, "period", "value")
+            if str(_comparable_period_value(fact)) != _str_at(fact, "period", "value")
+            else ""
+        ),
         # Recorded only when the fact asserts it; legacy rows that omit the
         # field are not stamped (readers treat absence as
         # observation-by-default, same as the artifact loader).

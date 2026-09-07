@@ -61,6 +61,28 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
     ]
 
 
+def test_landed_fitting_receipt_must_name_the_engine() -> None:
+    from microcosm.build.uk_runtime.take_up_contract import _entries
+
+    entry = {
+        "key": "extended_childcare",
+        "output": "would_claim_extended_childcare",
+        "entity": "benunit",
+        "values": {"2024-04-06": 0.6054},
+        "source": {"source": "fit", "status": "fitted_offline"},
+        "fitting_receipt": {"seed": 0, "engine_version": None},
+    }
+    with pytest.raises(ValueError, match="hermetic receipt"):
+        _entries([entry], section="programs")
+
+    entry["fitting_receipt"]["engine_version"] = "2.94.0"
+    assert _entries([entry], section="programs")[0].key == "extended_childcare"
+
+    # The incumbent parity records carry no engine field and stay valid.
+    entry["fitting_receipt"] = {"source": "incumbent UK pipeline", "seed": 42}
+    assert _entries([entry], section="programs")
+
+
 def test_year_selection_uses_latest_value_at_or_before_build_year() -> None:
     contract = load_uk_take_up_contract()
 

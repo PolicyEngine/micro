@@ -667,6 +667,94 @@ def test__given_selector_matches_multiple_years__then_latest_source_period_is_us
     )
 
 
+def _fiscal_year_row(label: int, *, value: float, coverage: bool):
+    row = _consumer_fact_row_for_period(label, value=value)
+    row["period"] = {"type": "fiscal_year", "value": label}
+    if coverage:
+        # DfT labels the reporting year by its March end year: label 2025
+        # covers April 2024 to March 2025.
+        row["period_coverage"] = {
+            "basis": "fiscal",
+            "start_date": f"{label - 1}-04-01",
+            "end_date": f"{label}-03-31",
+            "notes": "DfT labels the reporting year by its March end year.",
+        }
+    return row
+
+
+def test__given_fiscal_year_facts_with_coverage__then_the_start_year_is_compared() -> (
+    None
+):
+    # Given: a closing-year publisher (label 2026 covers FY2025-26) and the
+    # 2025 calibration period.
+    reference = LedgerTargetReference(
+        name="latest SOI AGI total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2025,
+        family="irs_soi",
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [
+            _fiscal_year_row(2025, value=1.0, coverage=True),
+            _fiscal_year_row(2026, value=2.0, coverage=True),
+            _fiscal_year_row(2027, value=3.0, coverage=True),
+        ],
+        [reference],
+        country="us",
+    )
+
+    # Then: the label-2026 fact is FY2025-26, the latest not after 2025.
+    spec = registry.specs[0]
+    assert spec.value == 2.0
+    assert spec.metadata["ledger_fact_period"] == "2025"
+    assert spec.metadata["ledger_fact_period_label"] == "2026"
+
+
+def test__given_fiscal_year_facts_without_coverage__then_the_label_is_compared() -> (
+    None
+):
+    reference = LedgerTargetReference(
+        name="latest SOI AGI total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2025,
+        family="irs_soi",
+    )
+
+    registry = compile_ledger_target_references(
+        [
+            _fiscal_year_row(2025, value=1.0, coverage=False),
+            _fiscal_year_row(2026, value=2.0, coverage=False),
+        ],
+        [reference],
+        country="us",
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == 1.0
+    assert spec.metadata["ledger_fact_period"] == "2025"
+    assert "ledger_fact_period_label" not in spec.metadata
+
+
 def test__given_exact_period_policy__then_only_the_target_period_is_used() -> None:
     registry = compile_ledger_target_references(
         [

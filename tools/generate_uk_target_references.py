@@ -213,12 +213,30 @@ TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
     # needs a per-nation redesign before it can activate.
     ("slc.support.", "england"),
     ("dfe.", "england"),
-    ("dft.", "england"),
 )
+# DfT BUS05i rows name their area in the selector; the geography follows the
+# declared area, never a prefix, so a London or UK row can never be stamped
+# England if it is activated. Sub-national DfT areas carry DfT's own ids.
+DFT_BUS_AREA_GEOGRAPHY_IDS = {
+    "england": UK_GEOGRAPHY_IDS["england"],
+    "london": "E12000007",
+    "england_outside_london": "dft:england_outside_london",
+    "uk": UK_GEOGRAPHY_IDS["uk"],
+}
 
 
 def _geography_id_for_target(target: Mapping[str, Any]) -> str:
     target_id = str(target["target_id"]).lower()
+    if target_id.startswith("dft."):
+        area = str(
+            (target.get("ledger_selector") or {}).get("layout_groupby_value_id", "")
+        )
+        if area not in DFT_BUS_AREA_GEOGRAPHY_IDS:
+            raise ValueError(
+                f"{target_id}: DfT rows must declare layout_groupby_value_id in "
+                f"{sorted(DFT_BUS_AREA_GEOGRAPHY_IDS)}, got {area!r}."
+            )
+        return DFT_BUS_AREA_GEOGRAPHY_IDS[area]
     for prefix, geography_key in TARGET_PREFIX_GEOGRAPHY_PINS:
         if target_id.startswith(prefix):
             return UK_GEOGRAPHY_IDS[geography_key]

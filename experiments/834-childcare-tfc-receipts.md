@@ -250,9 +250,11 @@ take-up of 100%. The targeted bound is the reachable-ceiling problem above. A ra
 makes the persisted `would_claim_*` column constant, which the degenerate-surface gate refuses
 without a signed entry — a fit cannot sign that.
 
-**Third run — the fitter re-designed (`fit_2024_expected.json`, tool version 3):** the second
-run's rates were landed and the spine rebuilt, and the rebuilt twin exposed a seam the receipts
-must carry: the build keys every take-up flag as `seed 0 : output : int64 benunit_id` at the
+**Third run — the fitter re-designed (`fit_2024_expected.json`, tool version 3; input
+`l5-refit-twin/l5-refit.h5`, sha `c2804c18…`, the spine rebuilt on the second run's landing, seed
+0 — tool version 3 takes no draw, so the seed is recorded and unused; the landed
+`fitting_receipt.input_h5_sha256` names this file):** the second run's rates were landed and the
+spine rebuilt, and the rebuilt twin exposed a seam the receipts must carry: the build keys every take-up flag as `seed 0 : output : int64 benunit_id` at the
 `frs_take_up` stage, and later stages (SPI support channel, CGT incidence clone, age tail)
 clone and re-key rows, so no re-drawn realisation can sit on the persisted one — re-hashing the
 final ids agrees with the persisted universal flag on 66% of rows, chance being 51% — and the
@@ -266,7 +268,9 @@ extended-eligible). The objective is smooth, exact for the build (the persisted 
 draw from it), and reports each row's ceiling at a take-up of one. Checks: at the incumbent
 rates the expectations read spend 0.71, children 1.005, extended 1.32, targeted 0.49, universal
 1.06 against the L3 measurements 0.70 / 1.02 / 1.28 / 0.60 / 1.10 (draw noise, amplified for
-small bases by cloning); the unit test pins the bilinear form.
+small bases by cloning); the unit test pins the bilinear form. The basis forces the flags on, so
+the persisted draws of `l5-refit.h5` (which differ from `l2-column.h5` only in the two re-fitted
+flags and the imputed surfaces downstream of them) do not enter it.
 
 | rate | incumbent | fitted (converged, loss 0.080) | expectation ÷ target | ceiling at 1.0 |
 |---|---|---|---|---|
@@ -347,8 +351,8 @@ of 364, 5 733. The seven new rows all bind and fit (initial → final):
 | `dfe.funded_childcare.working_parent_children_2_to_4` (621 482) | 0.975 | 1.000 |
 | `dfe.funded_childcare.early_learning_2_year_olds` (95 031) | 0.766 | 0.997 |
 | `dfe.funded_childcare.universal_only_children` (396 965) | 1.149 | 0.995 |
-| `dft.bus_fare_receipts.england` (£3.417bn) | 0.569 | 0.999 |
-| `dft.bus_net_support.england` (£3.025bn) | 0.712 | 1.002 |
+| `dft.bus_fare_receipts.england` (£3.417bn, FY2024-25 held to 2025) | 0.569 | 0.999 |
+| `dft.bus_net_support.england` (£3.025bn, FY2024-25 held to 2025) | 0.712 | 1.002 |
 
 The pre-existing surface is where L4-pre left it, to the second decimal: the seven cells
 outside `uk_target_fit`'s 25% are the same seven — OBR CGT +44.2% (A21), the four UC
@@ -409,16 +413,25 @@ three are the stack's, not #834's, and stay open for its next re-cut. While the 
 in force the calibrated 2025-26 base carries ~40% more CGT liability than OBR expects; the
 publication's known issues must say so.
 
+**On this branch's own tree** (no target-fit register on main), the release-blocking
+`uk_target_fit` gate fails on `obr.capital_gains_tax` (+44.2%) in addition to main's
+pre-existing UC with-children failures; the signing that absorbs it lives on the composition
+branch until the publication stack merges its register. Declared, not carried, here.
+
 ## Part D — bus (#789)
 
 E9's Part D (`experiments/685-net-new-stages-receipts.md`) is the sizing evidence: at design
 weights England fares 0.56× BUS05ai and net support 0.71× BUS05bi; London 0.28×; England outside
 London 0.74× / 0.97×; the LCFS fare gradient runs against NTS0705a (#790's disposition).
 
-Re-measured on the L2 column twin against the FY2025 facts the two active rows bind
-(`l2_bus_design_weight_receipt.json`, design weights, `region` ≠ Scotland/Wales/NI as England):
+Re-measured on the L2 column twin against the facts the two active rows bind — DfT's
+label-2025 rows, which are year-ending March 2025 (FY2024-25): DfT labels its reporting year by
+the March end year, so the compile compares its fiscal-year facts on their own coverage start
+year and binds them at 2025 as a 2024 → 2025 uprating hold, like every other lagged fact on the
+surface (Vahid's review finding 1) — (`l2_bus_design_weight_receipt.json`, design weights,
+`region` ≠ Scotland/Wales/NI as England):
 
-| row | fact (FY2025, £bn) | L2 twin at design weights | ratio |
+| row | fact (FY2024-25, DfT label 2025, £bn) | L2 twin at design weights | ratio |
 |---|---|---|---|
 | `dft.bus_fare_receipts.england` (active) | 3.417 | 1.945 | 0.569 |
 | `dft.bus_net_support.england` (active) | 3.025 | 2.153 | 0.712 |

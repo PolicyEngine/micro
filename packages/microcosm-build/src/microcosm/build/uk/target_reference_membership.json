@@ -796,27 +796,27 @@
     },
     "dft.bus_fare_receipts.london": {
       "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_id": "E12000007"
     },
     "dft.bus_net_support.london": {
       "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_id": "E12000007"
     },
     "dft.bus_fare_receipts.england_outside_london": {
       "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_id": "dft:england_outside_london"
     },
     "dft.bus_net_support.england_outside_london": {
       "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_id": "dft:england_outside_london"
     },
     "dft.bus_fare_receipts.uk": {
       "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_id": "K02000001"
     },
     "dft.bus_net_support.uk": {
       "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_id": "K02000001"
     }
   },
   "genuine_sum_residue": [
@@ -2717,6 +2717,16 @@
     {
       "name": "dfe.funded_childcare.universal_only_children",
       "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dft.bus_fare_receipts.england",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "dft.bus_net_support.england",
+      "from": "2024",
       "to": "2025"
     }
   ],
@@ -7894,7 +7904,7 @@
           "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 3417388656.43538,
-          "resolved_fact_period": "2025",
+          "resolved_fact_period": "2024",
           "resolved_fact_key": "ledger_aggregate_fact_v2_2ece7c3d283b6de43b30389f"
         }
       ]
@@ -7909,7 +7919,7 @@
           "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
           "resolved_value": 3024904320.8399997,
-          "resolved_fact_period": "2025",
+          "resolved_fact_period": "2024",
           "resolved_fact_key": "ledger_aggregate_fact_v2_a12dfcdc0662c8a5e48bf003"
         }
       ]
