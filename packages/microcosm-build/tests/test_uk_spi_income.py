@@ -228,6 +228,7 @@ def _bypass_reviewed_donor_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(spi_income, "_verify_spi_donor_identity", lambda _: None)
 
 
+@pytest.mark.requires_uk
 def test_spi_preserves_observed_children_outside_the_donor_age_domain(
     monkeypatch, tmp_path
 ) -> None:
@@ -266,6 +267,7 @@ def test_spi_preserves_observed_children_outside_the_donor_age_domain(
     assert result.person.loc[adults, "gift_aid"].eq(10).all()
 
 
+@pytest.mark.requires_uk
 def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
     monkeypatch, tmp_path
 ) -> None:
@@ -321,6 +323,7 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
     assert result.income_uprating == {"from_period": 2022, "to_period": 2024}
 
 
+@pytest.mark.requires_uk
 def test_child_exclusion_keeps_the_base_dividend_random_stream(
     monkeypatch, tmp_path
 ) -> None:
@@ -361,6 +364,7 @@ def test_child_exclusion_keeps_the_base_dividend_random_stream(
     )
 
 
+@pytest.mark.requires_uk
 def test_stage2_pension_bridge_uses_observed_and_drawn_receipt(
     monkeypatch, tmp_path
 ) -> None:
@@ -407,6 +411,7 @@ def test_stage2_pension_bridge_uses_observed_and_drawn_receipt(
     )
 
 
+@pytest.mark.requires_uk
 def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     monkeypatch,
     tmp_path,
@@ -864,6 +869,7 @@ def test_the_spi_channel_ships_no_structural_nan_on_the_frs_channel(
 
 @pytest.mark.parametrize("age", [15, 16])
 @pytest.mark.parametrize("channel", ["frs", "spi"])
+@pytest.mark.requires_uk
 def test_spi_donor_age_boundary_applies_to_both_recipient_channels(
     monkeypatch, tmp_path, age, channel
 ) -> None:

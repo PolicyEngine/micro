@@ -1,6 +1,6 @@
 # Every UC calibration target in the PR 879 national comparison
 
-The compiled catalogue contains **100 UC payment-distribution targets: 25 published monthly award bands for each of four family types**. **84 are active; 16 have existing reviewed exclusions.** The measurement corrections do not change these targets, target values, exclusions or band edges.
+The compiled catalogue contains **100 UC payment-distribution targets: 25 included monthly award bands for each of four family types**. **84 are active; 16 have existing reviewed exclusions.** The measurement corrections do not change these targets, target values, exclusions or band edges.
 
 | Family | Catalogue bands | Active bands | Excluded bands |
 |---|---:|---:|---:|
@@ -12,7 +12,7 @@ The compiled catalogue contains **100 UC payment-distribution targets: 25 publis
 
 There are also **26 active UC-related targets outside the payment distribution**: 11 DWP caseload/composition targets and 15 two-child-limit targets. That makes **110 active UC-related targets overall**, out of the 371 active national targets. The two OBR UC expenditure targets are compiled but excluded. Counting those and the 16 excluded payment bands gives **128 compiled UC-related references**. The general `dwp_universal_credit` loss family alone has 95 active rows; the two-child-limit targets belong to a separate loss family.
 
-## All 100 payment-band target values
+## All 100 included payment-band target values
 
 Values below are the target number of UC benefit units, averaged across the pinned April–December 2025 observations; they are not payment amounts. **† means excluded from the solve under the existing register.** The annual column reproduces the readable target labels.
 
@@ -46,7 +46,7 @@ Values below are the target number of UC benefit units, averaged across the pinn
 
 The ordinary bins are £100 a month wide, annualised for the model as £1,200. The underlying source labels begin at £0.01, £100.01, etc.; the materializer multiplies the lower edge by 12 and uses the next band's lower edge as an exclusive upper bound. Thus the first effective interval is [£0.12, £1,200.12), and zero UC is excluded. Removing a target through the exclusion register does not widen neighbouring bands because edges come from the full pre-exclusion catalogue.
 
-**Upper-tail caveat:** the last published bin is £2,400.01–£2,500.00 a month, with the readable annual label £28,800–£30,000. The current materializer instead gives that last compiled band an infinite upper bound: [£28,800.12, infinity). This is an existing source/measurement mismatch, held constant in the requested comparison; the JSON records the actual upper bound as null. The table must not be read as proof that the solver stops counting UC at £30,000.
+**Upper-tail caveat:** the highest included bin is £2,400.01–£2,500.00 a month, with the readable annual label £28,800–£30,000. The current materializer instead gives that last compiled band an infinite upper bound: [£28,800.12, infinity). This is an existing source/measurement mismatch, held constant in the requested comparison; the JSON records the actual upper bound as null. The table must not be read as proof that the solver stops counting UC at £30,000. [DWP publishes](https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20%28bands%29.html) 26 positive-payment categories for months from September 2022, including a separate £2,500.01-or-over tail omitted from this 25-bin register. A £36,000 annual award therefore enters a row whose source label is bounded. The next-lower-edge convention also differs from the published inclusive-currency endpoints by the annualised penny offsets. The catalog and boundary repair belongs with [#736](https://github.com/PolicyEngine/microcosm/issues/736), which already tracks omitted no-payment/or-over source rows, and requires new matched measurements; these historical targets and results remain unchanged.
 
 These narrow cells reflect the source catalogue, not sample-size-driven bin selection. A cell can have hundreds of target benefit units but only one unique source case in the spine. The corrected comparison report therefore includes unweighted and unique-source support, alongside weighted fit, for every band. The calibration recipe does not automatically pool thin bands.
 
