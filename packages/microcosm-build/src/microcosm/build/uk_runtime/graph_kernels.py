@@ -43,6 +43,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
+from . import uc_relationships
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
 
@@ -91,6 +92,14 @@ _STAGE_MODULES = {
     "age_tail": "age_tail",
 }
 
+# Imported helper modules are not traversed by ``source_hash``. These three
+# stages use the shared FRS claimant/couple roles to determine their output.
+_STAGE_HELPER_MODULES = {
+    "frs_spine": (uc_relationships,),
+    "uc_reporter_redraw": (uc_relationships,),
+    "uc_capital_coherence": (uc_relationships,),
+}
+
 _COMPUTE = Capabilities(
     determinism=Determinism.DETERMINISTIC,
     numeric=Numeric.BITWISE,
@@ -132,7 +141,9 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
     # hermetic registries unhashable and, more importantly, would fail to bind
     # production edits made elsewhere in that stage's module.
     del transform
-    return source_hash(type(kernel), _stage_module(stage))
+    return source_hash(
+        type(kernel), _stage_module(stage), *_STAGE_HELPER_MODULES.get(stage, ())
+    )
 
 
 def _mass_log_payload(before: Frame, after: Frame) -> list[dict[str, object]]:
