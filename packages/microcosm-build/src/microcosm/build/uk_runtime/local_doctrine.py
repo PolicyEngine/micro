@@ -86,8 +86,9 @@ UK_LOCAL_SOLVE_EPOCHS = 1500
 #:
 #: microcosm#762 adjudication (2026-09-03, receipt R9): 15. The plan's
 #: K=4 default refused 172 UC child-band cells with zero support; K=10
-#: refused 86 band-H cells (A14) and, under ``grain_equal`` at bound 10,
-#: left five constituencies 0.3–7.7 ESS under the floor; K=15 clears the
+#: refused 86 local-authority cells (84 band-H plus the two micro-authorities;
+#: A14) and, under ``grain_equal`` at bound 10, left five constituencies
+#: 0.3–7.7 ESS under the floor; K=15 clears the
 #: floor (min constituency ESS 54.1) at unchanged fit and flat memory.
 UK_LOCAL_CLONE_COUNT = 15
 

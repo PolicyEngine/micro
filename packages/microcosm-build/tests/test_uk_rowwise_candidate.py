@@ -1194,6 +1194,27 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     assert reloaded.weights_for("household").total == pytest.approx(
         f100["weights"]["calibration_mass_change"]["new_total"]
     )
+    # Exact: the reader undoes the export rename and nothing else, so every
+    # table equals the written one with clone_index renamed back.
+    for entity in ("person", "benunit", "household"):
+        written = pd.read_hdf(dataset_path, entity)
+        expected = written.rename(
+            columns={"clone_index": ladder_clone_index_column(entity)}
+        )
+        if entity == "household":
+            # The frame carries the weight as its typed vector, not a column.
+            np.testing.assert_array_equal(
+                reloaded.weights_for("household").values,
+                expected["household_weight"].to_numpy(dtype="float64"),
+            )
+            expected = expected.drop(columns=["household_weight"])
+        got = reloaded.table(entity)
+        assert sorted(got.columns) == sorted(expected.columns)
+        pd.testing.assert_frame_equal(
+            got[sorted(got.columns)].reset_index(drop=True),
+            expected[sorted(expected.columns)].reset_index(drop=True),
+            check_dtype=False,
+        )
     assert f100["solve"]["n_targets_by_kind"] == {
         "local": 1,
         "ladder": 12,

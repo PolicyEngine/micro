@@ -135,6 +135,15 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
                 "incumbent_fitted_surface_loss": 0.181,
                 "rows_compared": 2,
                 "incumbent_missing_areas": {},
+                # The scorer pins what it scored; the assembler hash-joins
+                # these to the candidate bytes and the incumbent manifest.
+                "artifacts": {
+                    "candidate_diagnostics": {
+                        "sha256": _sha(candidate / "calibration_diagnostics.json")
+                    },
+                    "incumbent_household_metrics": {"sha256": "6" * 64},
+                    "incumbent_wide_weights": {"sha256": "7" * 64},
+                },
             }
         )
     )
@@ -262,6 +271,10 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
                 "period": 2025,
                 "households": 52846,
                 "inputs": {"incumbent_h5": {"sha256": "5" * 64}},
+                "outputs": {
+                    "metrics": {"sha256": "6" * 64},
+                    "weights": {"sha256": "7" * 64},
+                },
             }
         )
     )
@@ -377,3 +390,77 @@ def test_assembler_refuses_tampered_candidate_bytes(
                 str(tmp_path / "releases"),
             ]
         )
+
+
+def _assemble_args(
+    candidate: Path, spine: Path, incumbent: Path, out: Path
+) -> list[str]:
+    return [
+        "--candidate-dir",
+        str(candidate),
+        "--spine-h5",
+        str(spine),
+        "--incumbent-manifest",
+        str(incumbent),
+        "--out-dir",
+        str(out),
+    ]
+
+
+def test_assembler_refuses_a_score_computed_on_other_diagnostics(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    assembler = _load("assemble_uk_dense_release_dir")
+    candidate, spine, incumbent = _candidate_dir(tmp_path)
+    score_path = candidate / "score_vs_incumbent.json"
+    score = json.loads(score_path.read_text())
+    score["artifacts"]["candidate_diagnostics"]["sha256"] = "9" * 64
+    score_path.write_text(json.dumps(score))
+    with pytest.raises(SystemExit, match="candidate_diagnostics"):
+        assembler.main(_assemble_args(candidate, spine, incumbent, tmp_path / "r"))
+
+
+def test_assembler_refuses_a_score_against_another_incumbent_extraction(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    assembler = _load("assemble_uk_dense_release_dir")
+    candidate, spine, incumbent = _candidate_dir(tmp_path)
+    manifest = json.loads(incumbent.read_text())
+    manifest["outputs"]["weights"]["sha256"] = "8" * 64
+    incumbent.write_text(json.dumps(manifest))
+    with pytest.raises(SystemExit, match="incumbent_wide_weights"):
+        assembler.main(_assemble_args(candidate, spine, incumbent, tmp_path / "r"))
+
+
+def test_assembler_records_git_dirty_as_measured_or_unmeasured(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    assembler = _load("assemble_uk_dense_release_dir")
+    # The fixture's candidate manifest records only git_commit: unmeasured.
+    candidate, spine, incumbent = _candidate_dir(tmp_path)
+    assert (
+        assembler.main(_assemble_args(candidate, spine, incumbent, tmp_path / "a")) == 0
+    )
+    capsys.readouterr()
+    build = json.loads(
+        (tmp_path / "a" / UK_DENSE_RELEASE_ID / "build_manifest.json").read_text()
+    )
+    assert build["code"]["git_dirty"] is None
+    assert build["code"]["git_dirty_measured"] is False
+    # A candidate that measured it passes the measurement through.
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["identity"]["code"]["git_dirty"] = True
+    manifest_path.write_text(json.dumps(manifest))
+    assert (
+        assembler.main(_assemble_args(candidate, spine, incumbent, tmp_path / "b")) == 0
+    )
+    capsys.readouterr()
+    build = json.loads(
+        (tmp_path / "b" / UK_DENSE_RELEASE_ID / "build_manifest.json").read_text()
+    )
+    assert build["code"]["git_dirty"] is True
+    assert build["code"]["git_dirty_measured"] is True

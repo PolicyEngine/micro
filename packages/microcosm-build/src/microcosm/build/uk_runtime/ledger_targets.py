@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -1004,15 +1005,40 @@ def uk_ladder_household_uprating(
     }
 
 
-def _is_census_vintage_hold(metadata: Mapping[str, Any], period: int | str) -> bool:
-    """True for a compiled reference held from a census vintage to ``period``."""
+def _census_vintage_years(oa_vintage: Any) -> frozenset[int]:
+    """The census years named by the ladder's ``oa_vintage`` metadata.
 
+    ``"ew:2021_census;scotland:2022_census;ni:dz2021"`` names 2021 and 2022;
+    a later ladder names its own years, so a hold from that vintage takes the
+    factor without anyone editing a constant.
+    """
+
+    return frozenset(
+        int(year) for year in re.findall(r"(?<!\d)(\d{4})(?!\d)", str(oa_vintage or ""))
+    )
+
+
+def _is_census_vintage_hold(
+    metadata: Mapping[str, Any],
+    period: int | str,
+    *,
+    census_years: frozenset[int] | None = None,
+) -> bool:
+    """True for a compiled reference held from the ladder's census vintage to
+    ``period``.
+
+    The household factor is the growth from the ladder's census counts to the
+    calibration period, so only a hold from one of those census years may take
+    it; a hold from any other vintage (a 2023 estimate, say) keeps its value.
+    """
+
+    years = frozenset({2021, 2022}) if census_years is None else census_years
     from_period = metadata.get("uprating_from_period")
     to_period = metadata.get("uprating_to_period")
     if from_period is None or to_period is None:
         return False
     try:
-        return int(from_period) in (2021, 2022) and int(to_period) == int(period)
+        return int(from_period) in years and int(to_period) == int(period)
     except (TypeError, ValueError):
         return False
 
@@ -1101,7 +1127,13 @@ def uk_local_target_surface(
             if (
                 uprating_receipt.get("applied")
                 and contract_target_id.startswith("ons.tenure.")
-                and _is_census_vintage_hold(spec.metadata, period)
+                and _is_census_vintage_hold(
+                    spec.metadata,
+                    period,
+                    census_years=_census_vintage_years(
+                        uprating_receipt.get("ladder_oa_vintage")
+                    ),
+                )
             ):
                 value *= uprating_factor
                 from_period = str(spec.metadata.get("uprating_from_period"))

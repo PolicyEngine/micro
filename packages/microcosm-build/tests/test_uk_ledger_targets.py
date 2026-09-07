@@ -1550,3 +1550,22 @@ def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
             period=2025,
             ladder_household_uprating={"applied": True, "factor": 0.0},
         )
+
+
+def test_census_vintage_hold_follows_the_ladder_vintage_not_a_constant() -> None:
+    from microcosm.build.uk_runtime.ledger_targets import (
+        _census_vintage_years,
+        _is_census_vintage_hold,
+    )
+
+    assert _census_vintage_years("ew:2021_census;scotland:2022_census;ni:dz2021") == {
+        2021,
+        2022,
+    }
+    later = _census_vintage_years("ew:2031_census;scotland:2032_census;ni:dz2031")
+    held_2031 = {"uprating_from_period": "2031", "uprating_to_period": "2035"}
+    assert _is_census_vintage_hold(held_2031, 2035, census_years=later) is True
+    # A hold from a non-census vintage never takes the census household factor.
+    held_2033 = {"uprating_from_period": "2033", "uprating_to_period": "2035"}
+    assert _is_census_vintage_hold(held_2033, 2035, census_years=later) is False
+    assert _census_vintage_years("") == frozenset()

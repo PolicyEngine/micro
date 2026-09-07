@@ -252,6 +252,35 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     diagnostics = _load_json(diagnostics_path, label="calibration diagnostics")
     score = _load_json(score_path, label="score receipt")
     incumbent = _load_json(args.incumbent_manifest, label="--incumbent-manifest")
+    # Hash-join the score to the candidate and to the incumbent extraction it
+    # names: a score computed on other bytes cannot ride into the release.
+    score_artifacts = _mapping(score.get("artifacts"), "score receipt artifacts")
+    _require_equal(
+        "score receipt artifacts.candidate_diagnostics.sha256 vs diagnostics bytes",
+        _mapping(
+            score_artifacts.get("candidate_diagnostics"),
+            "score receipt artifacts.candidate_diagnostics",
+        ).get("sha256"),
+        measured["diagnostics"],
+    )
+    incumbent_outputs = _mapping(
+        incumbent.get("outputs"), "--incumbent-manifest outputs"
+    )
+    for score_key, output_key in (
+        ("incumbent_household_metrics", "metrics"),
+        ("incumbent_wide_weights", "weights"),
+    ):
+        _require_equal(
+            f"score receipt artifacts.{score_key}.sha256 vs "
+            f"--incumbent-manifest outputs.{output_key}.sha256",
+            _mapping(
+                score_artifacts.get(score_key), f"score receipt artifacts.{score_key}"
+            ).get("sha256"),
+            _mapping(
+                incumbent_outputs.get(output_key),
+                f"--incumbent-manifest outputs.{output_key}",
+            ).get("sha256"),
+        )
     runtime_block = _mapping(identity.get("runtime"), "manifest.identity.runtime")
     runtime = {}
     for package in _RUNTIME_PACKAGES:
@@ -472,13 +501,20 @@ def _stage_and_finalize(
     _write_json(release_dir / "uk_source_coverage.json", coverage)
     shutil.copyfile(report_path, release_dir / "uk_local_gates.json")
     shutil.copyfile(score_path, release_dir / "score_vs_incumbent.json")
+    # Measured by the candidate build when it recorded it; otherwise unmeasured
+    # (None), never asserted clean.
+    recorded_dirty = _mapping(identity.get("code"), "manifest.identity.code").get(
+        "git_dirty"
+    )
+    git_dirty = recorded_dirty if isinstance(recorded_dirty, bool) else None
     build_manifest = {
         "build_id": UK_DENSE_RELEASE_ID,
         "build_sha": code_pin[:7],
         "code": {
             "repository": "PolicyEngine/microcosm",
             "git_commit": code_pin,
-            "git_dirty": False,
+            "git_dirty": git_dirty,
+            "git_dirty_measured": git_dirty is not None,
         },
         "runtime": dict(runtime),
         "dataset": {

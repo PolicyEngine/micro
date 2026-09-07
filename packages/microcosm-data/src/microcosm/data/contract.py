@@ -4228,8 +4228,18 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
                 f"{_UK_DENSE_NAMESPACE!r}, got {namespace!r}."
             )
     build_manifest_path = release_dir / "build_manifest.json"
+    attempt_id: str | None = None
     if build_manifest_path.is_file():
         build_manifest = _load_json(build_manifest_path, failures)
+        if build_manifest is not None:
+            candidate_attempt = build_manifest.get("attempt_id")
+            if isinstance(candidate_attempt, str) and candidate_attempt:
+                attempt_id = candidate_attempt
+            else:
+                failures.append(
+                    "build_manifest.json must carry the calibration 'attempt_id' "
+                    "the signed gate report is bound to."
+                )
         if build_manifest is not None and build_manifest.get("build_id") != release_id:
             failures.append(
                 "build_manifest.json 'build_id' is "
@@ -4250,7 +4260,9 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     if report_path.is_file():
         report = _load_json(report_path, failures)
         if report is not None:
-            _check_uk_dense_gate_report(report, failures=failures)
+            _check_uk_dense_gate_report(
+                report, failures=failures, attempt_id=attempt_id
+            )
             if (
                 _artifact_by_path(release_manifest or {}, _UK_DENSE_GATE_REPORT_FILE)
                 is None
@@ -4275,7 +4287,9 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
         raise ReleaseContractError(release_dir, failures)
 
 
-def _check_uk_dense_gate_report(report: Mapping, *, failures: list[str]) -> None:
+def _check_uk_dense_gate_report(
+    report: Mapping, *, failures: list[str], attempt_id: str | None = None
+) -> None:
     """Verify the signed local gate-battery report the dense line ships.
 
     Same producer and signing dance as the exact-k terminal report, scoped to
@@ -4307,6 +4321,15 @@ def _check_uk_dense_gate_report(report: Mapping, *, failures: list[str]) -> None
     if missing:
         failures.append(f"{file} is missing report field(s) {missing}.")
         return
+    if attempt_id is not None and report.get("release_id") != attempt_id:
+        # Bind the signed report to the run this directory was cut from: a
+        # stale but validly signed shippable report dropped into a
+        # hand-assembled directory must not pass on its own signature.
+        failures.append(
+            f"{file} release_id {report.get('release_id')!r} is not the build's "
+            f"attempt id {attempt_id!r}; the signed report does not belong to "
+            "this run."
+        )
     if report.get("schema_version") != _UK_GATE_BATTERY_SCHEMA_VERSION:
         failures.append(
             f"{file} schema_version must be {_UK_GATE_BATTERY_SCHEMA_VERSION}."

@@ -101,6 +101,7 @@ def write_dense_bundle(
     report: dict | None = None,
     drop_coverage_key: str | None = None,
     drop_households: bool = False,
+    attempt_id: str | None = None,
 ) -> Path:
     release_dir = root / "releases" / release_id
     release_dir.mkdir(parents=True)
@@ -157,7 +158,11 @@ def write_dense_bundle(
     }
     if drop_coverage_key:
         del coverage[drop_coverage_key]
-    build_manifest = {"build_id": release_id, "build_sha": "abc1234"}
+    build_manifest = {
+        "build_id": release_id,
+        "build_sha": "abc1234",
+        "attempt_id": attempt_id if attempt_id is not None else report["release_id"],
+    }
     score = {
         "candidate_fitted_surface_loss": 0.01,
         "incumbent_fitted_surface_loss": 0.2,
@@ -306,3 +311,20 @@ def test_other_local_area_ids_keep_the_generic_contract(tmp_path: Path) -> None:
     )
     text = _failures(release_dir)
     assert "us_source_coverage.json" in text
+
+
+def test_report_from_another_attempt_is_rejected(tmp_path: Path) -> None:
+    release_dir = write_dense_bundle(
+        tmp_path, attempt_id="uk-local-candidate-f100-s42-20260101T000000Z-00000000"
+    )
+    assert "does not belong to this run" in _failures(release_dir)
+
+
+def test_build_manifest_without_attempt_id_is_rejected(tmp_path: Path) -> None:
+    release_dir = write_dense_bundle(tmp_path)
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    del build_manifest["attempt_id"]
+    (release_dir / "build_manifest.json").write_text(
+        json.dumps(build_manifest, indent=1)
+    )
+    assert "must carry the calibration 'attempt_id'" in _failures(release_dir)

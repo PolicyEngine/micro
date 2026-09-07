@@ -331,3 +331,41 @@ def test_local_metric_target_ids_map_metric_name_to_contract_id() -> None:
     # contract id the membership register is keyed by.
     assert mapping["council_tax/band_h"] == "voa.council_tax_stock.by_area.band_h"
     assert mapping["uc_households"] == "dwp.uc.households_by_area"
+
+
+def test_local_rows_bind_through_either_bound_name_form() -> None:
+    # Real diagnostics names carry the period ("t@AREA@2025"); the tool strips
+    # it with rsplit("@", 1) before the lookup, and the classifier accepts both
+    # forms so either producer binds.
+    rows = [
+        {
+            "name": "m@A",
+            "area_type": "constituency",
+            "geography_id": "A",
+            "metric": "m",
+            "value": 1.0,
+        },
+        {
+            "name": "m@B",
+            "area_type": "constituency",
+            "geography_id": "B",
+            "metric": "m",
+            "value": 1.0,
+        },
+        {
+            "name": "m@C",
+            "area_type": "constituency",
+            "geography_id": "C",
+            "metric": "m",
+            "value": 1.0,
+        },
+    ]
+    out = classify_local_rows(
+        rows,
+        metric_target_ids={"m": "t"},
+        membership={"targets": {}, "signed_deferrals": []},
+        our_metric_names={"constituency": ["m"], "la": []},
+        bound_names={"t@A@2025", "t@B"},
+        unmapped_concern={},
+    )
+    assert out["status"].tolist() == ["bound", "bound", "no_reference"]

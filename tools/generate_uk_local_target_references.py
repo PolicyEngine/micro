@@ -62,7 +62,9 @@ def main() -> None:
             }
         },
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
-        source_fact_feed=args.source_fact_feed or str(args.ledger_facts),
+        # Keep the explicit display-name option and default to an artifact-relative
+        # name, never the operator's absolute local path.
+        source_fact_feed=args.source_fact_feed or f"{args.ledger_facts.resolve().parent.name}/{args.ledger_facts.name}",
     )
     authored = author_area_target_references(
         contract,
@@ -393,8 +395,9 @@ def _area_signed_deferrals(
             "Spine-m carries 170 band-H households from 49 raw FRS households "
             "(London 13, Wales 11, South East 8, Scotland 6, West Midlands 4, "
             "South West 3, East of England 3, East Midlands 1). At the ruled "
-            "K=10, 84 of 296 authorities draw no band-H household, so the "
-            "family cannot bind at local-authority grain until a spine vintage "
+            "K=15, 76 of the 296 authorities draw no band-H household and the "
+            "median of the rest draws five (84 of 296 at K=10), so the family "
+            "cannot bind at local-authority grain until a spine vintage "
             "carries broader band-H support (microcosm#762 A14)."
         ),
         area_ids=english_local_authorities,

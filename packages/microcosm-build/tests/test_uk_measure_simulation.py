@@ -350,12 +350,21 @@ def test_packaged_exclusions_load():
             assert entry["tracking"] == "microcosm#791", entry["name"]
 
     # The 2026-09-03 tranche is #762's A16: five unreachable national rows,
-    # a one-month window, tracked on the WS-C deferrals issue.
+    # a one-month window, each row tracked on its spine-defect issue.
     a16 = [e for e in exclusions if e["approved_on"] == "2026-09-03"]
     assert sorted(e["name"] for e in a16) == sorted(_A16_UNREACHABLE_ROWS)
+    # Each row points at its own spine-defect issue (the October expiry follows
+    # the pointer); #736 carries the tranche as a whole.
+    a16_issues = {
+        "ons.savings_interest_income": "microcosm#866",
+        "obr.housing_benefit": "microcosm#867",
+        "slc.borrowers.plan_2_liable": "microcosm#868",
+        "slc.borrowers.plan_2_above_threshold": "microcosm#868",
+        "dwp.jsa_claimants": "microcosm#869",
+    }
     for entry in a16:
         assert entry["expires_on"] == "2026-10-03", entry["name"]
-        assert entry["tracking"] == "microcosm#736", entry["name"]
+        assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
         assert "A16" in entry["adjudication"], entry["name"]
 
     # The lever targets are deliberately NOT excluded: the six UC

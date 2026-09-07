@@ -2200,6 +2200,7 @@ def _manifest(
         "candidate_scope": "adjudicated_partial",
         "created_at": datetime.now(UTC).isoformat(),
         "git_commit": _git_commit(),
+        "git_dirty": _git_dirty(),
         "bound_target_families": list(args._bound_families),
         "binding_adjudications": dict(solve.binding_adjudications),
         "cross_grain": dict(cross_grain),
@@ -2224,7 +2225,7 @@ def _manifest(
                 if args._joint_inputs_receipt is not None
                 else {}
             ),
-            "code": {"git_commit": _git_commit()},
+            "code": {"git_commit": _git_commit(), "git_dirty": _git_dirty()},
             "runtime": runtime_provenance(),
             "sampling": dict(args._sampling_receipt),
             "survey_year": source_year,
@@ -2795,6 +2796,24 @@ def _git_commit() -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip()
+
+
+def _git_dirty() -> bool | None:
+    """Measured, not asserted: tracked modifications in the working tree.
+
+    ``None`` when git cannot answer (no repository), so a downstream
+    assembler records the pin as unmeasured rather than clean.
+    """
+
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    return bool(result.stdout.strip())
 
 
 def _json_text(payload: Any) -> str:
