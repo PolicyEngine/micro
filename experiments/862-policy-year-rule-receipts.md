@@ -21,7 +21,7 @@ calibration run remains available as a follow-up.
 | frame | 34,966 persons, 68,251,110 weighted, `time_period` `2024` on both sides |
 | engine | policyengine-uk 2.92.1, policyengine-core 3.31.0 |
 | before | `main` `c1b83241` |
-| after | this branch (`uk-policy-year-rule-862`; head recorded in the PR) |
+| after | this branch at `b1839a58` (`uk-policy-year-rule-862`, the implementation commit); the run was repeated on the committed tree and reproduced every figure below |
 | runtime | about 24 s per side, 2026-09-07 |
 
 ## Disability categories (records, weighted persons): identical before and after
