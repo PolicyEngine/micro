@@ -91,6 +91,7 @@ from microcosm.build.uk_runtime import (
     runtime_provenance,
     solve_uk_rowwise_weights_under_doctrine,
     spine_provenance_from_sidecar,
+    uk_fit_by_family,
     uk_household_weight_kind,
     uk_ladder_area_support_summary,
     uk_ladder_household_uprating,
@@ -2425,12 +2426,12 @@ def _manifest(
             },
         },
         "fit": {
-            "local_by_family": _fit_by_family(solve.diagnostics),
-            "national_by_family": _fit_by_family(solve.national_diagnostics),
+            "local_by_family": uk_fit_by_family(solve.diagnostics),
+            "national_by_family": uk_fit_by_family(solve.national_diagnostics),
             "weakest_families": sorted(
                 [
-                    *_fit_by_family(solve.diagnostics),
-                    *_fit_by_family(solve.national_diagnostics),
+                    *uk_fit_by_family(solve.diagnostics),
+                    *uk_fit_by_family(solve.national_diagnostics),
                 ],
                 key=lambda row: (
                     -float(row["worst_abs_relative_error"]),
@@ -2515,29 +2516,6 @@ def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]
     }
 
 
-def _fit_by_family(diagnostics: pd.DataFrame) -> list[dict[str, object]]:
-    if diagnostics.empty:
-        return []
-    rows = []
-    for family, group in diagnostics.groupby("family", sort=True):
-        errors = group["abs_relative_error"].to_numpy(dtype=np.float64)
-        worst_index = int(np.argmax(errors))
-        worst = group.iloc[worst_index]
-        rows.append(
-            {
-                "family": str(family),
-                "n_targets": len(group),
-                "share_within_10pct": float((errors <= 0.10).mean()),
-                "share_within_25pct": float((errors <= 0.25).mean()),
-                "worst_abs_relative_error": float(errors[worst_index]),
-                "worst_cell": str(
-                    worst.get("target_name", worst.get("name", "unknown"))
-                ),
-            }
-        )
-    return rows
-
-
 def _dense_reference_summary(solve: UKRowwiseDoctrineSolve) -> dict[str, Any] | None:
     """Manifest-sized evidence of the dense solve a size run was cut from."""
 
@@ -2565,8 +2543,8 @@ def _dense_reference_summary(solve: UKRowwiseDoctrineSolve) -> dict[str, Any] | 
         else None,
         "past_cap": {key: int(past_cap[key]) for key in _PAST_CAP_COUNT_KEYS},
         "weights": uk_weight_summary(dense.weights),
-        "local_by_family": _fit_by_family(dense.diagnostics),
-        "national_by_family": _fit_by_family(dense.national_diagnostics),
+        "local_by_family": uk_fit_by_family(dense.diagnostics),
+        "national_by_family": uk_fit_by_family(dense.national_diagnostics),
         "diagnostics_file": DENSE_REFERENCE_DIAGNOSTICS_FILENAME,
     }
 
