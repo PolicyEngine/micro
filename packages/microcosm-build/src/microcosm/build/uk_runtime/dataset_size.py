@@ -17,6 +17,7 @@ from microcosm.calibrate import (
     select_exact_k,
 )
 from microcosm.calibrate.initialization import contribution_initialization
+from microcosm.calibrate.solve import BUDGET_BASIS_OPEN_PROBABILITY_MASS
 from microcosm.frame import Frame
 
 
@@ -119,12 +120,16 @@ def refit_uk_dataset_size(
         target_loss_scales=dense.target_loss_scales,
         target_loss_cap=dense.target_loss_cap,
     )
+    # The exact-count draw can only draw from the gates' open-probability
+    # mass, so the budget search targets that mass, not the count of
+    # not-fully-closed gates (microcosm#355 ruling 2026-09-08).
     selection = calibrate(
         frame,
         TargetSet(problem.targets),
         target_records=households,
         gate_initialization=init,
         mass_reason=dense.options["mass_reason"],
+        budget_basis=BUDGET_BASIS_OPEN_PROBABILITY_MASS,
         **common,
     )
     probabilities = selection.gate_open_probabilities
@@ -193,6 +198,7 @@ def refit_uk_dataset_size(
             "protected_carriers": int(init.protected.sum()),
             "selection_receipt": sampling,
             "selection_pi_hi": pi_hi,
+            "selection_budget_basis": BUDGET_BASIS_OPEN_PROBABILITY_MASS,
             "selection_feasibility": feasibility,
             "selection_l0_lambda": selection.l0_lambda,
             "selection_epochs": epochs,
@@ -331,6 +337,7 @@ def selection_feasibility(
             f"{t:g}": int((pi >= t).sum()) for t in (0.5, 0.9, 0.99, 0.999)
         },
         "budget_search_n_nonzero": int(n_nonzero),
+        "budget_search_basis": BUDGET_BASIS_OPEN_PROBABILITY_MASS,
         "selection_l0_lambda": float(l0_lambda),
     }
 

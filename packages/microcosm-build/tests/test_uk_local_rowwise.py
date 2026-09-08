@@ -1410,6 +1410,11 @@ def test_size_refit_pi_hi_promotes_learned_certainties_and_is_recorded():
     receipt = sized.receipt
     assert receipt["selection_pi_hi"] == 0.5
     assert receipt["selection_receipt"]["pi_hi"] == 0.5
+    assert receipt["selection_budget_basis"] == "open_probability_mass"
+    assert (
+        receipt["selection_feasibility"]["budget_search_basis"]
+        == "open_probability_mass"
+    )
     assert receipt["selection_feasibility"]["requested_pi_hi"] == 0.5
     assert receipt["selection_feasibility"]["feasible_at_requested_pi_hi"] is True
     # Certainties at 0.5 can only grow relative to the exact-one set.

@@ -123,6 +123,12 @@ _L0_SEARCH_HI = 1e1
 #: the search's cost at ``budget_iters`` optimizations; ~10 bisection steps cut
 #: the ``log10`` bracket by 2^10, far finer than the count is resolvable.
 _DEFAULT_BUDGET_ITERS = 10
+#: What the ``target_records`` budget search measures against the budget.
+BUDGET_BASIS_NONZERO_COUNT = "nonzero_count"
+BUDGET_BASIS_OPEN_PROBABILITY_MASS = "open_probability_mass"
+BUDGET_BASES = frozenset(
+    {BUDGET_BASIS_NONZERO_COUNT, BUDGET_BASIS_OPEN_PROBABILITY_MASS}
+)
 
 # Per-target contribution cap for weighted MAPE. A target can contribute at most
 # a 1000% scaled miss to the objective.
@@ -1129,11 +1135,21 @@ def _search_l0_lambda_for_budget(
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
     return_gate_open_probabilities: bool = False,
+    budget_basis: str = BUDGET_BASIS_NONZERO_COUNT,
 ) -> (
     tuple[np.ndarray, np.ndarray, float, int]
     | tuple[np.ndarray, np.ndarray, float, int, np.ndarray]
 ):
-    """Search ``l0_lambda`` so the achieved non-zero count tracks the budget.
+    """Search ``l0_lambda`` so the achieved budget measure tracks the budget.
+
+    ``budget_basis`` names what the search measures against
+    ``target_records``: the historical non-zero *count* of surviving weights
+    (``BUDGET_BASIS_NONZERO_COUNT``), or the gates' expected open count, the
+    sum of their open probabilities (``BUDGET_BASIS_OPEN_PROBABILITY_MASS``).
+    An exact-count draw on the learned probabilities can only draw from that
+    mass, so a selection that targets a count with the mass basis is feasible
+    by construction; the count basis can leave partly polarised gates counted
+    as survivors while carrying a fraction of a record each.
 
     The realized non-zero count is monotone *decreasing* in ``l0_lambda`` (a
     stronger penalty closes more gates), so a bisection on ``log10(l0_lambda)``
@@ -1174,6 +1190,12 @@ def _search_l0_lambda_for_budget(
         existing workspace callers.
     """
     lo_u, hi_u = math.log10(_L0_SEARCH_LO), math.log10(_L0_SEARCH_HI)
+    if budget_basis not in BUDGET_BASES:
+        raise ValueError(
+            f"budget_basis must be one of {sorted(BUDGET_BASES)}, got {budget_basis!r}."
+        )
+    if budget_basis == BUDGET_BASIS_OPEN_PROBABILITY_MASS:
+        return_gate_open_probabilities = True
     tol = max(1, round(0.05 * target_records))
 
     evaluation = 0
@@ -1234,7 +1256,12 @@ def _search_l0_lambda_for_budget(
                 **optimize_kwargs,
             )
             gate_open_probabilities = None
-        n_nonzero = int((weights > prune_atol).sum())
+        if budget_basis == BUDGET_BASIS_OPEN_PROBABILITY_MASS:
+            if gate_open_probabilities is None:  # pragma: no cover - guarded above
+                raise RuntimeError("mass-basis budget search needs gate probabilities.")
+            n_nonzero = int(round(float(np.sum(gate_open_probabilities))))
+        else:
+            n_nonzero = int((weights > prune_atol).sum())
         return weights, trajectory, n_nonzero, gate_open_probabilities
 
     best: tuple[np.ndarray, np.ndarray, float, int, np.ndarray | None] | None = None
@@ -1411,6 +1438,7 @@ def calibrate(
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
+    budget_basis: str = BUDGET_BASIS_NONZERO_COUNT,
     seed: int = 0,
     target_loss_weights: np.ndarray | None = None,
     target_loss_scales: np.ndarray | None = None,
@@ -1642,6 +1670,12 @@ def calibrate(
         )
     if budget_iters <= 0:
         raise ValueError(f"budget_iters must be positive, got {budget_iters!r}.")
+    if budget_basis not in BUDGET_BASES:
+        raise ValueError(
+            f"budget_basis must be one of {sorted(BUDGET_BASES)}, got {budget_basis!r}."
+        )
+    if budget_basis != BUDGET_BASIS_NONZERO_COUNT and target_records is None:
+        raise ValueError("budget_basis applies to a target_records budget search.")
     target_loss_cap = _validate_target_loss_cap(target_loss_cap)
 
     target_loss_weights_input = _validate_target_loss_weights(
@@ -1778,6 +1812,7 @@ def calibrate(
             initial_lambda=(l0_lambda if l0_lambda > 0.0 else None),
             progress_callback=progress_callback,
             budget_iters=budget_iters,
+            budget_basis=budget_basis,
             return_gate_open_probabilities=True,
             **(
                 {}
@@ -1875,6 +1910,7 @@ def calibrate(
         target_loss_cap=target_loss_cap,
         options={
             "gate_initialization_supplied": gate_initialization is not None,
+            "budget_basis": budget_basis,
             "method": method,
             "epochs": epochs,
             "learning_rate": learning_rate,
