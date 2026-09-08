@@ -1750,6 +1750,7 @@ def _local_diagnostics_registry(
             source=str(target.source),
             family=family,
             metadata={key: str(value) for key, value in target.metadata.items()},
+            hierarchy=target.hierarchy,
         )
         specs.append(spec)
         geography[spec.to_target().row_name] = str(row.area_type)
@@ -2056,6 +2057,7 @@ def _write_output_bundle(
         support.to_csv(staged["support"], index=False)
         staged["past_cap"].write_text(_json_text(dict(solve.past_cap_census or {})))
         local_registry = _local_output_registry(
+            solve,
             problem,
             period=(
                 args._joint_inputs_receipt["calibration_year"]
@@ -2467,12 +2469,20 @@ def _fit_by_family(diagnostics: pd.DataFrame) -> list[dict[str, object]]:
 
 
 def _local_output_registry(
+    solve: UKRowwiseDoctrineSolve,
     problem: UKRowwiseLocalMatrix,
     *,
     period: int,
 ) -> TargetRegistry:
     specs = []
-    for row in problem.target_frame.itertuples(index=False):
+    targets = tuple(solve.calibration_result.problem.targets)
+    if len(targets) < len(problem.target_frame):
+        raise RuntimeError("candidate target set is shorter than its local surface.")
+    for target, row in zip(
+        targets[: len(problem.target_frame)],
+        problem.target_frame.itertuples(index=False),
+        strict=True,
+    ):
         payload = row._asdict()
         specs.append(
             TargetSpec(
@@ -2488,6 +2498,7 @@ def _local_output_registry(
                     "area_code": str(payload["area_code"]),
                     "metric": str(payload["metric"]),
                 },
+                hierarchy=target.hierarchy,
             )
         )
     return TargetRegistry(specs, country="uk")

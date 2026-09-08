@@ -99,6 +99,15 @@ def test_uk_local_target_surface_uses_registry_names_and_reconciles() -> None:
     ladder_rows = surface.loc[surface["metric"] == "households"]
     assert set(ladder_rows["area_type"]) == {"constituency", "la"}
     assert all(ladder_rows["period"] == 2025)
+    for row in ladder_rows.itertuples(index=False):
+        hierarchy = row.hierarchy
+        assert hierarchy.provider.id == "ons"
+        assert hierarchy.provider.label == "Office for National Statistics"
+        assert hierarchy.category.id == "ons.household_composition"
+        assert hierarchy.category.label == "Household composition"
+        assert hierarchy.geography.id == row.area_code
+        assert hierarchy.target.id == row.target_name
+        assert hierarchy.target.label == "Occupied households"
     assert "national_uc_caseload_vs_uc_households_by_area" in {
         group["bridge_id"] for group in receipt["groups"]
     }

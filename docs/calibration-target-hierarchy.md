@@ -51,7 +51,7 @@ unknown providers.
 Generated UK target-reference resources keep the same normalized catalogs and
 add a `hierarchy.target_categories` lookup keyed by `contract_target_id`.
 Individual scalar rows already carry `metadata.contract_target_id`, so the
-19,618 local rows do not repeat labels. Smaller country resources may carry a
+generated local rows do not repeat labels. Smaller country resources may carry a
 direct `category_id` on a reference. Loading either form resolves the immutable
 provider/category seed on `LedgerTargetReference`.
 

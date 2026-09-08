@@ -34,6 +34,10 @@ from microcosm.build.uk_runtime.ladder_targets import (
     constituency_household_targets,
     local_authority_household_targets,
 )
+from microcosm.build.uk_runtime.local_hierarchy import (
+    UK_CENSUS_HOUSEHOLDS_CATEGORY_ID,
+    uk_local_target_hierarchy,
+)
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
     AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
@@ -1202,6 +1206,7 @@ def uk_local_target_surface(
                     "source": spec.source,
                     "period": period,
                     "contract_target_id": contract_target_id,
+                    "hierarchy": spec.hierarchy,
                 }
             )
             reconciliation_rows.append(
@@ -1318,19 +1323,25 @@ def uk_local_target_surface(
     ):
         for row in targets.itertuples(index=False):
             output_position = len(output_rows)
+            target_name = f"external:census_households/households@{row.code}"
             output_rows.append(
                 {
                     "area_type": area_type,
                     "area_code": str(row.code),
                     "metric": "households",
                     "value": float(row.households) * uprating_factor,
-                    "target_name": (
-                        f"external:census_households/households@{row.code}"
-                    ),
+                    "target_name": target_name,
                     "family": "census_households",
                     "source": "UK OA geography ladder",
                     "period": period,
                     "contract_target_id": "external:census_households/households",
+                    "hierarchy": uk_local_target_hierarchy(
+                        name=target_name,
+                        label="Occupied households",
+                        category_id=UK_CENSUS_HOUSEHOLDS_CATEGORY_ID,
+                        area_type=area_type,
+                        area_code=str(row.code),
+                    ),
                 }
             )
             reconciliation_rows.append(

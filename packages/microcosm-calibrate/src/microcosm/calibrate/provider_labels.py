@@ -53,6 +53,8 @@ US_CALIBRATION_PROVIDER_LABELS: Mapping[str, str] = MappingProxyType(
 
 UK_CALIBRATION_PROVIDER_LABELS: Mapping[str, str] = MappingProxyType(
     {
+        "dfe": "Department for Education",
+        "dft": "Department for Transport",
         "dwp": "Department for Work and Pensions",
         "hmrc": "HM Revenue and Customs",
         "isc": "Independent Schools Council",

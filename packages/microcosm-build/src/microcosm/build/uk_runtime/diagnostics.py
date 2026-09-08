@@ -2,10 +2,10 @@
 
 The shared :mod:`microcosm.calibrate.diagnostics` payload is the release
 contract: it carries the target surface, every target row, solver options,
-schema-7 source/variable/dimension identity, and the concentration scalars used
-by US releases. UK adds the effective-sample-size fraction, shipped-weight
-concentration, zero-weight rows split by their declared support strata, and
-target fit by UK geography level.
+the schema-8 provider/category/geography/dimension/target hierarchy, and the
+concentration scalars used by US releases. UK adds the effective-sample-size
+fraction, shipped-weight concentration, zero-weight rows split by their
+declared support strata, and target fit by UK geography level.
 
 This module wraps the shared payload and places those additions under a
 separately versioned ``uk_diagnostics`` block.  The common top-level

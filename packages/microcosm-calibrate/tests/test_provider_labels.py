@@ -1,4 +1,4 @@
-"""Country-owned provider labels used by schema-7 diagnostics."""
+"""Country-owned labels for programmatically declared providers."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from microcosm.calibrate import (
 )
 
 
-def test_current_us_schema_7_sources_have_provider_labels() -> None:
+def test_current_us_providers_have_labels() -> None:
     current_source_ids = {
         "bea_nipa",
         "cbo",
@@ -33,10 +33,16 @@ def test_current_us_schema_7_sources_have_provider_labels() -> None:
     }
 
     assert current_source_ids <= US_CALIBRATION_PROVIDER_LABELS.keys()
+    assert all(
+        calibration_provider_label("us", provider_id)
+        for provider_id in current_source_ids
+    )
 
 
-def test_current_uk_schema_7_sources_have_provider_labels() -> None:
+def test_current_uk_providers_have_labels() -> None:
     current_source_ids = {
+        "dfe",
+        "dft",
         "dwp",
         "hmrc",
         "isc",
@@ -48,6 +54,23 @@ def test_current_uk_schema_7_sources_have_provider_labels() -> None:
     }
 
     assert current_source_ids == UK_CALIBRATION_PROVIDER_LABELS.keys()
+    assert all(
+        calibration_provider_label("uk", provider_id)
+        for provider_id in current_source_ids
+    )
+
+
+@pytest.mark.parametrize("country", ("us", "uk"))
+def test_every_registered_provider_has_a_non_empty_label(country: str) -> None:
+    labels = CALIBRATION_PROVIDER_LABELS_BY_COUNTRY[country]
+
+    assert labels
+    assert all(provider_id.strip() for provider_id in labels)
+    assert all(label.strip() for label in labels.values())
+    assert all(
+        calibration_provider_label(country, provider_id) == label
+        for provider_id, label in labels.items()
+    )
 
 
 def test_provider_label_resolution_is_country_specific() -> None:

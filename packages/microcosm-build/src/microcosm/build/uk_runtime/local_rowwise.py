@@ -37,6 +37,10 @@ from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_TARGET_LOSS_CAP,
     uk_local_target_loss_weights,
 )
+from microcosm.build.uk_runtime.local_hierarchy import (
+    UK_CENSUS_HOUSEHOLDS_CATEGORY_ID,
+    uk_local_target_hierarchy,
+)
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
@@ -963,6 +967,24 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
     targets = []
     for row in problem.target_frame.itertuples(index=False):
         area_type = str(row.area_type)
+        target_name = str(
+            row.target_name
+            if "target_name" in problem.target_frame.columns
+            else f"{row.area_type}/{row.area_code}/{row.metric}"
+        )
+        hierarchy = (
+            row.hierarchy
+            if "hierarchy" in problem.target_frame.columns
+            else None
+        )
+        if hierarchy is None and str(row.metric) == "households":
+            hierarchy = uk_local_target_hierarchy(
+                name=target_name,
+                label="Occupied households",
+                category_id=UK_CENSUS_HOUSEHOLDS_CATEGORY_ID,
+                area_type=area_type,
+                area_code=str(row.area_code),
+            )
         metadata = {
             "area_type": area_type,
             "area_code": str(row.area_code),
@@ -975,11 +997,7 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
                     metadata[column] = str(value)
         targets.append(
             Target(
-                name=str(
-                    row.target_name
-                    if "target_name" in problem.target_frame.columns
-                    else f"{row.area_type}/{row.area_code}/{row.metric}"
-                ),
+                name=target_name,
                 entity="household",
                 measure=_constant_vector(metric_columns[(area_type, str(row.metric))]),
                 value=float(row.value),
@@ -991,6 +1009,7 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
                     else "uk_rowwise_local_surface"
                 ),
                 metadata=metadata,
+                hierarchy=hierarchy,
             )
         )
     return TargetSet(targets)

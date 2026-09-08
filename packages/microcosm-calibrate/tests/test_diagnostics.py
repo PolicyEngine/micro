@@ -134,7 +134,7 @@ def test_payload_carries_full_evidence(feasible_frame) -> None:
     result = _result(feasible_frame, epochs=120)
     payload = diagnostics_payload(result)
 
-    assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    assert payload["schema_version"] == 6
     assert payload["weight_entity"] == "household"
     assert payload["target_surface"]["n_targets"] == len(result.diagnostics)
     assert len(payload["target_surface"]["sha256"]) == 64
@@ -163,13 +163,102 @@ def test_payload_carries_full_evidence(feasible_frame) -> None:
     assert population["within_tolerance"] is None  # no tolerance declared
 
 
+def test_payload_uses_compiled_target_hierarchy_without_registry(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame()
+    hierarchy = _hierarchy(
+        "population",
+        provider_id="census_pep",
+        provider_label="Census Population Estimates Program",
+        category_id="census_pep.population",
+        category_label="Population",
+        geography_id="0100000US",
+        geography_label="United States",
+        geography_level="country",
+    )
+    result = score_targets(
+        frame,
+        TargetSet(
+            (
+                Target(
+                    name="population",
+                    entity="household",
+                    value=truths["population"],
+                    measure="household_count",
+                    source="Census PEP fixture",
+                    hierarchy=hierarchy,
+                ),
+            )
+        ),
+    )
+
+    payload = diagnostics_payload(result)
+
+    assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    assert payload["targets"][0]["hierarchy"] == {
+        "provider": {
+            "id": "census_pep",
+            "label": "Census Population Estimates Program",
+        },
+        "category": {
+            "id": "census_pep.population",
+            "label": "Population",
+            "provider_id": "census_pep",
+        },
+        "geography": {
+            "id": "0100000US",
+            "label": "United States",
+            "level": "country",
+        },
+        "dimensions": [],
+        "target": {"id": "population", "label": "Population"},
+    }
+
+
+def test_payload_rejects_mixed_hierarchy_coverage(feasible_frame) -> None:
+    frame, truths = feasible_frame()
+    result = score_targets(
+        frame,
+        TargetSet(
+            (
+                Target(
+                    name="population",
+                    entity="household",
+                    value=truths["population"],
+                    measure="household_count",
+                    hierarchy=_hierarchy(
+                        "population",
+                        provider_id="census_pep",
+                        provider_label="Census Population Estimates Program",
+                        category_id="census_pep.population",
+                        category_label="Population",
+                        geography_id="0100000US",
+                        geography_label="United States",
+                        geography_level="country",
+                    ),
+                ),
+                Target(
+                    name="income",
+                    entity="household",
+                    value=truths["income"],
+                    measure="income",
+                ),
+            )
+        ),
+    )
+
+    with pytest.raises(ValueError, match="cannot mix targets"):
+        diagnostics_payload(result)
+
+
 def test_payload_reports_complete_uniform_final_loss_attribution(
     feasible_frame,
 ) -> None:
     result = _result(feasible_frame, epochs=1)
     payload = diagnostics_payload(result)
 
-    assert payload["schema_version"] == 8
+    assert payload["schema_version"] == 6
     assert payload["diagnostic_warnings"] == []
     basis = payload["target_loss_basis"]
     assert basis["formula"] == (
@@ -454,7 +543,7 @@ def test_writer_round_trips(feasible_frame, tmp_path: Path) -> None:
     )
     loaded = json.loads(path.read_text())
     assert loaded == diagnostics_payload(result)
-    assert loaded["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    assert loaded["schema_version"] == 6
 
 
 def test_writer_does_not_suppress_unrelated_output_failures(
@@ -752,6 +841,28 @@ def test_registry_diagnostics_reject_missing_compiled_target_identity(
     )
 
     with pytest.raises(ValueError, match="does not contain compiled target row"):
+        diagnostics_payload(result, target_registry=registry)
+
+
+def test_registry_diagnostics_require_hierarchy_for_every_target(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="population",
+                entity="household",
+                measure="household_count",
+                value=truths["population"],
+                source="Fixture",
+            ),
+        ),
+        country="us",
+    )
+    result = score_targets(frame, registry.to_target_set())
+
+    with pytest.raises(ValueError, match="hierarchy for every registry-backed"):
         diagnostics_payload(result, target_registry=registry)
 
 

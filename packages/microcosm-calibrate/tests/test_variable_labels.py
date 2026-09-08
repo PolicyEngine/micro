@@ -1,4 +1,4 @@
-"""Country-owned Level 2 labels used by schema-7 diagnostics."""
+"""Country-owned labels for programmatically declared target categories."""
 
 from __future__ import annotations
 
@@ -153,7 +153,7 @@ voa|ct_stock_band_h"""
     ("country", "pairs"),
     [("us", _CURRENT_US_VARIABLES), ("uk", _CURRENT_UK_VARIABLES)],
 )
-def test_current_schema_7_variables_have_labels(
+def test_current_programmatic_categories_have_labels(
     country: str,
     pairs: set[tuple[str, str]],
 ) -> None:

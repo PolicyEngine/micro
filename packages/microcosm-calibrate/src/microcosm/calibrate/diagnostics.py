@@ -21,7 +21,6 @@ import hashlib
 import json
 import logging
 import math
-import re
 from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
@@ -32,13 +31,7 @@ from microcosm.calibrate._target_loss_attribution import (
     TargetLossAttributionError,
     assemble_target_loss_attribution,
 )
-from microcosm.calibrate.geography_constants import (
-    UK_GEOGRAPHY_ID_TO_LABEL,
-    US_STATE_FIPS_TO_POSTAL,
-)
-from microcosm.calibrate.provider_labels import calibration_provider_label
 from microcosm.calibrate.solve import CalibrationResult
-from microcosm.calibrate.variable_labels import calibration_variable_label
 
 __all__ = [
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
@@ -65,21 +58,9 @@ __all__ = [
 #: hierarchy carried by each registry target: provider, category, geography,
 #: zero or more dimensions, and target.
 CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
+_HIERARCHY_FREE_DIAGNOSTICS_SCHEMA_VERSION = 6
 
 _LOGGER = logging.getLogger(__name__)
-
-_COUNT_UNITS = frozenset(
-    {
-        "count",
-        "households",
-        "people",
-        "persons",
-        "returns",
-        "claims",
-    }
-)
-_TOTAL_UNITS = frozenset({"gbp", "usd", "dollars", "pounds"})
-_MEAN_UNITS = frozenset({"percent", "percentage", "rate", "ratio"})
 
 
 def _finite(value: float) -> float | None:
@@ -148,366 +129,26 @@ def _registry_spec_lookup(target_registry: object | None) -> dict[str, object]:
     return lookup
 
 
-def _metadata_string(metadata: Mapping[str, object], key: str) -> str:
-    """Return a stripped metadata string, or an empty string."""
+def _target_hierarchy(target: object, spec: object | None) -> object | None:
+    """Return one hierarchy after checking runtime and registry agreement."""
 
-    value = metadata.get(key)
-    return value.strip() if isinstance(value, str) else ""
-
-
-def _source_id(spec: object, metadata: Mapping[str, object]) -> str:
-    """Return the publisher identifier declared by a registry-backed target."""
-
-    explicit = _metadata_string(metadata, "diagnostic_source_id")
-    if explicit:
-        return explicit
-    selector_source = _metadata_string(metadata, "ledger_selector_source_name")
-    if selector_source:
-        return selector_source
-    source_record = _metadata_string(metadata, "ledger_source_record_id")
-    if source_record:
-        return source_record.split(".", 1)[0]
-    family = str(getattr(spec, "family", "")).strip()
-    if family:
-        return family
-    name = str(getattr(spec, "name", "")).strip()
-    return re.split(r"[./]", name, maxsplit=1)[0] or "other"
-
-
-def _variable_id(
-    spec: object,
-    metadata: Mapping[str, object],
-    *,
-    source_id: str,
-) -> str:
-    """Return a stable statistic identifier for a registry-backed target.
-
-    Explicit diagnostic identifiers are already producer declarations and are
-    preserved verbatim. Ledger measure concepts are older compound identifiers:
-    some append ``_count`` or ``_amount`` even though schema 7 represents that
-    distinction separately in ``variable.measure``. Remove only the suffix that
-    agrees with the declared unit so count and amount rows remain one dashboard
-    category without conflating their measurements.
-    """
-
-    def without_source_prefix(value: str) -> str:
-        for prefix in (f"{source_id}.", f"{source_id}:"):
-            if value.startswith(prefix):
-                return value[len(prefix) :]
-        return value
-
-    for key in ("diagnostic_variable_id", "variable"):
-        value = _metadata_string(metadata, key)
-        if value:
-            return without_source_prefix(value)
-
-    measure = _variable_measure(metadata)
-    measure_suffix = {"count": "_count", "total": "_amount"}.get(measure, "")
-    for key in ("ledger_measure_concept", "ledger_source_concept"):
-        value = _metadata_string(metadata, key)
-        if value:
-            identifier = without_source_prefix(value)
-            if measure_suffix and identifier.endswith(measure_suffix):
-                identifier = identifier[: -len(measure_suffix)]
-            return identifier
-    contract_id = _metadata_string(metadata, "contract_target_id")
-    if contract_id:
-        prefix = re.split(r"[./]", contract_id, maxsplit=1)[0]
-        remainder = contract_id[len(prefix) :].lstrip("./")
-        return remainder or contract_id
-    measure = str(getattr(spec, "measure", "")).strip()
-    return measure or str(getattr(spec, "name", "")).strip() or "unknown"
-
-
-def _variable_measure(metadata: Mapping[str, object]) -> str:
-    """Classify a declared Ledger unit into the dashboard's measure vocabulary."""
-
-    unit = _metadata_string(metadata, "ledger_measure_unit").lower()
-    if unit in _COUNT_UNITS:
-        return "count"
-    if unit in _TOTAL_UNITS:
-        return "total"
-    if unit in _MEAN_UNITS:
-        return "mean"
-    return ""
-
-
-def _humanize_identifier(value: str) -> str:
-    """Turn a machine identifier into a concise dimension label."""
-
-    tail = value.rsplit("#", 1)[-1].rsplit(".", 1)[-1]
-    return " ".join(part.capitalize() for part in re.split(r"[_:/-]+", tail) if part)
-
-
-def _dimension_label(dimension_id: str) -> str:
-    """Return the established display label for a Ledger dimension id."""
-
-    if dimension_id == "us:statutes/26/62#adjusted_gross_income":
-        return "Income Band"
-    if dimension_id == "census_stc.item":
-        return "Item"
-    if dimension_id == "hhs_acf_tanf.spending_category":
-        return "Spending Category"
-    if dimension_id == "income_range":
-        return "Income Band"
-    if dimension_id == "filing_status":
-        return "Filing Status"
-    if dimension_id == "eitc_child_count":
-        return "Qualifying Children"
-    return _humanize_identifier(dimension_id)
-
-
-def _target_label(spec: object, metadata: Mapping[str, object]) -> str:
-    """Return a producer label or a deterministic Microcosm fallback."""
-
-    explicit = _metadata_string(metadata, "diagnostic_target_label")
-    if explicit:
-        return explicit
-    name = str(getattr(spec, "name", "")).strip()
-    if name and not name.startswith("ledger."):
-        leaf = re.split(r"[./]", name)[-1]
-        label = _humanize_identifier(leaf)
-        if label:
-            return label
-    for key in ("ledger_layout_measure_id", "source_measure_id"):
-        measure_id = _metadata_string(metadata, key)
-        if measure_id:
-            return _humanize_identifier(measure_id)
-    leaf = re.split(r"[./]", name)[-1] if name else ""
-    return _humanize_identifier(leaf) or "Target"
-
-
-def _normalized_geography_level(value: str) -> str:
-    """Normalize producer aliases used by the existing country contracts."""
-
-    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
-    return "local_authority" if normalized == "la" else normalized
-
-
-def _geography_label(
-    *,
-    country: str,
-    level: str,
-    geography_id: str,
-    metadata: Mapping[str, object],
-) -> str:
-    """Resolve a producer-owned geography label without consumer name parsing."""
-
-    explicit = _metadata_string(metadata, "ledger_geography_name")
-    if explicit:
-        return explicit
-    if country == "uk":
-        return UK_GEOGRAPHY_ID_TO_LABEL.get(geography_id, geography_id)
-    if country == "us":
-        if geography_id == "0100000US" or level in {"country", "national"}:
-            return "United States"
-        match = re.search(r"US(\d{2})(\d{2})$", geography_id)
-        if level == "congressional_district" and match:
-            postal = US_STATE_FIPS_TO_POSTAL.get(match.group(1))
-            if postal:
-                return f"{postal}-{match.group(2)}"
-        match = re.search(r"US(\d{2})$", geography_id)
-        if level == "state" and match:
-            return US_STATE_FIPS_TO_POSTAL.get(match.group(1), geography_id)
-    return geography_id
-
-
-def _structured_dimensions(
-    metadata: Mapping[str, object],
-    *,
-    country: str,
-) -> tuple[dict[str, str], dict[str, dict[str, object]]]:
-    """Build schema-7 row dimensions and their producer definitions."""
-
-    values: dict[str, str] = {}
-    definitions: dict[str, dict[str, object]] = {}
-
-    geography_id = _metadata_string(metadata, "ledger_geography_id")
-    geography_level = _normalized_geography_level(
-        _metadata_string(metadata, "ledger_geography_level")
-    )
-    if geography_id and geography_level:
-        dimension_id = f"geography_{geography_level}"
-        values[dimension_id] = geography_id
-        definitions[dimension_id] = {
-            "label": _humanize_identifier(geography_level),
-            "role": "geography",
-            "level": geography_level,
-            "values": {
-                geography_id: _geography_label(
-                    country=country,
-                    level=geography_level,
-                    geography_id=geography_id,
-                    metadata=metadata,
-                )
-            },
-            "order": [geography_id],
-        }
-
-    filter_dimensions = [
-        (key.removeprefix("ledger_filter_"), raw_value.strip())
-        for key, raw_value in metadata.items()
-        if key.startswith("ledger_filter_")
-        and isinstance(raw_value, str)
-        and key.removeprefix("ledger_filter_")
-        and raw_value.strip()
-    ]
-    layout_dimension = _metadata_string(metadata, "ledger_layout_groupby_dimension")
-    layout_value = _metadata_string(metadata, "ledger_layout_groupby_value_id")
-    layout_value_label = _metadata_string(
-        metadata, "ledger_layout_groupby_value_label"
-    ) or _humanize_identifier(layout_value)
-    layout_label = _dimension_label(layout_dimension)
-    duplicate_filter_dimension = next(
-        (
-            dimension_id
-            for dimension_id, value in filter_dimensions
-            if _dimension_label(dimension_id) == layout_label and value == layout_value
-        ),
-        "",
-    )
-    resolved_geography_label = (
-        _geography_label(
-            country=country,
-            level=geography_level,
-            geography_id=geography_id,
-            metadata=metadata,
-        )
-        if geography_id and geography_level
-        else ""
-    )
-    geography_layout = layout_dimension in {
-        "geography",
-        "state",
-        "cms_medicaid.state_abbreviation",
-    }
-    redundant_geography = layout_value.lower() in {
-        geography_id.lower(),
-        resolved_geography_label.lower(),
-    }
+    target_hierarchy = getattr(target, "hierarchy", None)
+    spec_hierarchy = getattr(spec, "hierarchy", None) if spec is not None else None
     if (
-        layout_dimension
-        and layout_value
-        and not duplicate_filter_dimension
-        and not geography_layout
-        and not redundant_geography
+        target_hierarchy is not None
+        and spec_hierarchy is not None
+        and target_hierarchy != spec_hierarchy
     ):
-        values[layout_dimension] = layout_value
-        definitions[layout_dimension] = {
-            "label": layout_label,
-            "values": {layout_value: layout_value_label},
-            "order": [layout_value],
-        }
-
-    for dimension_id, value in filter_dimensions:
-        value_label = (
-            layout_value_label
-            if dimension_id == duplicate_filter_dimension
-            else _humanize_identifier(value)
-        )
-        values[dimension_id] = value
-        definitions[dimension_id] = {
-            "label": _dimension_label(dimension_id),
-            "values": {value: value_label},
-            "order": [value],
-        }
-
-    return values, definitions
-
-
-def _merge_dimension_definitions(
-    destination: dict[str, dict[str, object]],
-    additions: Mapping[str, Mapping[str, object]],
-) -> None:
-    """Merge per-row dimension declarations into one deterministic dictionary."""
-
-    for dimension_id, addition in additions.items():
-        current = destination.get(dimension_id)
-        if current is None:
-            destination[dimension_id] = {
-                **addition,
-                "values": dict(addition.get("values", {})),
-                "order": list(addition.get("order", [])),
-            }
-            continue
-        for key in ("label", "role", "level"):
-            incoming = addition.get(key)
-            if incoming is not None and current.get(key) != incoming:
-                raise ValueError(
-                    f"Diagnostics dimension {dimension_id!r} has conflicting "
-                    f"{key} declarations {current.get(key)!r} and {incoming!r}."
-                )
-        current_values = current.setdefault("values", {})
-        current_order = current.setdefault("order", [])
-        if not isinstance(current_values, dict) or not isinstance(current_order, list):
-            raise TypeError("Diagnostics dimension aggregation state is malformed.")
-        for raw_value, label in addition.get("values", {}).items():
-            existing = current_values.get(raw_value)
-            if existing is not None and existing != label:
-                raise ValueError(
-                    f"Diagnostics dimension {dimension_id!r} value "
-                    f"{raw_value!r} has conflicting labels {existing!r} and {label!r}."
-                )
-            current_values[raw_value] = label
-        for raw_value in addition.get("order", []):
-            if raw_value not in current_order:
-                current_order.append(raw_value)
-
-
-def _structured_target_fields(
-    target: object,
-    spec: object,
-    *,
-    country: str,
-) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
-    """Serialize complete schema-7 identity for one registry-backed target."""
-
-    metadata = dict(getattr(spec, "metadata", {}) or {})
-    source_id = _source_id(spec, metadata)
-    variable_id = _variable_id(spec, metadata, source_id=source_id)
-    dimensions, definitions = _structured_dimensions(metadata, country=country)
-    citation = str(getattr(target, "source", "")).strip()
-    source: dict[str, str] = {"id": source_id}
-    source_label = calibration_provider_label(country, source_id)
-    if source_label:
-        source["label"] = source_label
-    if citation:
-        source["citation"] = citation
-        source_url = next(
-            (
-                part.strip()
-                for part in citation.split("|")
-                if part.strip().startswith(("https://", "http://"))
-            ),
-            "",
-        )
-        if source_url:
-            source["url"] = source_url
-    variable: dict[str, str] = {"id": variable_id}
-    variable_label = calibration_variable_label(country, source_id, variable_id)
-    if variable_label:
-        variable["label"] = variable_label
-    measure = _variable_measure(metadata)
-    if measure:
-        variable["measure"] = measure
-    return {
-        "label": _target_label(spec, metadata),
-        "source": source,
-        "variable": variable,
-        "dimensions": dimensions,
-    }, definitions
-
-
-def _hierarchy_target_field(spec: object) -> dict[str, object]:
-    """Serialize the complete hierarchy already carried by a target spec."""
-
-    hierarchy = getattr(spec, "hierarchy", None)
-    if hierarchy is None:
         raise ValueError(
-            f"Target spec {getattr(spec, 'name', '')!r} has no calibration "
-            "hierarchy. Diagnostics schema 8 requires producer-supplied labels "
-            "for every hierarchy tier."
+            f"Compiled target {getattr(target, 'name', '')!r} and its registry "
+            "spec declare different calibration hierarchies."
         )
+    return target_hierarchy or spec_hierarchy
+
+
+def _hierarchy_target_field(hierarchy: object) -> dict[str, object]:
+    """Serialize a complete producer-supplied target hierarchy."""
+
     serialized = asdict(hierarchy)
     serialized["dimensions"] = list(serialized["dimensions"])
     return {"hierarchy": serialized}
@@ -715,6 +356,11 @@ def diagnostics_payload(
 
     Args:
         result: The :func:`~microcosm.calibrate.solve.calibrate` output.
+        target_registry: Optional registry identity and hierarchy source. Supplying
+            a registry requires every compiled row to carry a complete hierarchy.
+            Without a registry, a result whose targets all carry hierarchies uses
+            schema 8; a hierarchy-free generic result retains schema 6.
+        build: Optional build-specific evidence block.
 
     Returns:
         A dict that round-trips through ``json`` unchanged (non-finite
@@ -722,6 +368,8 @@ def diagnostics_payload(
     """
     registry_specs = _registry_spec_lookup(target_registry)
     target_rows: list[dict[str, object]] = []
+    hierarchy_count = 0
+    missing_hierarchy_names: list[str] = []
     for index, (diagnostic, target) in enumerate(
         zip(result.diagnostics, result.problem.targets, strict=True)
     ):
@@ -737,11 +385,31 @@ def diagnostics_payload(
             compiled_target=result.problem.target_vector[index],
             spec=spec,
         )
-        if spec is not None:
-            row.update(_hierarchy_target_field(spec))
+        hierarchy = _target_hierarchy(target, spec)
+        if hierarchy is not None:
+            row.update(_hierarchy_target_field(hierarchy))
+            hierarchy_count += 1
+        else:
+            missing_hierarchy_names.append(diagnostic.name)
         target_rows.append(row)
+    if target_registry is not None and missing_hierarchy_names:
+        raise ValueError(
+            "Diagnostics schema 8 requires a calibration hierarchy for every "
+            "registry-backed target; missing "
+            f"{missing_hierarchy_names[:5]!r}."
+        )
+    if hierarchy_count and missing_hierarchy_names:
+        raise ValueError(
+            "A diagnostics payload cannot mix targets with and without calibration "
+            f"hierarchies; missing {missing_hierarchy_names[:5]!r}."
+        )
+    schema_version = (
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+        if target_registry is not None or hierarchy_count
+        else _HIERARCHY_FREE_DIAGNOSTICS_SCHEMA_VERSION
+    )
     payload = {
-        "schema_version": CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "weight_entity": result.weight_entity,
         "options": {key: _jsonable(value) for key, value in result.options.items()},
         "target_surface": _target_surface_payload(result),

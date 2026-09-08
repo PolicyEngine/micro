@@ -1,8 +1,8 @@
-"""Country-owned display labels for calibration statistic categories.
+"""Country-owned display labels for programmatically declared categories.
 
-Schema 7 calls these categories ``variable`` objects.  A category may combine
-several Chronicle facts or measures, so its display label belongs with
-Microcosm's calibration grouping rather than with any one source fact.
+A category may combine several Chronicle facts or measures, so its display
+label belongs with Microcosm's calibration grouping rather than with any one
+source fact.
 """
 
 from __future__ import annotations

@@ -13,7 +13,15 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime import h5_io as builder_h5_io
-from microcosm.calibrate import TargetRegistry, TargetSpec, calibrate
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyGeography,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+    calibrate,
+)
 from microcosm.frame import Frame, WeightKind, Weights
 
 
@@ -4173,6 +4181,24 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
                     "ledger_geography_level": "state",
                     "ledger_geography_id": "0400000US06",
                 },
+                hierarchy=CalibrationHierarchy(
+                    provider=HierarchyNode(
+                        "irs_soi",
+                        "IRS Statistics of Income",
+                    ),
+                    category=HierarchyCategory(
+                        "irs_soi.income",
+                        "Income",
+                        "irs_soi",
+                    ),
+                    geography=HierarchyGeography(
+                        "0400000US06",
+                        "California",
+                        "state",
+                    ),
+                    dimensions=(),
+                    target=HierarchyNode("income", "Income"),
+                ),
             ),
         ),
         country="us",
@@ -4210,24 +4236,25 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     )
 
     diagnostics = json.loads((tmp_path / "calibration_diagnostics.json").read_text())
-    assert diagnostics["schema_version"] == 7
-    assert diagnostics["targets"][0]["source"] == {
-        "id": "irs_soi",
-        "label": "IRS Statistics of Income",
-        "citation": "fixture",
-    }
-    assert diagnostics["targets"][0]["variable"] == {
-        "id": "income",
-        "label": "Income",
-        "measure": "total",
-    }
-    assert diagnostics["targets"][0]["dimensions"] == {"geography_state": "0400000US06"}
-    assert diagnostics["dimensions"]["geography_state"] == {
-        "label": "State",
-        "role": "geography",
-        "level": "state",
-        "values": {"0400000US06": "CA"},
-        "order": ["0400000US06"],
+    assert diagnostics["schema_version"] == 8
+    assert diagnostics["targets"][0]["source"] == "fixture"
+    assert diagnostics["targets"][0]["hierarchy"] == {
+        "provider": {
+            "id": "irs_soi",
+            "label": "IRS Statistics of Income",
+        },
+        "category": {
+            "id": "irs_soi.income",
+            "label": "Income",
+            "provider_id": "irs_soi",
+        },
+        "geography": {
+            "id": "0400000US06",
+            "label": "California",
+            "level": "state",
+        },
+        "dimensions": [],
+        "target": {"id": "income", "label": "Income"},
     }
     assert diagnostics["final_loss"] is None
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
