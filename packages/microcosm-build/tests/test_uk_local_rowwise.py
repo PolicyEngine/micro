@@ -1347,6 +1347,74 @@ def test_size_solve_keeps_its_dense_reference_and_selection_seed_moves_only_the_
     assert other.size_receipt["dense_loss"] == sized.size_receipt["dense_loss"]
 
 
+def test_selection_feasibility_measures_boundary_mass_and_the_ways_out():
+    from microcosm.build.uk_runtime.dataset_size import selection_feasibility
+
+    # Two protected certainties, then a boundary whose largest gate (0.9)
+    # cannot be scaled to a draw of 5 out of mass 0.9 + 4 * 0.2 = 1.7.
+    pi = np.array([1.0, 1.0, 0.9, 0.2, 0.2, 0.2, 0.2, 0.0])
+    protected = np.array([True, True, False, False, False, False, False, False])
+    report = selection_feasibility(
+        pi, 7, protected=protected, n_nonzero=7, l0_lambda=0.5
+    )
+    assert report["certainties_at_pi_hi_1"] == 2
+    assert report["boundary_draw"] == 5
+    assert report["boundary_positive_gates"] == 5
+    assert report["boundary_mass"] == pytest.approx(1.7)
+    assert report["boundary_max"] == pytest.approx(0.9)
+    assert report["feasible_at_pi_hi_1"] is False
+    # At pi_hi=1 the boundary supports floor(1.7 / 0.9) = 1 draw: k <= 3.
+    assert report["max_feasible_households_at_pi_hi_1"] == 3
+    # Promoting the 0.9 gate to a certainty (pi_hi <= 0.9) leaves a draw of 4
+    # over four equal 0.2 gates: feasible; 0.99 and above are not.
+    assert report["pi_hi_scan"]["0.99"]["feasible"] is False
+    assert report["pi_hi_scan"]["0.9"]["feasible"] is True
+    assert report["smallest_feasible_pi_hi_on_grid"] == 0.9
+    assert report["gates_above"]["0.5"] == 3
+    assert report["budget_search_n_nonzero"] == 7
+    assert report["selection_l0_lambda"] == 0.5
+
+    feasible = selection_feasibility(
+        np.array([1.0, 0.5, 0.5, 0.5, 0.5]),
+        3,
+        protected=np.array([True, False, False, False, False]),
+        n_nonzero=5,
+        l0_lambda=0.1,
+    )
+    assert feasible["feasible_at_pi_hi_1"] is True
+    assert feasible["smallest_feasible_pi_hi_on_grid"] == 1.0
+
+
+def test_size_refusal_at_the_draw_carries_the_feasibility_numbers(monkeypatch):
+    import microcosm.build.uk_runtime.dataset_size as sizing
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=2,
+    )
+
+    def refuse(*_args, **_kwargs):
+        raise ValueError("degenerate boundary mass: synthetic refusal.")
+
+    monkeypatch.setattr(sizing, "select_exact_k", refuse)
+    with pytest.raises(ValueError) as caught:
+        sizing.refit_uk_dataset_size(
+            frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7
+        )
+    message = str(caught.value)
+    assert message.startswith("degenerate boundary mass: synthetic refusal.")
+    assert "Selection feasibility at pi_hi=1.0:" in message
+    payload = json.loads(message.split("Selection feasibility at pi_hi=1.0: ", 1)[1])
+    assert payload["requested_households"] == 2
+    assert payload["pool_households"] == 3
+    assert "pi_hi_scan" in payload
+
+
 def test_size_holdout_uses_compact_support_and_reselects_each_fold(monkeypatch):
     import microcosm.build.uk_runtime.local_rowwise as runtime
 

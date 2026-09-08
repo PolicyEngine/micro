@@ -1,5 +1,6 @@
 """Exact household-count UK candidates on a fixed, materialized target surface."""
 
+import json
 from dataclasses import dataclass, replace
 
 import numpy as np
@@ -110,9 +111,24 @@ def refit_uk_dataset_size(
         raise RuntimeError("informed L0 returned no selection probabilities.")
     # Exact-one certainties are protected by the gates themselves; no top-k
     # ranking or post-hoc promotion of learned boundary scores is performed.
-    support, sampling, q = select_exact_k(
-        probabilities, households, pi_hi=1.0, seed=seed
+    feasibility = selection_feasibility(
+        probabilities,
+        households,
+        protected=init.protected,
+        n_nonzero=int(selection.n_nonzero),
+        l0_lambda=float(selection.l0_lambda),
     )
+    try:
+        support, sampling, q = select_exact_k(
+            probabilities, households, pi_hi=1.0, seed=seed
+        )
+    except ValueError as error:
+        # The draw refuses rather than clamps; carry the measured gate mass
+        # with the refusal so the ruling it needs can be made from the receipt.
+        raise ValueError(
+            f"{error} Selection feasibility at pi_hi=1.0: "
+            f"{json.dumps(feasibility, sort_keys=True)}"
+        ) from error
     support = assert_exact_k_support(support, households, pool_size=n)
     if not np.isin(np.flatnonzero(init.protected), support).all():
         raise RuntimeError("exact-count selection lost a protected carrier.")
@@ -148,6 +164,7 @@ def refit_uk_dataset_size(
             "seed": seed,
             "protected_carriers": int(init.protected.sum()),
             "selection_receipt": sampling,
+            "selection_feasibility": feasibility,
             "selection_l0_lambda": selection.l0_lambda,
             "selection_epochs": epochs,
             "refit_epochs": epochs,
@@ -163,6 +180,103 @@ def refit_uk_dataset_size(
             "certification": "candidate_only_pending_matched_comparison_and_promotion_scorecard",
         },
     )
+
+
+_FEASIBILITY_PI_HI_GRID = (0.999, 0.99, 0.98, 0.95, 0.9, 0.8, 0.7, 0.5)
+
+
+def selection_feasibility(
+    probabilities: np.ndarray,
+    households: int,
+    *,
+    protected: np.ndarray,
+    n_nonzero: int,
+    l0_lambda: float,
+) -> dict[str, object]:
+    """Measure whether an exact-count draw is feasible on these gate probabilities.
+
+    ``select_exact_k`` with ``pi_hi=1.0`` keeps every gate below one in the
+    boundary and scales its open probabilities to the remaining draw size
+    ``m``; the scaled value of the largest boundary gate must not exceed one,
+    i.e. ``m * max(pi_boundary) <= sum(pi_boundary)``. The L0 budget search
+    stops on the count of not-fully-closed gates, which can sit well above the
+    open-probability mass when gates are only partly polarised, so the draw
+    can refuse. This records the measured mass and the two ways out — the
+    smallest certainty threshold on a fixed grid that makes the design
+    feasible, and the largest household count feasible at ``pi_hi=1.0`` — so
+    the refusal is a ruling with numbers, never a silent clamp.
+    """
+
+    pi = np.asarray(probabilities, dtype=np.float64)
+    protected_mask = np.asarray(protected, dtype=bool)
+    if pi.shape != protected_mask.shape:
+        raise ValueError("selection feasibility needs aligned probabilities and mask.")
+    certainty = pi >= 1.0
+    boundary = pi[~certainty]
+    positive = boundary[boundary > 0.0]
+    m = int(households) - int(certainty.sum())
+    boundary_mass = float(positive.sum()) if positive.size else 0.0
+    boundary_max = float(positive.max()) if positive.size else 0.0
+    feasible = m <= 0 or (
+        positive.size >= m and boundary_max * m <= boundary_mass * (1.0 + 1e-12)
+    )
+    max_feasible_k = (
+        int(certainty.sum()) + int(np.floor(boundary_mass / boundary_max))
+        if boundary_max > 0.0
+        else int(certainty.sum())
+    )
+    scan: dict[str, object] = {}
+    smallest_feasible_pi_hi: float | None = 1.0 if feasible else None
+    for threshold in _FEASIBILITY_PI_HI_GRID:
+        certain_t = pi >= threshold
+        c_t = int(certain_t.sum())
+        m_t = int(households) - c_t
+        boundary_t = pi[~certain_t]
+        positive_t = boundary_t[boundary_t > 0.0]
+        mass_t = float(positive_t.sum()) if positive_t.size else 0.0
+        max_t = float(positive_t.max()) if positive_t.size else 0.0
+        ok = m_t >= 0 and (
+            m_t == 0
+            or (positive_t.size >= m_t and max_t * m_t <= mass_t * (1.0 + 1e-12))
+        )
+        scan[f"{threshold:g}"] = {
+            "certainties": c_t,
+            "boundary_draw": m_t,
+            "boundary_mass": mass_t,
+            "boundary_max": max_t,
+            "feasible": bool(ok),
+        }
+        if ok and smallest_feasible_pi_hi is None:
+            smallest_feasible_pi_hi = threshold
+    quantiles = (
+        {
+            f"p{q * 100:g}": float(np.quantile(pi, q))
+            for q in (0.5, 0.9, 0.99, 0.999)
+        }
+        if pi.size
+        else {}
+    )
+    return {
+        "requested_households": int(households),
+        "pool_households": int(pi.size),
+        "protected_carriers": int(protected_mask.sum()),
+        "certainties_at_pi_hi_1": int(certainty.sum()),
+        "boundary_draw": m,
+        "boundary_positive_gates": int(positive.size),
+        "boundary_mass": boundary_mass,
+        "boundary_max": boundary_max,
+        "feasible_at_pi_hi_1": bool(feasible),
+        "max_feasible_households_at_pi_hi_1": max_feasible_k,
+        "smallest_feasible_pi_hi_on_grid": smallest_feasible_pi_hi,
+        "pi_hi_scan": scan,
+        "pi_sum": float(pi.sum()),
+        "pi_quantiles": quantiles,
+        "gates_above": {
+            f"{t:g}": int((pi >= t).sum()) for t in (0.5, 0.9, 0.99, 0.999)
+        },
+        "budget_search_n_nonzero": int(n_nonzero),
+        "selection_l0_lambda": float(l0_lambda),
+    }
 
 
 def _frozen_targets(
