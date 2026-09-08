@@ -44,12 +44,6 @@ _STEPS = (
     "50-downstream",
     "90-summary",
 )
-_TIME_RE = re.compile(
-    r"^\s*([0-9]+(?:\.[0-9]+)?)\s+real\s+"
-    r"[0-9]+(?:\.[0-9]+)?\s+user\s+[0-9]+(?:\.[0-9]+)?\s+sys\s*$"
-)
-_RSS_RE = re.compile(r"^\s*([0-9]+)\s+maximum resident set size\s*$")
-_CHILD_EXIT_RE = re.compile(r"^__MICROCOSM_CHILD_EXIT__=([0-9]+)$")
 _CANDIDATE_NOTICE = (
     "These are candidate evaluations and untargeted diagnostics. No gate "
     "threshold is loosened or applied as a verdict; `--release-candidate` "
@@ -256,20 +250,39 @@ def _comparison(
     }
 
 
+_RUSAGE_SHIM = (
+    "import atexit, resource, runpy, sys\n"
+    "script = sys.argv[1]\n"
+    "sys.argv = [script, *sys.argv[2:]]\n"
+    "def _report():\n"
+    "    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss\n"
+    "    if sys.platform != 'darwin':\n"
+    "        peak *= 1024\n"
+    "    sys.stderr.write(f'__MICROCOSM_MAXRSS_BYTES__={int(peak)}\\n')\n"
+    "    sys.stderr.flush()\n"
+    "atexit.register(_report)\n"
+    "runpy.run_path(script, run_name='__main__')\n"
+)
+_MAXRSS_RE = re.compile(r"^__MICROCOSM_MAXRSS_BYTES__=([0-9]+)\s*$")
+
+
 def _run_command(command: list[str], *, timed: bool = False) -> dict[str, Any]:
-    argv = (
-        [
-            "/usr/bin/time",
-            "-l",
-            "/bin/sh",
-            "-c",
-            '"$@"; status=$?; printf "__MICROCOSM_CHILD_EXIT__=%s\\n" "$status" >&2; exit "$status"',
-            "microcosm-time-wrapper",
-            *command,
-        ]
-        if timed
-        else command
-    )
+    """Run one external step; when timed, measure it portably.
+
+    The timed form runs a Python script in a child interpreter through a
+    small shim that executes the script in-process and reports the child's
+    own peak resident set (bytes on every platform) on stderr at exit; wall
+    time is measured here. No platform-specific ``time`` binary is involved,
+    so the receipt is the same on macOS and on the linux CI runners, and the
+    child's exit code is the script's own.
+    """
+
+    if timed:
+        if len(command) < 2 or command[0] != sys.executable:
+            raise ValueError("timed commands must be `<interpreter> <script> [args]`")
+        argv = [sys.executable, "-c", _RUSAGE_SHIM, *command[1:]]
+    else:
+        argv = command
     started = time.perf_counter()
     completed = subprocess.run(
         argv,
@@ -280,27 +293,25 @@ def _run_command(command: list[str], *, timed: bool = False) -> dict[str, Any]:
     )
     wall = time.perf_counter() - started
     peak_rss: int | None = None
-    child_exit: int | None = None
+    stderr = completed.stderr
     if timed:
-        for line in completed.stderr.splitlines():
-            time_match = _TIME_RE.match(line)
-            if time_match:
-                wall = float(time_match.group(1))
-            rss_match = _RSS_RE.match(line)
-            if rss_match:
-                peak_rss = int(rss_match.group(1))
-            child_match = _CHILD_EXIT_RE.match(line)
-            if child_match:
-                child_exit = int(child_match.group(1))
-    exit_code = child_exit if child_exit is not None else completed.returncode
+        kept: list[str] = []
+        for line in stderr.splitlines():
+            match = _MAXRSS_RE.match(line)
+            if match:
+                peak_rss = int(match.group(1))
+            else:
+                kept.append(line)
+        stderr = "\n".join(kept)
+    exit_code = completed.returncode
     return {
-        "argv": argv,
+        "argv": command,
         "status": "ran" if exit_code == 0 else "failed",
         "exit_code": exit_code,
         "wall_seconds": wall,
         "peak_rss_bytes": peak_rss,
         "stdout_tail": completed.stdout[-4000:],
-        "stderr_tail": completed.stderr[-4000:],
+        "stderr_tail": stderr[-4000:],
     }
 
 
