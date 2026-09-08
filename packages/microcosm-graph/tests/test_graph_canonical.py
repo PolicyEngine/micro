@@ -62,4 +62,7 @@ def test_normative_strips_only_declaration_descriptive_fields() -> None:
     assert normative(SourceRef("survey", "csv-tables", "human words")) == {
         "name": "survey",
         "codec": "csv-tables",
+        "content_type": "application/octet-stream",
+        "access": None,
+        "expected": (),
     }

@@ -63,7 +63,25 @@
       "properties": {
         "name": {"$ref": "#/$defs/name"},
         "codec": {"$ref": "#/$defs/name"},
+        "content_type": {"type": "string", "minLength": 1},
+        "access": {"type": "string", "minLength": 1},
+        "expected": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/expected_content"}
+        },
         "description": {"type": "string"}
+      }
+    },
+    "expected_content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256"],
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "boundary": {"enum": ["source", "member"]},
+        "path": {"type": "string", "minLength": 1},
+        "size": {"type": "integer", "minimum": 0},
+        "identity_ref": {"type": "string"}
       }
     },
     "nodes": {
@@ -96,7 +114,8 @@
         "description": {"type": "string"},
         "citation": {"type": "string"},
         "artifact_inputs": {"type": "array", "items": {"$ref": "#/$defs/artifact_input"}},
-        "artifact_outputs": {"type": "array", "items": {"$ref": "#/$defs/artifact_output"}}
+        "artifact_outputs": {"type": "array", "items": {"$ref": "#/$defs/artifact_output"}},
+        "requires_success": {"type": "array", "items": {"$ref": "#/$defs/name"}, "uniqueItems": true}
       }
     },
     "slice": {

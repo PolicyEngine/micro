@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from .canonical import canonical_json, normative, sha256_domain
-from .decl import CompiledGraph, StructuralDelta
+from .decl import CompiledGraph, Graph, StructuralDelta
 from .kernel import Capabilities, Numeric
 
 __all__ = [
@@ -17,9 +17,14 @@ __all__ = [
     "platform_fingerprint",
     "artifact_key",
     "frame_key",
+    "graph_key",
     "node_key",
     "seed",
     "source_content_key",
+    "source_content_identity",
+    "source_binding_key",
+    "validation_outcome_key",
+    "union_lineage_key",
     "weights_key",
 ]
 
@@ -59,16 +64,54 @@ def source_content_key(name: str, path: str | Path) -> str:
     based ``frame-store`` and ``csv-tables`` codecs.
     """
 
+    _, content_hash, size = source_content_identity(path)
+    return _hash_parts("source", name, content_hash, size)
+
+
+def source_content_identity(path: str | Path) -> tuple[str, str, int]:
+    """Return ``(boundary kind, SHA-256, size)`` without including a path."""
+
     source_path = Path(path)
     if source_path.is_file():
         content = source_path.read_bytes()
-        content_hash = hashlib.sha256(content).hexdigest()
-        size = len(content)
-    elif source_path.is_dir():
+        return "file", hashlib.sha256(content).hexdigest(), len(content)
+    if source_path.is_dir():
         content_hash, size = _directory_identity(source_path)
-    else:
-        raise FileNotFoundError(f"Source path does not exist: {source_path}")
-    return _hash_parts("source", name, content_hash, size)
+        return "directory", content_hash, size
+    raise FileNotFoundError(f"Source path does not exist: {source_path}")
+
+
+def source_binding_key(
+    content_key: str, codec: str, codec_impl_hash: str, content_type: str
+) -> str:
+    """Bind verified bytes to their declared decoder and logical content type."""
+
+    return _hash_parts(
+        "source-binding", content_key, codec, codec_impl_hash, content_type
+    )
+
+
+def graph_key(graph: Graph) -> str:
+    """Return the semantic identity of a complete Graph, independent of order."""
+
+    if not isinstance(graph, Graph):
+        raise TypeError("graph_key requires a Graph declaration.")
+    payload = {
+        "country": graph.country,
+        "mass_partition": graph.mass_partition,
+        "sources": tuple(
+            normative(source)
+            for source in sorted(graph.sources, key=lambda item: item.name)
+        ),
+        "nodes": tuple(
+            normative(node) for node in sorted(graph.nodes, key=lambda item: item.id)
+        ),
+        "products": tuple(
+            normative(product)
+            for product in sorted(graph.products, key=lambda item: item.name)
+        ),
+    }
+    return _hash_parts("semantic-graph", payload)
 
 
 def platform_fingerprint() -> str:
@@ -104,6 +147,18 @@ def weights_key(node_key: str, entity: str) -> str:
     """Derive a typed-weight artifact identity outside the column namespace."""
 
     return _hash_parts("weights", node_key, entity)
+
+
+def validation_outcome_key(node_key: str) -> str:
+    """Identity of the executor-preserved validation outcome for one node."""
+
+    return _hash_parts("validation-outcome", node_key)
+
+
+def union_lineage_key(node_key: str) -> str:
+    """Identity of deterministic per-row source lineage for a union node."""
+
+    return _hash_parts("union-lineage", node_key)
 
 
 def _required_key(keys: Mapping[str, str], node_id: str, consumer: str) -> str:
@@ -290,6 +345,25 @@ def node_key(
         if node.artifact_inputs
         else ()
     )
+    required_outcomes = (
+        (
+            {
+                "required_validation_outcomes": tuple(
+                    (
+                        product_name,
+                        _required_key(
+                            input_keys,
+                            compiled.product_nodes[product_name],
+                            node_id,
+                        ),
+                    )
+                    for product_name in sorted(node.requires_success)
+                )
+            },
+        )
+        if node.requires_success
+        else ()
+    )
     return _hash_parts(
         "node",
         normative(node),
@@ -301,6 +375,7 @@ def node_key(
         capabilities,
         *platform_scope,
         *typed_inputs,
+        *required_outcomes,
     )
 
 

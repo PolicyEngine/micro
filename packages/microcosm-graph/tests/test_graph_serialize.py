@@ -11,6 +11,7 @@ import pytest
 
 import microcosm.graph as graph_api
 from microcosm.graph import (
+    ExpectedContent,
     Graph,
     Node,
     Owned,
@@ -65,7 +66,23 @@ def _graph() -> Graph:
     )
     return Graph(
         "toy",
-        (SourceRef("fixture", "csv-tables", description="pinned table"),),
+        (
+            SourceRef(
+                "fixture",
+                "csv-tables",
+                description="pinned table",
+                content_type="application/vnd.microcosm.frame-source",
+                access="licensed",
+                expected=(
+                    ExpectedContent(
+                        "a" * 64,
+                        boundary="member",
+                        path="person.csv",
+                        size=42,
+                    ),
+                ),
+            ),
+        ),
         (source, absent, pool),
     )
 
@@ -89,6 +106,7 @@ def test_graph_json_round_trip_is_lossless_and_canonical() -> None:
 
     payload = json.loads(text)
     assert payload["sources"][0]["codec"] == "csv-tables"
+    assert payload["sources"][0]["expected"][0]["path"] == "person.csv"
     assert payload["nodes"][1]["params"]["nested"] == [True, None, [2.5, "x"]]
     assert list(payload) == ["country", "nodes", "sources"]
 

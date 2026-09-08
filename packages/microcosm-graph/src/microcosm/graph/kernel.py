@@ -52,7 +52,7 @@ from enum import StrEnum
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from types import MappingProxyType, ModuleType
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
 import pandas as pd
@@ -60,6 +60,9 @@ import pandas as pd
 from microcosm.frame import Frame, Weights
 
 from .decl import ArtifactType, Node, Param, StructuralDelta
+
+if TYPE_CHECKING:
+    from .codecs import BoundSource
 
 __all__ = [
     "ArtifactValue",
@@ -323,8 +326,9 @@ class KernelContext:
         artifacts: Immutable typed bytes for declared artifact aliases only.
             Consumers validate versioned payloads before using them; nominal
             types do not themselves verify arbitrary serialized data.
-        sources: Source name to a content-verified path, for declared
-            sources only.
+        sources: Source name to a verified path and authoritative decoder,
+            for declared sources only. ``BoundSource.decode()`` uses the
+            codec fixed by the graph declaration.
         tolerances: ``(entity, column)`` of each declared input column to
             the :class:`Tolerance` its owning kernel declared, or ``None``
             for a bitwise owner. A gate compares against these.
@@ -341,7 +345,7 @@ class KernelContext:
     strata: pd.Series
     params: Mapping[str, Param]
     rng: np.random.Generator
-    sources: Mapping[str, Path] = field(default_factory=dict)
+    sources: Mapping[str, BoundSource] = field(default_factory=dict)
     tolerances: Mapping[tuple[str, str], Tolerance | None] = field(default_factory=dict)
     numerics: Mapping[tuple[str, str], NumericScope] = field(default_factory=dict)
     artifacts: Mapping[str, ArtifactValue] = field(default_factory=dict)

@@ -36,6 +36,7 @@ __all__ = ["Decision", "NodeReceipt", "PopulationView", "RunManifest"]
 
 _SCHEMA_VERSION = 2
 _TYPED_SCHEMA_VERSION = 3
+_GRAPH_BOUND_SCHEMA_VERSION = 4
 _LEGACY_SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
@@ -223,6 +224,9 @@ class NodeReceipt:
     opaque_artifacts: Mapping[str, str] = field(default_factory=dict)
     legacy_capabilities: bool = field(default=False, kw_only=True)
     typed_artifacts: Mapping[str, object] = field(default_factory=dict, kw_only=True)
+    status: str = field(default="executed", kw_only=True)
+    blocked_by: tuple[str, ...] = field(default=(), kw_only=True)
+    outcome_key: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         if not isinstance(self.key, str):
@@ -237,6 +241,20 @@ class NodeReceipt:
             raise TypeError("NodeReceipt.kernel_impl_hash must be a string")
         if not isinstance(self.legacy_capabilities, bool):
             raise TypeError("NodeReceipt.legacy_capabilities must be a bool")
+        if self.status not in {"executed", "unreached"}:
+            raise ValueError("NodeReceipt.status must be 'executed' or 'unreached'.")
+        if not isinstance(self.blocked_by, tuple) or any(
+            not isinstance(node_id, str) or not node_id for node_id in self.blocked_by
+        ):
+            raise TypeError("NodeReceipt.blocked_by must contain node ids.")
+        if len(set(self.blocked_by)) != len(self.blocked_by):
+            raise ValueError("NodeReceipt.blocked_by contains duplicates.")
+        if self.status == "executed" and self.blocked_by:
+            raise ValueError("An executed NodeReceipt cannot be blocked.")
+        if self.status == "unreached" and not self.blocked_by:
+            raise ValueError("An unreached NodeReceipt must name what blocked it.")
+        if self.outcome_key is not None and not isinstance(self.outcome_key, str):
+            raise TypeError("NodeReceipt.outcome_key must be a string or None.")
         if self.legacy_capabilities:
             if not isinstance(self.capabilities, Mapping) or isinstance(
                 self.capabilities, Capabilities
@@ -370,6 +388,9 @@ class NodeReceipt:
             "frame_key": self.frame_key,
             "weight_key": self.weight_key,
             "opaque_artifacts": self.opaque_artifacts,
+            **({"status": self.status} if self.status != "executed" else {}),
+            **({"blocked_by": self.blocked_by} if self.blocked_by else {}),
+            **({"outcome_key": self.outcome_key} if self.outcome_key else {}),
             **(
                 {"typed_artifacts": self.typed_artifacts}
                 if self.typed_artifacts
@@ -435,6 +456,12 @@ class RunManifest:
     mass_ledgers: Mapping[str, tuple[MassRecord, ...]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    graph_key: str = ""
+    graph_source_receipts: tuple[Mapping[str, object], ...] = ()
+    parameters: Mapping[str, object] = field(default_factory=dict)
+    source_bindings: Mapping[str, object] = field(default_factory=dict)
+    graph_json_key: str | None = None
+    products: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.country, str):
@@ -485,6 +512,38 @@ class RunManifest:
                 )
             mass_ledgers[version_id] = frozen_records
         object.__setattr__(self, "mass_ledgers", MappingProxyType(mass_ledgers))
+        if self.graph_key and (
+            len(self.graph_key) != 64
+            or any(character not in "0123456789abcdef" for character in self.graph_key)
+        ):
+            raise ValueError("RunManifest.graph_key must be a SHA-256 identity.")
+        if self.graph_json_key is not None and (
+            not isinstance(self.graph_json_key, str)
+            or len(self.graph_json_key) != 64
+            or any(
+                character not in "0123456789abcdef" for character in self.graph_json_key
+            )
+        ):
+            raise ValueError("RunManifest.graph_json_key must be a SHA-256 identity.")
+        graph_receipts = _freeze_json(self.graph_source_receipts)
+        if not isinstance(graph_receipts, tuple) or any(
+            not isinstance(receipt, Mapping) for receipt in graph_receipts
+        ):
+            raise TypeError("RunManifest.graph_source_receipts must contain mappings.")
+        object.__setattr__(self, "graph_source_receipts", graph_receipts)
+        for field_name in ("parameters", "source_bindings", "products"):
+            frozen = _freeze_json(getattr(self, field_name))
+            if not isinstance(frozen, Mapping):
+                raise TypeError(f"RunManifest.{field_name} must be a mapping.")
+            object.__setattr__(self, field_name, frozen)
+        if not self.graph_key and (
+            self.graph_source_receipts
+            or self.parameters
+            or self.source_bindings
+            or self.graph_json_key is not None
+            or self.products
+        ):
+            raise ValueError("Graph-bound manifest fields require graph_key.")
 
     @property
     def content_addressed(self) -> Mapping[str, object]:
@@ -494,11 +553,32 @@ class RunManifest:
             node_id: self.nodes[node_id]._content_payload()
             for node_id in sorted(self.nodes)
         }
-        return MappingProxyType(
-            {
-                "nodes": MappingProxyType(nodes),
-                "tier": self.tier,
-            }
+        payload: dict[str, object] = {
+            "nodes": MappingProxyType(nodes),
+            "tier": self.tier,
+        }
+        if self.graph_key:
+            payload.update(
+                {
+                    "graph_key": self.graph_key,
+                    "graph_source_receipts": self.graph_source_receipts,
+                    "parameters": self.parameters,
+                    "source_bindings": self.source_bindings,
+                    "graph_json_key": self.graph_json_key,
+                    "products": self.products,
+                    "outcome": self.outcome,
+                }
+            )
+        return MappingProxyType(payload)
+
+    @property
+    def outcome(self) -> str:
+        """Run-level result derived from required validation dependencies."""
+
+        return (
+            "not_successful"
+            if any(node.status == "unreached" for node in self.nodes.values())
+            else "success"
         )
 
     @property
@@ -515,6 +595,8 @@ class RunManifest:
         if len(releases) != 1:
             raise ValueError("a run manifest must contain at most one release node")
         node_id, release = releases[0]
+        if release.status == "unreached":
+            return None
         gate_ancestry = release.receipt.get("gate_ancestry")
         if not isinstance(gate_ancestry, tuple) or any(
             not isinstance(gate_id, str) or not gate_id for gate_id in gate_ancestry
@@ -621,9 +703,13 @@ class RunManifest:
         """Serialize the complete portable provenance as canonical JSON."""
 
         payload = {
-            "schema_version": _TYPED_SCHEMA_VERSION
-            if any(node.typed_artifacts for node in self.nodes.values())
-            else _SCHEMA_VERSION,
+            "schema_version": (
+                _GRAPH_BOUND_SCHEMA_VERSION
+                if self.graph_key
+                else _TYPED_SCHEMA_VERSION
+                if any(node.typed_artifacts for node in self.nodes.values())
+                else _SCHEMA_VERSION
+            ),
             "key": self.key,
             "tier": self.tier,
             "known_failures": self.known_failures,
@@ -636,6 +722,19 @@ class RunManifest:
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "host": self.host,
+            **(
+                {
+                    "graph_key": self.graph_key,
+                    "graph_source_receipts": self.graph_source_receipts,
+                    "parameters": self.parameters,
+                    "source_bindings": self.source_bindings,
+                    "graph_json_key": self.graph_json_key,
+                    "products": self.products,
+                    "outcome": self.outcome,
+                }
+                if self.graph_key
+                else {}
+            ),
         }
         return canonical_json(payload).decode("utf-8")
 
@@ -665,6 +764,7 @@ class RunManifest:
             _LEGACY_SCHEMA_VERSION,
             _SCHEMA_VERSION,
             _TYPED_SCHEMA_VERSION,
+            _GRAPH_BOUND_SCHEMA_VERSION,
         }:
             raise ValueError(f"unsupported manifest schema version {schema_version!r}")
 
@@ -688,11 +788,44 @@ class RunManifest:
             started_at=_string_field(raw, "started_at"),
             finished_at=_string_field(raw, "finished_at"),
             host=_string_field(raw, "host"),
+            graph_key=(
+                _string_field(raw, "graph_key")
+                if schema_version == _GRAPH_BOUND_SCHEMA_VERSION
+                else ""
+            ),
+            graph_source_receipts=tuple(
+                raw.get("graph_source_receipts", ())
+                if schema_version == _GRAPH_BOUND_SCHEMA_VERSION
+                else ()
+            ),
+            parameters=(
+                raw.get("parameters", {})
+                if schema_version == _GRAPH_BOUND_SCHEMA_VERSION
+                else {}
+            ),
+            source_bindings=(
+                raw.get("source_bindings", {})
+                if schema_version == _GRAPH_BOUND_SCHEMA_VERSION
+                else {}
+            ),
+            graph_json_key=(
+                raw.get("graph_json_key")
+                if schema_version == _GRAPH_BOUND_SCHEMA_VERSION
+                else None
+            ),
+            products=(
+                raw.get("products", {})
+                if schema_version == _GRAPH_BOUND_SCHEMA_VERSION
+                else {}
+            ),
         )
         if schema_version == _TYPED_SCHEMA_VERSION and not any(
             node.typed_artifacts for node in nodes.values()
         ):
             raise ValueError("Schema-v3 manifest must carry typed artifact provenance.")
+        if schema_version == _GRAPH_BOUND_SCHEMA_VERSION:
+            if raw.get("outcome") != manifest.outcome:
+                raise ValueError("manifest run outcome differs from node receipts")
         body = raw.get("content_addressed")
         if not isinstance(body, Mapping):
             raise ValueError("manifest content-addressed body must be an object")
@@ -776,6 +909,18 @@ class RunManifest:
             "finished_at",
             "host",
         }
+        if raw.get("schema_version") == _GRAPH_BOUND_SCHEMA_VERSION:
+            required.update(
+                {
+                    "graph_key",
+                    "graph_source_receipts",
+                    "parameters",
+                    "source_bindings",
+                    "graph_json_key",
+                    "products",
+                    "outcome",
+                }
+            )
         missing = sorted(required - set(raw))
         if missing:
             raise StoreCorruptError(
@@ -885,7 +1030,7 @@ def _validate_current_content_addressed_body(
             continue
         raise ValueError(f"manifest content key mismatch at node {node_id!r}: {detail}")
 
-    expected_fields = {"nodes", "tier"}
+    expected_fields = set(expected)
     if set(body) != expected_fields:
         raise ValueError(
             f"manifest content key mismatch after node {first_node!r}: body fields "
@@ -903,6 +1048,15 @@ def _validate_current_content_addressed_body(
             f"{body.get('tier')!r} differs from derived tier "
             f"{expected.get('tier')!r}"
         )
+    for field_name in sorted(expected_fields - {"nodes", "tier"}):
+        if canonical_json(body.get(field_name)) != canonical_json(
+            expected.get(field_name)
+        ):
+            raise ValueError(
+                "manifest content key mismatch after node "
+                f"{first_node!r}: field {field_name!r} differs from portable "
+                "provenance"
+            )
 
 
 def _capability_role(node: NodeReceipt) -> KernelRole:
@@ -984,8 +1138,17 @@ def _validate_artifacts(manifest: RunManifest, store: ContentStore) -> None:
             store.metadata(node.frame_key, kind="frame")
         if node.weight_key is not None:
             store.metadata(node.weight_key, kind="column")
+        if node.outcome_key is not None:
+            store.metadata(node.outcome_key, kind="validation-outcome")
+        union_lineage = node.receipt.get("union_lineage")
+        if isinstance(union_lineage, Mapping) and isinstance(
+            union_lineage.get("key"), str
+        ):
+            store.metadata(union_lineage["key"], kind="union-lineage")
         for key in node.opaque_artifacts.values():
             store.metadata(key, kind="bytes")
+    if manifest.graph_json_key is not None:
+        store.metadata(manifest.graph_json_key, kind="bytes")
 
 
 def _string_field(payload: Mapping[str, object], name: str) -> str:
@@ -1127,8 +1290,14 @@ def _node_receipt_from_payload(value: object, *, schema_version: int) -> NodeRec
     weight_key = value.get("weight_key")
     opaque_artifacts = value.get("opaque_artifacts", {})
     typed_artifacts = value.get("typed_artifacts", {})
-    if "typed_artifacts" in value and schema_version != _TYPED_SCHEMA_VERSION:
-        raise ValueError("Typed artifact provenance requires manifest schema 3.")
+    status = value.get("status", "executed")
+    blocked_by = value.get("blocked_by", ())
+    outcome_key = value.get("outcome_key")
+    if "typed_artifacts" in value and schema_version not in {
+        _TYPED_SCHEMA_VERSION,
+        _GRAPH_BOUND_SCHEMA_VERSION,
+    }:
+        raise ValueError("Typed artifact provenance requires manifest schema 3 or 4.")
     capabilities_payload = value.get("capabilities")
     if schema_version == _LEGACY_SCHEMA_VERSION:
         # Every schema-v1 receipt is legacy: v1 never recorded a tolerance, so
@@ -1177,6 +1346,12 @@ def _node_receipt_from_payload(value: object, *, schema_version: int) -> NodeRec
         for name, key in opaque_artifacts.items()
     ):
         raise ValueError("node receipt opaque_artifacts must map strings to strings")
+    if not isinstance(status, str):
+        raise ValueError("node receipt status must be a string")
+    if not isinstance(blocked_by, list | tuple):
+        raise ValueError("node receipt blocked_by must be an array")
+    if outcome_key is not None and not isinstance(outcome_key, str):
+        raise ValueError("node receipt outcome_key must be a string or null")
     artifacts: dict[tuple[str, str], str] = {}
     for item in artifacts_raw:
         if not isinstance(item, Mapping):
@@ -1203,6 +1378,9 @@ def _node_receipt_from_payload(value: object, *, schema_version: int) -> NodeRec
         opaque_artifacts=opaque_artifacts,
         legacy_capabilities=legacy_capabilities,
         typed_artifacts=typed_artifacts,
+        status=status,
+        blocked_by=tuple(str(node_id) for node_id in blocked_by),
+        outcome_key=outcome_key,
     )
 
 

@@ -143,7 +143,7 @@ def test_cross_population_cold_warm_and_roundtrip(tmp_path):
     restored = RunManifest.from_json(warm.to_json())
     assert restored.key == warm.key
     assert restored.to_json() == warm.to_json()
-    assert json.loads(warm.to_json())["schema_version"] == 3
+    assert json.loads(warm.to_json())["schema_version"] == 4
 
 
 @pytest.mark.parametrize(

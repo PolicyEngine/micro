@@ -60,6 +60,7 @@ __all__ = [
     "ROWS_ALL",
     "WEIGHT_KINDS",
     "CompiledGraph",
+    "ExpectedContent",
     "Graph",
     "GraphError",
     "Node",
@@ -192,16 +193,72 @@ class SourceRef:
     Attributes:
         name: The name nodes refer to.
         codec: How bytes become a table (a codec registered with the store).
+        content_type: Media type of the bytes at the bound source boundary.
+        access: Optional reviewed access classification.
+        expected: Reviewed content identities that the executor verifies.
         description: Descriptive; never hashed.
     """
 
     name: str
     codec: str
     description: str = ""
+    content_type: str = "application/octet-stream"
+    access: str | None = None
+    expected: tuple[ExpectedContent, ...] = ()
 
     def __post_init__(self) -> None:
         _nonempty("SourceRef.name", self.name)
         _nonempty("SourceRef.codec", self.codec)
+        _nonempty("SourceRef.content_type", self.content_type)
+        if self.access is not None:
+            _nonempty("SourceRef.access", self.access)
+        if not isinstance(self.expected, tuple) or any(
+            not isinstance(item, ExpectedContent) for item in self.expected
+        ):
+            raise GraphError("SourceRef.expected must be ExpectedContent values.")
+        identities = [(item.boundary, item.path) for item in self.expected]
+        if len(set(identities)) != len(identities):
+            raise GraphError(
+                f"SourceRef {self.name!r} repeats an expected content boundary."
+            )
+
+
+@dataclass(frozen=True)
+class ExpectedContent:
+    """One reviewed SHA-256 identity at an explicit source byte boundary."""
+
+    sha256: str
+    boundary: str = "source"
+    path: str | None = None
+    size: int | None = None
+    identity_ref: str = ""
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.sha256, str)
+            or len(self.sha256) != 64
+            or any(character not in "0123456789abcdef" for character in self.sha256)
+        ):
+            raise GraphError("ExpectedContent.sha256 must be 64 lowercase hex digits.")
+        if self.boundary not in {"source", "member"}:
+            raise GraphError("ExpectedContent.boundary must be 'source' or 'member'.")
+        if self.boundary == "member":
+            if (
+                not isinstance(self.path, str)
+                or not self.path
+                or "\\" in self.path
+                or self.path.startswith("/")
+                or any(part in {"", ".", ".."} for part in self.path.split("/"))
+            ):
+                raise GraphError(
+                    "Member ExpectedContent.path must be a safe relative POSIX path."
+                )
+        elif self.path is not None:
+            raise GraphError("Source-bound ExpectedContent may not declare path.")
+        if self.size is not None and (type(self.size) is not int or self.size < 0):
+            raise GraphError("ExpectedContent.size must be a non-negative integer.")
+        if not isinstance(self.identity_ref, str):
+            raise GraphError("ExpectedContent.identity_ref must be a string.")
 
 
 @dataclass(frozen=True)
@@ -464,6 +521,7 @@ class Node:
     entrants: bool = False
     artifact_inputs: tuple[ArtifactInput, ...] = ()
     artifact_outputs: tuple[ArtifactOutput, ...] = ()
+    requires_success: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _nonempty("Node.id", self.id)
@@ -481,6 +539,14 @@ class Node:
                 )
             if len({item.name for item in declarations}) != len(declarations):
                 raise GraphError(f"Node {self.id!r}: duplicate names in {name}.")
+        if not isinstance(self.requires_success, tuple) or any(
+            not isinstance(name, str) or not name for name in self.requires_success
+        ):
+            raise GraphError(
+                f"Node {self.id!r}: requires_success must contain product names."
+            )
+        if len(set(self.requires_success)) != len(self.requires_success):
+            raise GraphError(f"Node {self.id!r}: requires_success contains duplicates.")
         if not isinstance(self.structural, StructuralDelta):
             raise GraphError(f"Node {self.id!r}: structural must be a StructuralDelta.")
         if self.mass not in MASS_POLICIES:
@@ -612,7 +678,8 @@ class Node:
             for f in fields(self)
             if f.name not in DESCRIPTIVE_FIELDS
             and not (
-                f.name in {"artifact_inputs", "artifact_outputs", "bases"}
+                f.name
+                in {"artifact_inputs", "artifact_outputs", "bases", "requires_success"}
                 and not getattr(self, f.name)
             )
         }
@@ -982,6 +1049,9 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                     f"Product {product.name!r} references unknown coordinate "
                     f"{product.entity}.{product.column} at {target.id!r}."
                 )
+            supplier = reader_of(target.id, version, product.entity, product.column)
+            if supplier != target.id:
+                predecessors[target.id].add(supplier)
         elif product.kind is ProductKind.WEIGHTS:
             assert product.entity is not None
         elif product.kind is ProductKind.ARTIFACT:
@@ -993,6 +1063,21 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                     f"{product.artifact!r} on {target.id!r}."
                 )
         product_nodes[product.name] = target.id
+
+    for node in graph.nodes:
+        for product_name in node.requires_success:
+            product = products.get(product_name)
+            if product is None or product.kind is not ProductKind.VALIDATION:
+                raise GraphError(
+                    f"Node {node.id!r} requires success from {product_name!r}, "
+                    "which is not a validation product."
+                )
+            producer = product_nodes[product_name]
+            if producer == node.id:
+                raise GraphError(
+                    f"Node {node.id!r} cannot require its own validation outcome."
+                )
+            predecessors[node.id].add(producer)
 
     for node in graph.nodes:
         if node.weights is None or node.weights.anchor is None:

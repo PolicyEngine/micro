@@ -19,7 +19,7 @@ from microcosm.frame import Frame, WeightKind, Weights
 from . import keys as graph_keys
 from .artifact_edges import scope_payload, typed_contracts, value_from_descriptor
 from .canonical import canonical_json, sha256_domain
-from .codecs import SOURCE_CODECS, SourceCodecRegistry
+from .codecs import SOURCE_CODECS, BoundSource, SourceCodecRegistry
 from .decl import (
     GATE_OUTCOMES,
     ROWS_ALL,
@@ -27,9 +27,11 @@ from .decl import (
     Node,
     Owned,
     Ownership,
+    ProductKind,
     StructuralDelta,
 )
 from .errors import NodeRejectedError
+from .graph_source import validate_kernel_registry
 from .kernel import (
     ArtifactValue,
     Capabilities,
@@ -40,14 +42,20 @@ from .kernel import (
     Numeric,
     NumericScope,
     Tolerance,
+    source_hash,
 )
 from .keys import (
     _capabilities_projection,
     artifact_key,
     frame_key,
+    graph_key,
     node_key,
     seed,
+    source_binding_key,
+    source_content_identity,
     source_content_key,
+    union_lineage_key,
+    validation_outcome_key,
     weights_key,
 )
 from .manifest import Decision, NodeReceipt, RunManifest
@@ -63,6 +71,7 @@ from .population import (
     union_populations,
     weight_cap_receipt,
 )
+from .serialize import graph_document_from_json
 from .store import (
     ContentStore,
     ResumePolicy,
@@ -481,7 +490,7 @@ def _project_context(
     population: Population | None,
     *,
     key: str,
-    sources: Mapping[str, Path],
+    sources: Mapping[str, BoundSource],
     tolerances: Mapping[tuple[str, str], Tolerance | None],
     numerics: Mapping[tuple[str, str], NumericScope],
     artifacts: Mapping[str, ArtifactValue] | None = None,
@@ -1542,6 +1551,23 @@ def _write_node(
         )
         opaque_entries.append({"name": name, "key": output_key})
 
+    outcome_entry: str | None = None
+    if capabilities.role is KernelRole.GATE:
+        outcome_entry = validation_outcome_key(key)
+        store.put_json(
+            outcome_entry,
+            {
+                "schema_version": 1,
+                "node_id": node.id,
+                "node_key": key,
+                "outcome": receipt["outcome"],
+                **({"evidence": receipt["evidence"]} if "evidence" in receipt else {}),
+            },
+            kind="validation-outcome",
+            node_key=key,
+            verify_existing=verify_existing,
+        )
+
     record: dict[str, object] = {
         "schema_version": 2 if typed_artifacts else 1,
         **({"typed_artifacts": dict(typed_artifacts)} if typed_artifacts else {}),
@@ -1555,6 +1581,7 @@ def _write_node(
         "frame_key": stored_frame_key,
         "weight": weight_entry,
         "opaque": opaque_entries,
+        **({"outcome_key": outcome_entry} if outcome_entry is not None else {}),
     }
     store.put_json(
         _cache_record_key(key),
@@ -1589,6 +1616,12 @@ def _require_record_shape(
         "weight",
         "opaque",
     }
+    if capabilities.role is KernelRole.GATE:
+        if set(raw) == required | ({"typed_artifacts"} if typed_artifacts else set()):
+            raise StoreMiss(
+                f"Cached validation node {node.id!r} predates stored outcomes."
+            )
+        required.add("outcome_key")
     if typed_artifacts:
         required.add("typed_artifacts")
     if set(raw) != required:
@@ -1646,6 +1679,12 @@ def _require_record_shape(
         raise StoreMiss(
             f"Cached receipt capabilities for node {node.id!r} disagree with "
             "the registered kernel contract."
+        )
+    if capabilities.role is KernelRole.GATE and raw.get(
+        "outcome_key"
+    ) != validation_outcome_key(key):
+        raise StoreCorrupt(
+            f"Cached validation outcome identity for node {node.id!r} is malformed."
         )
     if node.structural is StructuralDelta.EXPAND:
         raw_receipt = raw["receipt"]
@@ -1770,6 +1809,13 @@ def _preflight_record(store: ContentStore, record: Mapping[str, object]) -> None
         store.load_column(str(weight["key"]))
     for entry in _record_entries(record, "opaque"):
         store.load_bytes(str(entry.get("key")))
+    outcome_key = record.get("outcome_key")
+    if outcome_key is not None:
+        store.load_json(str(outcome_key), kind="validation-outcome")
+    receipt = record.get("receipt")
+    lineage = receipt.get("union_lineage") if isinstance(receipt, Mapping) else None
+    if isinstance(lineage, Mapping) and isinstance(lineage.get("key"), str):
+        store.load_json(lineage["key"], kind="union-lineage")
 
 
 def _load_cached_result(
@@ -1860,6 +1906,25 @@ def _load_cached_result(
     raw_receipt = record["receipt"]
     if not isinstance(raw_receipt, dict):
         raise StoreCorrupt(f"Cached node {node.id!r} receipt is malformed.")
+    outcome_key = record.get("outcome_key")
+    if outcome_key is not None:
+        stored_outcome = store.load_json(str(outcome_key), kind="validation-outcome")
+        expected_outcome = {
+            "schema_version": 1,
+            "node_id": node.id,
+            "node_key": str(record["node_key"]),
+            "outcome": raw_receipt.get("outcome"),
+            **(
+                {"evidence": raw_receipt["evidence"]}
+                if "evidence" in raw_receipt
+                else {}
+            ),
+        }
+        if stored_outcome != expected_outcome:
+            raise StoreCorrupt(
+                f"Stored validation outcome for node {node.id!r} disagrees "
+                "with its receipt."
+            )
 
     # Reapply FILTER/REWEIGHT to the current base so graph mass checks and
     # ledgers are reconstructed on a hit.  Their stored final frame was loaded
@@ -1904,7 +1969,7 @@ def _source_paths_and_keys(
     compiled: CompiledGraph,
     sources: Mapping[str, Path],
     store: ContentStore,
-) -> tuple[dict[str, Path], dict[str, str]]:
+) -> tuple[dict[str, BoundSource], dict[str, str], dict[str, Mapping[str, object]]]:
     declared = {source.name: source for source in compiled.graph.sources}
     used = {name for node in compiled.graph.nodes for name in node.sources}
     missing = sorted(used - sources.keys())
@@ -1913,27 +1978,117 @@ def _source_paths_and_keys(
     unknown = sorted(sources.keys() - declared.keys())
     if unknown:
         raise ValueError(f"Source paths supplied for undeclared names {unknown!r}.")
-    resolved: dict[str, Path] = {}
+    resolved: dict[str, BoundSource] = {}
     identities: dict[str, str] = {}
+    receipts: dict[str, Mapping[str, object]] = {}
     for name in sorted(used):
         path = Path(sources[name]).resolve(strict=True)
-        # Codec availability is verified before any kernel can execute.  The
-        # CREATE kernel remains the declared computation that invokes it.
-        codec = declared[name].codec
+        declaration = declared[name]
+        codec = declaration.codec
         configured = store.codecs
         if configured is None:
-            SOURCE_CODECS.get(codec)
+            loader = SOURCE_CODECS.get(codec)
+            codec_identity = SOURCE_CODECS.implementation_hash(codec)
         elif isinstance(configured, SourceCodecRegistry):
-            configured.get(codec)
+            loader = configured.get(codec)
+            codec_identity = configured.implementation_hash(codec)
         elif isinstance(configured, Mapping):
             loader = configured.get(codec)
             if not callable(loader):
                 raise StoreUnavailable(f"Source codec {codec!r} is not installed.")
+            codec_identity = source_hash(loader)
         else:  # defended by ContentStore.__init__
             raise StoreUnavailable("ContentStore has an invalid codec registry.")
-        resolved[name] = path
-        identities[name] = source_content_key(name, path)
-    return resolved, identities
+        boundary_kind, calculated_sha256, calculated_size = source_content_identity(
+            path
+        )
+        content_key = source_content_key(name, path)
+        expectation_receipts: list[dict[str, object]] = []
+        for expectation in declaration.expected:
+            expected_path = path
+            if expectation.boundary == "member":
+                assert expectation.path is not None
+                expected_path = path.joinpath(*expectation.path.split("/"))
+                if expected_path.is_symlink() or not expected_path.is_file():
+                    raise StoreUnavailable(
+                        f"Source {name!r} expected member {expectation.path!r} "
+                        "is not a regular file."
+                    )
+                member_kind, observed_sha256, observed_size = source_content_identity(
+                    expected_path
+                )
+                assert member_kind == "file"
+            else:
+                observed_sha256 = calculated_sha256
+                observed_size = calculated_size
+            matches = expectation.sha256 == observed_sha256 and (
+                expectation.size is None or expectation.size == observed_size
+            )
+            expectation_receipts.append(
+                {
+                    "boundary": expectation.boundary,
+                    **(
+                        {"path": expectation.path}
+                        if expectation.path is not None
+                        else {}
+                    ),
+                    "expected_sha256": expectation.sha256,
+                    **(
+                        {"expected_size": expectation.size}
+                        if expectation.size is not None
+                        else {}
+                    ),
+                    "calculated_sha256": observed_sha256,
+                    "calculated_size": observed_size,
+                    **(
+                        {"identity_ref": expectation.identity_ref}
+                        if expectation.identity_ref
+                        else {}
+                    ),
+                    "matched": matches,
+                }
+            )
+            if not matches:
+                raise StoreUnavailable(
+                    f"Source {name!r} content identity mismatch at "
+                    f"{expectation.boundary!r} boundary"
+                    + (f" {expectation.path!r}" if expectation.path is not None else "")
+                    + f": expected {expectation.sha256}, calculated {observed_sha256}."
+                )
+        binding_identity = source_binding_key(
+            content_key, codec, codec_identity, declaration.content_type
+        )
+        receipt: Mapping[str, object] = MappingProxyType(
+            {
+                "name": name,
+                "content_type": declaration.content_type,
+                **({"access": declaration.access} if declaration.access else {}),
+                "content": {
+                    "boundary": boundary_kind,
+                    "sha256": calculated_sha256,
+                    "size": calculated_size,
+                    "key": content_key,
+                },
+                "codec": codec,
+                "codec_impl_hash": codec_identity,
+                "binding_key": binding_identity,
+                "expected": expectation_receipts,
+            }
+        )
+        resolved[name] = BoundSource(
+            name=name,
+            path=path,
+            codec=codec,
+            codec_impl_hash=codec_identity,
+            content_key=content_key,
+            binding_key=binding_identity,
+            receipt=receipt,
+            loader=loader,  # type: ignore[arg-type]
+            store=store,
+        )
+        identities[name] = binding_identity
+        receipts[name] = receipt
+    return resolved, identities, receipts
 
 
 def _all_node_keys(
@@ -1971,8 +2126,21 @@ def _preflight_require(
     kernels: KernelRegistry,
 ) -> None:
     missing: list[str] = []
+    outcomes: dict[str, str] = {}
+    unreached: set[str] = set()
     for node_id in compiled.order:
         node = compiled.graph.node(node_id)
+        required_producers = {
+            compiled.product_nodes[name] for name in node.requires_success
+        }
+        if any(
+            predecessor in unreached for predecessor in compiled.predecessors[node_id]
+        ) or any(
+            outcomes.get(producer) not in _CERTIFYING_GATE_OUTCOMES
+            for producer in required_producers
+        ):
+            unreached.add(node_id)
+            continue
         try:
             record = _load_record(
                 store,
@@ -1989,6 +2157,11 @@ def _preflight_require(
                 exact=False,
             )
             _preflight_record(store, record)
+            raw_receipt = record.get("receipt")
+            if kernels.get(
+                node.kernel
+            ).capabilities.role is KernelRole.GATE and isinstance(raw_receipt, Mapping):
+                outcomes[node_id] = str(raw_receipt.get("outcome"))
         except StoreMiss:
             missing.append(node_id)
     if missing:
@@ -2100,6 +2273,110 @@ def _weight_anchor_receipt(
     )
 
 
+def _blocked_by(
+    compiled: CompiledGraph,
+    node: Node,
+    receipts: Mapping[str, NodeReceipt],
+) -> tuple[str, ...]:
+    """Return failed required validations or already-unreached predecessors."""
+
+    blockers = {
+        predecessor
+        for predecessor in compiled.predecessors[node.id]
+        if predecessor in receipts and receipts[predecessor].status == "unreached"
+    }
+    for product_name in node.requires_success:
+        producer = compiled.product_nodes[product_name]
+        receipt = receipts[producer]
+        if (
+            receipt.status == "unreached"
+            or receipt.receipt.get("outcome") not in _CERTIFYING_GATE_OUTCOMES
+        ):
+            blockers.add(producer)
+    return tuple(sorted(blockers))
+
+
+def _graph_product_receipts(
+    compiled: CompiledGraph, receipts: Mapping[str, NodeReceipt]
+) -> Mapping[str, object]:
+    """Resolve declared product names to portable producer and artifact records."""
+
+    products: dict[str, object] = {}
+
+    def coordinate_supplier(version: str, entity: str, column: str) -> str:
+        owner = compiled.owners.get((version, entity, column))
+        if owner is not None:
+            return owner
+        holder = compiled.graph.node(version)
+        if holder.structural is StructuralDelta.REVISION:
+            assert holder.base is not None
+            return coordinate_supplier(holder.base, entity, column)
+        return version
+
+    for product in sorted(compiled.graph.products, key=lambda item: item.name):
+        if product.kind is ProductKind.EXPORT:
+            products[product.name] = {
+                "kind": product.kind.value,
+                "source": product.source,
+                "codec": product.codec,
+                "codec_version": product.codec_version,
+            }
+            continue
+        assert product.node is not None
+        producer_receipt = receipts[product.node]
+        record: dict[str, object] = {
+            "kind": product.kind.value,
+            "producer": product.node,
+            "producer_key": producer_receipt.key,
+            "status": producer_receipt.status,
+        }
+        if producer_receipt.status == "unreached":
+            products[product.name] = record
+            continue
+        if product.kind is ProductKind.POPULATION:
+            record["version"] = compiled.versions[product.node]
+        elif product.kind is ProductKind.COORDINATE:
+            assert product.entity is not None and product.column is not None
+            supplier = coordinate_supplier(
+                compiled.versions[product.node], product.entity, product.column
+            )
+            record.update(
+                {
+                    "entity": product.entity,
+                    "column": product.column,
+                    "supplier": supplier,
+                    "key": receipts[supplier].artifacts[
+                        (product.entity, product.column)
+                    ],
+                }
+            )
+        elif product.kind is ProductKind.WEIGHTS:
+            assert product.entity is not None
+            record["entity"] = product.entity
+            version = compiled.versions[product.node]
+            state_receipt = receipts[version]
+            while (
+                state_receipt.weight_key is None
+                and state_receipt.frame_key is None
+                and compiled.graph.node(version).structural is StructuralDelta.REVISION
+            ):
+                base = compiled.graph.node(version).base
+                assert base is not None
+                version = base
+                state_receipt = receipts[version]
+            record["state"] = version
+            record["key"] = state_receipt.weight_key or state_receipt.frame_key
+        elif product.kind is ProductKind.ARTIFACT:
+            assert product.artifact is not None
+            record["artifact"] = product.artifact
+            record["key"] = producer_receipt.opaque_artifacts[product.artifact]
+        elif product.kind is ProductKind.VALIDATION:
+            record["key"] = producer_receipt.outcome_key
+            record["outcome"] = producer_receipt.receipt["outcome"]
+        products[product.name] = record
+    return MappingProxyType(products)
+
+
 def run_graph(
     compiled: CompiledGraph,
     *,
@@ -2108,6 +2385,8 @@ def run_graph(
     kernels: KernelRegistry,
     resume: ResumePolicy = "auto",
     decisions: tuple[Decision, ...] = (),
+    graph_source: object | None = None,
+    graph_json: str | bytes | None = None,
 ) -> RunManifest:
     """Execute a compiled graph with content-addressed reuse and receipts."""
 
@@ -2123,9 +2402,34 @@ def run_graph(
             raise TypeError("decisions must contain Decision records or mappings.")
     decisions = tuple(normalized_decisions)
 
+    source_graph = getattr(graph_source, "graph", None)
+    if graph_source is not None and source_graph != compiled.graph:
+        raise ValueError("graph_source does not describe the compiled Graph.")
+    graph_source_receipts = tuple(
+        {
+            "path": receipt.path,
+            "sha256": receipt.sha256,
+        }
+        for receipt in getattr(graph_source, "receipts", ())
+    )
+    run_parameters = dict(getattr(graph_source, "parameters", {}))
+    graph_json_key: str | None = None
+    if graph_json is not None:
+        graph_json_bytes = (
+            graph_json.encode("utf-8") if isinstance(graph_json, str) else graph_json
+        )
+        decoded = graph_json_bytes.decode("utf-8")
+        if graph_document_from_json(decoded) != compiled.graph:
+            raise ValueError("graph_json does not serialize the compiled Graph.")
+        graph_json_key = sha256_domain("graph-json", graph_json_bytes)
+        store.put_bytes(graph_json_key, graph_json_bytes)
+
+    validate_kernel_registry(compiled, kernels)
     _preflight_expand_declarations(compiled)
     started_at = _now()
-    source_paths, source_keys = _source_paths_and_keys(compiled, sources, store)
+    source_paths, source_keys, source_receipts = _source_paths_and_keys(
+        compiled, sources, store
+    )
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
     contracts = {
         node_id: typed_contracts(compiled, compiled.graph.node(node_id), keys, kernels)
@@ -2147,6 +2451,31 @@ def run_graph(
                 f"Node {node.id!r} structural declaration does not match kernel "
                 "capabilities."
             )
+        blockers = _blocked_by(compiled, node, receipts)
+        if blockers:
+            receipts[node_id] = NodeReceipt(
+                typed_artifacts={},
+                key=key,
+                hit=False,
+                seed=seed(key),
+                kernel_ref=node.kernel,
+                kernel_impl_hash=implementation,
+                capabilities=kernel.capabilities,
+                receipt=MappingProxyType(
+                    {
+                        "blocked_by": list(blockers),
+                        **(
+                            {"outcome": "unreached"}
+                            if kernel.capabilities.role is KernelRole.GATE
+                            else {}
+                        ),
+                    }
+                ),
+                wall_time=time.perf_counter() - node_started,
+                status="unreached",
+                blocked_by=blockers,
+            )
+            continue
 
         union_lineage: Mapping[str, tuple[tuple[object, str, object], ...]] | None = (
             None
@@ -2255,8 +2584,8 @@ def run_graph(
             if before != after:
                 raise NodeRejected(f"Node {node.id!r} mutated its input context.")
             for name in node.sources:
-                current = source_content_key(name, source_paths[name])
-                if current != source_keys[name]:
+                current = source_content_key(name, source_paths[name].path)
+                if current != source_paths[name].content_key:
                     raise NodeRejected(
                         f"Node {node.id!r} changed source {name!r} while running."
                     )
@@ -2272,9 +2601,22 @@ def run_graph(
             compiled, node, incumbent, normalized_receipt
         )
         if union_lineage is not None:
-            normalized_receipt["union_lineage"] = {
+            lineage_payload = {
                 entity: [list(entry) for entry in entries]
                 for entity, entries in union_lineage.items()
+            }
+            lineage_key = union_lineage_key(key)
+            store.put_json(
+                lineage_key,
+                lineage_payload,
+                kind="union-lineage",
+                node_key=key,
+            )
+            normalized_receipt["union_lineage"] = {
+                "key": lineage_key,
+                "rows": {
+                    entity: len(entries) for entity, entries in union_lineage.items()
+                },
             }
         if kernel.capabilities.role is KernelRole.RELEASE:
             derived_tier, gate_ids = _release_tier(compiled, node_id, receipts)
@@ -2405,6 +2747,10 @@ def run_graph(
             receipt_weight_key = raw_weight["key"]
         else:  # generated records cannot reach this branch
             raise StoreCorrupt(f"Node {node.id!r} weight identity is malformed.")
+        raw_outcome_key = record.get("outcome_key")
+        receipt_outcome_key = (
+            str(raw_outcome_key) if raw_outcome_key is not None else None
+        )
         receipt_opaque: dict[str, str] = {}
         for entry in _record_entries(record, "opaque"):
             name = entry.get("name")
@@ -2429,6 +2775,7 @@ def run_graph(
             frame_key=receipt_frame_key,
             weight_key=receipt_weight_key,
             opaque_artifacts=MappingProxyType(receipt_opaque),
+            outcome_key=receipt_outcome_key,
         )
 
     return RunManifest(
@@ -2447,4 +2794,10 @@ def run_graph(
                 for version, population in populations.items()
             }
         ),
+        graph_key=graph_key(compiled.graph),
+        graph_source_receipts=graph_source_receipts,
+        parameters=run_parameters,
+        source_bindings=MappingProxyType(source_receipts),
+        graph_json_key=graph_json_key,
+        products=_graph_product_receipts(compiled, receipts),
     )

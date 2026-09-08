@@ -20,6 +20,7 @@ from .decl import (
     ArtifactOutput,
     ArtifactType,
     CompiledGraph,
+    ExpectedContent,
     Graph,
     GraphError,
     Node,
@@ -83,6 +84,7 @@ __all__ = [
     "ArtifactOutput",
     "ArtifactType",
     "ArtifactValue",
+    "BoundSource",
     "GRAPH_SOURCE_SCHEMA_VERSION",
     "keyed_uniform",
     "platform_fingerprint",
@@ -98,6 +100,7 @@ __all__ = [
     "ContentStore",
     "Decision",
     "Determinism",
+    "ExpectedContent",
     "Graph",
     "GraphError",
     "GraphParameterBindingError",
@@ -187,6 +190,7 @@ _check_frame_version()
 
 from .codecs import (  # noqa: E402 - check dependency series before runtime import
     SOURCE_CODECS,
+    BoundSource,
     SourceCodec,
     SourceCodecRegistry,
     load_source,

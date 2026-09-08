@@ -187,10 +187,11 @@ def test_union_remaps_collisions_and_records_source_lineage(tmp_path: Path) -> N
     compiled = compile_graph(graph)
     registry = toy.toy_registry()
     registry.register(Union())
+    store = ContentStore(tmp_path / "store")
     manifest = run_graph(
         compiled,
         sources=toy.toy_sources(tmp_path),
-        store=ContentStore(tmp_path / "store"),
+        store=store,
         kernels=registry,
     )
 
@@ -200,7 +201,8 @@ def test_union_remaps_collisions_and_records_source_lineage(tmp_path: Path) -> N
     assert combined.table("person").person_id.is_unique
     assert combined.table("household").household_id.is_unique
     assert compiled.product_nodes["combined.population"] == "combined"
-    lineage = manifest.nodes["combined"].receipt["union_lineage"]
+    lineage_ref = manifest.nodes["combined"].receipt["union_lineage"]
+    lineage = store.load_json(lineage_ref["key"], kind="union-lineage")
     assert len(lineage["person"]) == combined.n("person")
     assert {entry[1] for entry in lineage["person"]} == {"acs", "asec"}
     assert manifest.mass_ledgers["combined"][-1].operation == "union"

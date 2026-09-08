@@ -13,6 +13,7 @@ from microcosm.graph import (
     ArtifactType,
     Capabilities,
     Determinism,
+    ExpectedContent,
     Graph,
     GraphParameterBindingError,
     GraphSourceCompositionError,
@@ -174,7 +175,13 @@ mass_partition: [person, period]
 products:
   - {name: final, kind: population, target: {node: weights}}
 sources:
-  - {name: fixture, codec: csv-tables, description: exact fixture}
+  - name: fixture
+    codec: csv-tables
+    content_type: application/vnd.microcosm.frame-source
+    access: licensed
+    description: exact fixture
+    expected:
+      - {sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, boundary: member, path: person.csv, size: 42, identity_ref: "chronicle://example"}
 nodes:
   - id: create
     kernel: create@1
@@ -224,7 +231,24 @@ nodes:
     )
     expected = Graph(
         "toy",
-        (SourceRef("fixture", "csv-tables", "exact fixture"),),
+        (
+            SourceRef(
+                "fixture",
+                "csv-tables",
+                "exact fixture",
+                "application/vnd.microcosm.frame-source",
+                "licensed",
+                (
+                    ExpectedContent(
+                        "a" * 64,
+                        "member",
+                        "person.csv",
+                        42,
+                        "chronicle://example",
+                    ),
+                ),
+            ),
+        ),
         (
             Node(
                 "apply",

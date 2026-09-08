@@ -14,6 +14,7 @@ from .decl import (
     ArtifactOutput,
     ArtifactType,
     CompiledGraph,
+    ExpectedContent,
     Graph,
     GraphError,
     Node,
@@ -283,6 +284,7 @@ def _lower_node(raw: Mapping[str, object], bindings: Mapping[str, Param]) -> Nod
         entrants=bool(raw.get("entrants", False)),
         artifact_inputs=artifact_inputs,
         artifact_outputs=artifact_outputs,
+        requires_success=tuple(str(value) for value in raw.get("requires_success", [])),
     )
 
 
@@ -393,9 +395,24 @@ def load_graph_source(
     bound = _bind_parameters(parameter_declarations, parameters or {})
     sources = tuple(
         SourceRef(
-            str(item["name"]),
-            str(item["codec"]),
-            str(item.get("description", "")),
+            name=str(item["name"]),
+            codec=str(item["codec"]),
+            description=str(item.get("description", "")),
+            content_type=str(item.get("content_type", "application/octet-stream")),
+            access=None if "access" not in item else str(item["access"]),
+            expected=tuple(
+                ExpectedContent(
+                    sha256=str(expected["sha256"]),
+                    boundary=str(expected.get("boundary", "source")),
+                    path=None if "path" not in expected else str(expected["path"]),
+                    size=None if "size" not in expected else int(expected["size"]),
+                    identity_ref=str(expected.get("identity_ref", "")),
+                )
+                for expected in (
+                    _mapping(value, "expected source content")
+                    for value in item.get("expected", [])
+                )
+            ),
         )
         for item in (
             _mapping(unique["sources"][name], "source")
@@ -485,6 +502,16 @@ def validate_kernel_registry(compiled: CompiledGraph, kernels: KernelRegistry) -
                     f"node {node.id!r} cannot consume typed artifact "
                     f"{binding.name!r}: {error}"
                 ) from error
+    for product in compiled.graph.products:
+        if product.kind is not ProductKind.VALIDATION:
+            continue
+        assert product.node is not None
+        kernel = kernels.get(compiled.graph.node(product.node).kernel)
+        if kernel.capabilities.role.value != "gate":
+            raise GraphSourceValidationError(
+                f"validation product {product.name!r} targets node "
+                f"{product.node!r}, whose kernel is not a validation kernel"
+            )
 
 
 __all__ = [

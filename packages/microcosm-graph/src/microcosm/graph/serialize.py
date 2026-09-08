@@ -11,6 +11,7 @@ from .decl import (
     ArtifactInput,
     ArtifactOutput,
     ArtifactType,
+    ExpectedContent,
     Graph,
     Node,
     Owned,
@@ -47,6 +48,40 @@ def graph_to_json(graph: Graph) -> str:
                 "name": source.name,
                 "codec": source.codec,
                 "description": source.description,
+                **(
+                    {"content_type": source.content_type}
+                    if source.content_type != "application/octet-stream"
+                    else {}
+                ),
+                **({"access": source.access} if source.access is not None else {}),
+                **(
+                    {
+                        "expected": [
+                            {
+                                "sha256": item.sha256,
+                                **(
+                                    {"boundary": item.boundary}
+                                    if item.boundary != "source"
+                                    else {}
+                                ),
+                                **(
+                                    {"path": item.path} if item.path is not None else {}
+                                ),
+                                **(
+                                    {"size": item.size} if item.size is not None else {}
+                                ),
+                                **(
+                                    {"identity_ref": item.identity_ref}
+                                    if item.identity_ref
+                                    else {}
+                                ),
+                            }
+                            for item in source.expected
+                        ]
+                    }
+                    if source.expected
+                    else {}
+                ),
             }
             for source in graph.sources
         ],
@@ -245,6 +280,11 @@ def _node_payload(node: Node) -> dict[str, object]:
         ),
         "mass": node.mass,
         **({"entrants": True} if node.entrants else {}),
+        **(
+            {"requires_success": list(node.requires_success)}
+            if node.requires_success
+            else {}
+        ),
         "description": node.description,
         "citation": node.citation,
     }
@@ -253,11 +293,44 @@ def _node_payload(node: Node) -> dict[str, object]:
 def _source_from_payload(value: object, index: int) -> SourceRef:
     label = f"graph.sources[{index}]"
     payload = _mapping(value, label)
-    _exact_fields(payload, {"name", "codec", "description"}, label)
+    fields = {"name", "codec", "description"}
+    fields.update(
+        name for name in ("content_type", "access", "expected") if name in payload
+    )
+    _exact_fields(payload, fields, label)
+    expected = _array(payload.get("expected", []), f"{label}.expected")
     return SourceRef(
         name=_string(payload["name"], f"{label}.name"),
         codec=_string(payload["codec"], f"{label}.codec"),
         description=_string(payload["description"], f"{label}.description"),
+        content_type=_string(
+            payload.get("content_type", "application/octet-stream"),
+            f"{label}.content_type",
+        ),
+        access=_optional_string(payload.get("access"), f"{label}.access"),
+        expected=tuple(
+            _expected_content_from_payload(item, f"{label}.expected[{item_index}]")
+            for item_index, item in enumerate(expected)
+        ),
+    )
+
+
+def _expected_content_from_payload(value: object, label: str) -> ExpectedContent:
+    payload = _mapping(value, label)
+    fields = {"sha256"}
+    fields.update(
+        name for name in ("boundary", "path", "size", "identity_ref") if name in payload
+    )
+    _exact_fields(payload, fields, label)
+    size = payload.get("size")
+    if size is not None and (type(size) is not int or size < 0):
+        raise TypeError(f"{label}.size must be a non-negative integer")
+    return ExpectedContent(
+        sha256=_string(payload["sha256"], f"{label}.sha256"),
+        boundary=_string(payload.get("boundary", "source"), f"{label}.boundary"),
+        path=_optional_string(payload.get("path"), f"{label}.path"),
+        size=size,
+        identity_ref=_string(payload.get("identity_ref", ""), f"{label}.identity_ref"),
     )
 
 
@@ -286,6 +359,8 @@ def _node_from_payload(value: object, index: int) -> Node:
         fields.add("entrants")
     if "bases" in payload:
         fields.add("bases")
+    if "requires_success" in payload:
+        fields.add("requires_success")
     _exact_fields(payload, fields, label)
     entrants = payload.get("entrants", False)
     if not isinstance(entrants, bool):
@@ -297,6 +372,9 @@ def _node_from_payload(value: object, index: int) -> Node:
     population = _optional_string(payload["population"], f"{label}.population")
     base = _optional_string(payload["base"], f"{label}.base")
     bases = _array(payload.get("bases", []), f"{label}.bases")
+    requires_success = _array(
+        payload.get("requires_success", []), f"{label}.requires_success"
+    )
     return Node(
         artifact_inputs=tuple(
             _artifact_from_payload(value, input_=True)
@@ -344,6 +422,10 @@ def _node_from_payload(value: object, index: int) -> Node:
         entrants=entrants,
         description=_string(payload["description"], f"{label}.description"),
         citation=_string(payload["citation"], f"{label}.citation"),
+        requires_success=tuple(
+            _string(name, f"{label}.requires_success[{item_index}]")
+            for item_index, name in enumerate(requires_success)
+        ),
     )
 
 

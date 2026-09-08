@@ -278,7 +278,7 @@ class SourceCsv(ToyKernel):
     """CREATE: the ``csv-tables`` codec turned into a population version."""
 
     def compute(self, context: KernelContext) -> KernelResult:
-        frame = read_toy_frame(context.sources["survey"])
+        frame = context.sources["survey"].decode()
         return KernelResult(
             frame=frame,
             receipt={"persons": frame.n("person"), "households": frame.n("household")},

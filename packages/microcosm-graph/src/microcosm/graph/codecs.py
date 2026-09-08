@@ -19,7 +19,9 @@ Two codecs ship with the graph runtime:
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -29,10 +31,12 @@ import pandas as pd
 
 from microcosm.frame import EntitySchema, Frame, LinkSpec, WeightKind, Weights
 
+from .kernel import source_hash
 from .store import ContentStore, StoreUnavailable
 
 __all__ = [
     "SOURCE_CODECS",
+    "BoundSource",
     "SourceCodec",
     "SourceCodecRegistry",
     "load_csv_tables",
@@ -43,13 +47,73 @@ __all__ = [
 type SourceCodec = Callable[..., Frame]
 
 
+@dataclass(frozen=True)
+class BoundSource(os.PathLike[str]):
+    """A verified source path bound to exactly one declared decoder."""
+
+    name: str
+    path: Path
+    codec: str
+    codec_impl_hash: str
+    content_key: str
+    binding_key: str
+    receipt: Mapping[str, object]
+    loader: SourceCodec = field(repr=False, compare=False)
+    store: ContentStore | None = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "path", Path(self.path))
+        object.__setattr__(self, "receipt", MappingProxyType(dict(self.receipt)))
+
+    def __fspath__(self) -> str:
+        return os.fspath(self.path)
+
+    def __truediv__(self, child: str | os.PathLike[str]) -> Path:
+        return self.path / child
+
+    def read_text(self, *args: object, **kwargs: object) -> str:
+        return self.path.read_text(*args, **kwargs)
+
+    def read_bytes(self) -> bytes:
+        return self.path.read_bytes()
+
+    def decode(self, codec: str | None = None) -> Frame:
+        """Decode through the declaration; reject a contradictory request."""
+
+        if codec is not None and codec != self.codec:
+            raise StoreUnavailable(
+                f"Source {self.name!r} declares codec {self.codec!r}, not {codec!r}."
+            )
+        try:
+            frame = self.loader(self.path, store=self.store)
+        except StoreUnavailable:
+            raise
+        except ImportError as error:
+            raise StoreUnavailable(
+                f"Source codec {self.codec!r} needs an unavailable dependency."
+            ) from error
+        if not isinstance(frame, Frame):
+            raise TypeError(
+                f"Source codec {self.codec!r} returned {type(frame).__name__}, "
+                "not Frame."
+            )
+        return frame
+
+
 class SourceCodecRegistry:
     """Named source-to-Frame loaders."""
 
     def __init__(self) -> None:
         self._loaders: dict[str, SourceCodec] = {}
+        self._identities: dict[str, str] = {}
 
-    def register(self, name: str, loader: SourceCodec) -> SourceCodec:
+    def register(
+        self,
+        name: str,
+        loader: SourceCodec,
+        *,
+        implementation_hash: str | None = None,
+    ) -> SourceCodec:
         """Register and return ``loader`` under a non-empty codec name."""
 
         if not isinstance(name, str) or not name:
@@ -59,7 +123,19 @@ class SourceCodecRegistry:
         incumbent = self._loaders.get(name)
         if incumbent is not None and incumbent is not loader:
             raise ValueError(f"Source codec {name!r} is already registered.")
+        identity = (
+            source_hash(loader) if implementation_hash is None else implementation_hash
+        )
+        if (
+            not isinstance(identity, str)
+            or len(identity) != 64
+            or any(character not in "0123456789abcdef" for character in identity)
+        ):
+            raise ValueError(
+                "Source codec implementation hashes must be SHA-256 values."
+            )
         self._loaders[name] = loader
+        self._identities[name] = identity
         return loader
 
     def get(self, name: str) -> SourceCodec:
@@ -95,6 +171,12 @@ class SourceCodecRegistry:
                 f"Source codec {name!r} returned {type(frame).__name__}, not Frame."
             )
         return frame
+
+    def implementation_hash(self, name: str) -> str:
+        """Return the immutable implementation identity for ``name``."""
+
+        self.get(name)
+        return self._identities[name]
 
     def names(self) -> tuple[str, ...]:
         """Registered names in canonical order."""
@@ -379,11 +461,13 @@ SOURCE_CODECS.register("csv-tables", load_csv_tables)
 
 def load_source(
     codec: str,
-    path: Path,
+    path: Path | BoundSource,
     *,
     store: ContentStore | None = None,
     registry: SourceCodecRegistry = SOURCE_CODECS,
 ) -> Frame:
     """Decode one source through the selected registry."""
 
+    if isinstance(path, BoundSource):
+        return path.decode(codec)
     return registry.load(codec, path, store=store)
