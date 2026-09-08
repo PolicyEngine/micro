@@ -757,9 +757,9 @@ class TestE3ManifestLockstep:
         grant_predictors = (
             stages["frs_education_grant_split"].operations[0].parameters["predictors"]
         )
-        dsa_predictors = stages["frs_education_grant_split"].operations[1].parameters[
-            "predictors"
-        ]
+        dsa_predictors = (
+            stages["frs_education_grant_split"].operations[1].parameters["predictors"]
+        )
         assert tuple(legacy_predictors) == UK_LEGACY_PROXY_PREDICTORS
         assert tuple(grant_predictors) == UK_EDUCATION_GRANT_CAPACITY_PREDICTORS
         assert tuple(dsa_predictors) == (

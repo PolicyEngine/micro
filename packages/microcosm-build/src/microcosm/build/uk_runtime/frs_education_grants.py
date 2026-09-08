@@ -53,10 +53,12 @@ class UKDSAPolicy:
 class UKFRSEducationGrantSplitStageTransform:
     """Whole-stage callable for FRS education grant splitting.
 
-    ``PolicyEngineUKEngine.materialize`` labels the 2024 input tables as a
-    ``fiscal_year=2025`` dataset rather than uprating them. The three DSA
-    eligibility variables are non-monetary booleans, so this calibration-year
-    seed cannot differ from an uprated evaluation.
+    ``PolicyEngineUKEngine.materialize`` labels the survey-year tables as a
+    calibration-year dataset rather than uprating them, where uk-data lets
+    the engine uprate the survey-year dataset and calculates at the policy
+    year. The three DSA eligibility variables are non-monetary booleans;
+    the licensed receipt for #862 measured them identical under both paths
+    on every person (experiments/862-policy-year-rule-receipts.md).
     """
 
     def __init__(
@@ -90,7 +92,7 @@ class UKFRSEducationGrantSplitStageTransform:
             )
             policy = self.policy or uk_dsa_policy(policy_year)
         else:
-            policy = UKDSAPolicy(
+            policy = self.policy or UKDSAPolicy(
                 maximum=0.0,
                 instant=f"{policy_year}-01-01",
                 source="pre-2025 DSA not modelled",

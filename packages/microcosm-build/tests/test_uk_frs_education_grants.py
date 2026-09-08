@@ -79,9 +79,7 @@ def test_2025_dsa_capacity_seeds_maximum_for_fully_eligible_people() -> None:
 def test_transform_materializes_survey_and_calibration_years(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stage = load_country_spec("uk").sources.stage_map()[
-        "frs_education_grant_split"
-    ]
+    stage = load_country_spec("uk").sources.stage_map()["frs_education_grant_split"]
     frame = uk_national_frame(
         person=pd.DataFrame(
             {
@@ -137,9 +135,7 @@ def test_transform_materializes_survey_and_calibration_years(
 
 @pytest.mark.parametrize("operation_index", [0, 1, 2])
 def test_grant_stage_rejects_year_rule_drift(operation_index: int) -> None:
-    stage = load_country_spec("uk").sources.stage_map()[
-        "frs_education_grant_split"
-    ]
+    stage = load_country_spec("uk").sources.stage_map()["frs_education_grant_split"]
     operations = list(stage.operations)
     operation = operations[operation_index]
     operations[operation_index] = SourceOperationSpec(

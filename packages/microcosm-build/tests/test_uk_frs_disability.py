@@ -126,3 +126,51 @@ def test_disability_stage_rejects_year_rule_drift(operation_index: int) -> None:
         _assert_frs_disability_stage_parameters(
             replace(stage, operations=tuple(operations))
         )
+
+
+def test_disability_stage_resolves_the_survey_year_not_the_frame_period(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Survey year and frame period are both 2024 on the current release, so a
+    # frame stamped 2023 is the only way to see which one picks the rates.
+    from microcosm.build.uk_runtime import frs_disability
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_time_period,
+    )
+
+    stage = load_country_spec("uk").sources.stage_map()["frs_disability"]
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1],
+                "person_benunit_id": [1],
+                "person_household_id": [1],
+                "attendance_allowance_reported": [20 * WEEKS_IN_YEAR],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1]}),
+        household=pd.DataFrame({"household_id": [1]}),
+        time_period="2023",
+        household_weights=[1.0],
+    )
+    years: list[int] = []
+
+    def _category_reader(year: int) -> UKDWPDisabilityCategoryRates:
+        years.append(year)
+        return _category_rates()
+
+    def _flag_reader(year: int) -> UKDWPDisabilityFlagRates:
+        years.append(year)
+        return _flags()
+
+    monkeypatch.setattr(
+        frs_disability, "uk_dwp_disability_category_rates", _category_reader
+    )
+    monkeypatch.setattr(frs_disability, "uk_dwp_disability_flag_rates", _flag_reader)
+
+    result = frs_disability.UKFRSDisabilityStageTransform(stage=stage)(frame)
+
+    assert years == [2024, 2024]
+    assert uk_time_period(result) == "2023"
+    assert result.table("person")["aa_category"].tolist() == ["HIGHER"]

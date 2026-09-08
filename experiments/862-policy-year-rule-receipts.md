@@ -21,7 +21,7 @@ calibration run remains available as a follow-up.
 | frame | 34,966 persons, 68,251,110 weighted, `time_period` `2024` on both sides |
 | engine | policyengine-uk 2.92.1 (first run) and 2.94.0 (run repeated after rebasing on `main` 5ab1b056), policyengine-core 3.31.0; every figure identical on both |
 | before | `main` `c1b83241` |
-| after | this branch (`uk-policy-year-rule-862`, implementation commit 7119f220 after the rebase on `main` 5ab1b056); the run was repeated on the rebased tree and reproduced every figure below |
+| after | this branch (`uk-policy-year-rule-862`, implementation commit 7119f220 after the rebase on `main` 5ab1b056); the run was repeated at 2b70714c (the rebased tree) and reproduced every figure below. Later commits on the branch touch the SPI refresh, tests, locks and the student-loan stage, none of the seven stages measured here |
 | runtime | about 24 s per side, 2026-09-07 |
 
 ## Disability categories (records, weighted persons): identical before and after
@@ -73,6 +73,27 @@ Reading: the DSA capacity is evaluated at the release calibration year (2025) wi
 three eligibility booleans materialised at that year on the 2024 frame, so the seed opens
 to one record whose full reported grant moves out of the residual (delta GBP 83,772,000 on
 both lines). uk-data#480's receipt on the same tabs found the same thin seed (1 record,
-4.7k weighted, GBP 83.8m). The pinned enhanced-FRS parity reference still lists the column
+4.7k weighted, GBP 83.8m). The `education_grants` residual level differs from the
+incumbent's (GBP 2,802.5m before its fix) because the two grant splits differ
+upstream of DSA; the delta is what this change owns and it matches. The pinned enhanced-FRS parity reference still lists the column
 as zero-share, so the register signs it as a candidate-only column
 (`dsa-eligible-expenses-seeded-at-calibration-year`) rather than re-minting the reference.
+
+## Relabel versus uprating for the DSA eligibility booleans
+
+uk-data evaluates the DSA seed with `sim.calculate(variable, policy_year)` on a
+2024-stamped dataset, which policyengine-uk uprates on load; microcosm's engine
+adapter builds a `UKSingleYearDataset(fiscal_year=2025)` from the 2024 tables, a
+relabel with no uprating. Measured on the same licensed frame after
+`frs_legacy_proxies` (34,966 persons, policyengine-uk 2.94.0), the three booleans
+are identical under both paths on every person, and identical at 2024:
+
+| variable | true, relabel at 2025 | true, uprated to 2025 | true, at 2024 | rows differing |
+|---|---|---|---|---|
+| maintenance_loan_in_england_system | 25,326 | 25,326 | 25,326 | 0 |
+| disabled_students_allowance_course_eligible | 683 | 683 | 683 | 0 |
+| disabled_students_allowance_has_qualifying_condition | 3,729 | 3,729 | 3,729 | 0 |
+| all three (eligible) | 11 | 11 | 11 | 0 |
+
+The seed is therefore invariant to the relabel; the 11 eligible people carry one
+reported grant record between them, which is the single DSA row above.

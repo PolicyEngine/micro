@@ -171,9 +171,7 @@ class TestCommittedRegister:
         assert entry.difference_class == "defect_fix"
         assert entry.quantitative == {
             "structural": {
-                "expected_columns": [
-                    "disabled_students_allowance_eligible_expenses"
-                ]
+                "expected_columns": ["disabled_students_allowance_eligible_expenses"]
             }
         }
 
