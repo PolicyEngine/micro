@@ -1329,12 +1329,9 @@ class TestUKGatesManifest:
             "uk_local_weight_ratio",
             "uk_local_weight_ess",
         ]
-        diagnostic = {
-            "uk_local_target_fit",
-            "uk_local_per_family_fit",
-            "uk_local_weight_ratio",
-            "uk_local_weight_ess",
-        }
+        # PR #870 review: the four local fit/weight gates are release-blocking
+        # like the rest of the battery; nothing in the manifest is diagnostic.
+        diagnostic: set[str] = set()
         assert {
             gate.id for gate in manifest.gates if gate.criticality == "diagnostic"
         } == diagnostic
