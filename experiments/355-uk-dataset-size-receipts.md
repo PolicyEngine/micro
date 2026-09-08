@@ -32,6 +32,13 @@ every CLI test; the size test lacked them, and the two new evaluation test files
 the same way. All three now skip without pytables (verified by blocking the import locally); the workspace
 and engine lanes, which have pytables, run them in full.
 
+The run on fb85c8fe then failed only in the two UK lanes on one new test: the evaluation command timed
+each downstream script with `/usr/bin/time -l`, a BSD flag GNU `time` rejects with exit 125, so on the
+linux runners a failing stub could not surface its own exit code. Replaced by an in-process rusage shim
+(the child script runs in a child interpreter that reports its own peak resident set in bytes on exit;
+wall time measured by the caller; exit code the script's own), commit e8f7c6f2, pushed with the
+`--selection-pi-hi` knob (a6b1e0ca) and the by-name refusal (b1d206d6); CI run 34239851890.
+
 ## Code landed on the branch before the runs
 
 - **C1 (d4043ec7)** — a size run keeps the dense joint solve it was cut from: `UKRowwiseDoctrineSolve.dense_reference` (weights, initial weights, local and national diagnostics, losses, past-cap censuses; the evidence labelling moved into `_doctrine_solve_evidence` and runs for both results), written as `dense_reference_diagnostics.csv` (every target's dense estimate with a `grain` column) and summarised under `solve.dataset_size.dense_reference`; and the selection itself as `dataset_size_selection.csv` (`pool_row_index, household_id, clone_index, design_weight, inclusion_probability, certainty, ht_baseline_weight, refit_weight`). Both are listed under `outputs` with digests; dense runs are unchanged. The dense reference is byte-identical to a standalone dense run on the same inputs, seed and epochs, so the size-only delta needs no second full-pool solve.
@@ -166,3 +173,58 @@ Exit 0, 97.7 s, 4.84 GB (2026-09-08 13:15Z, code 573c4b43, engine 2.94.0, prefli
 selection_seed 42, engine_blocks 1; `releasable` false; engine not run. The 7 extra national rows
 against spine-o's dry run are #879's SPI rows. Every size run from here stands on spine-p; the
 spine-o runs above (S0, S1, S1b) remain valid evidence about the L0 machinery, which #879 did not touch.
+
+### Ruling (María, 2026-09-08) and the knob it needed
+
+Smoke: accept the measured feasible count (45,800 at `pi_hi = 1` on the 100-epoch gates) so every
+mechanical piece downstream of the draw runs once at scale — the Sampford rejection path on 792,690
+gates, the frozen-target refit, the compact export with closed links, the six-gate battery on a compact
+frame, the dense-reference and selection sidecars, the manifest's size receipt, and then the evaluation
+command end to end (run acceptance, dense-reference deltas, the comparison with R17, the incumbent
+scorer on a compact candidate, the incumbent-surface evaluator re-resolving the engine on a compact
+rowwise frame, the eval-home scripts loading a compact H5 with their footprint timings, the summary).
+Its fit numbers are not evidence (100 epochs); its footprint numbers are.
+
+Full run: `--selection-pi-hi 0.95` (the US exact-k ladder's setting) with `--epochs 2000` at 55,000.
+Commit a6b1e0ca makes the certainty threshold a recorded candidate-run knob (default 1.0; bounded to
+(0, 1]; requires `--dataset-households`; recorded as `parameters.selection_pi_hi`, in the size receipt
+and in the feasibility measurement as `requested_pi_hi` / `feasible_at_requested_pi_hi`). Risk stated
+up front: at 100 epochs 0.95 was not feasible either (34,944 × 0.95 > 25,954); 2,000 epochs should
+polarise the gates, and if the draw still refuses, the receipt names the smallest feasible threshold.
+
+### Smoke — 45,800 on spine-p (`--dataset-households 45800 --epochs 100 --skip-holdout`, chained on S1b's row 399e1e7d…)
+
+**Refused before the selection**, 608 s in (10.1 min; 10.6 GB peak; code a6b1e0ca), inside
+`contribution_initialization`: `nonzero target at row 20648 has no support`. Row 20648 is national
+row 218 of the 366 the rebased tree binds; reproducing the driver's engine-free registry compile
+names it: `dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800` (family
+`dwp_universal_credit`, benunit grain, target 746.3 units), whose constraint row is all zeros on
+the cloned pool. R17 had support for the same band on spine-m under the pre-#879 engine
+`family_type` (initial estimate 551 against a then-target of 654) and no national row without
+support at all; #879 re-points the payment-distribution rows to the relationship-based
+`uc_calibration_family_type` proxy, under which no benefit unit in the pool is a couple without
+children with an annual UC payment in that band. The dense solve carries such a row as a capped miss;
+a size selection cannot carry it. Logbook row 1c7f25dd… (failed).
+
+Response: `refit_uk_dataset_size` now refuses unsupported nonzero targets **by name**, all at once,
+before initialisation (commit b1d206d6, `unsupported_nonzero_targets()`), and the smoke is re-run to
+obtain the complete list. Handling is a ruling for María: a signed measure exclusion for the affected
+rows (the A16 register), a fix to the proxy or the band edges upstream in #879's register, or a
+recorded smoke-only drop of unsupported rows from the selection problem (the dense reference keeps them
+as misses). Nothing is selected around silently.
+
+Re-run (`f100-k15-h45800-e100-smoke2`, chained on 1c7f25dd…; 589 s to the check, 10.6 GB; code b1d206d6):
+the by-name pre-check refuses exactly two rows, both in `dwp_universal_credit`:
+
+- `dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800@2025` (target 746.3)
+- `dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_28_800_to_30_000@2025`
+
+These are the same two rows #879's corrected-measurement comparison reports at −100 %
+(`experiments/879-corrected-calibration-comparison.md`, rows 112–113): under the relationship-based
+`uc_calibration_family_type` proxy no benefit unit in the spine is a couple without children with an
+annual UC award above £27,600. The national seam carries them as capped misses; the catalogue and
+upper-band repair is tracked in microcosm#736; 16 payment bands already sit in the reviewed measure
+exclusion register. **Proposed (unsigned) handling**: two entries in
+`calibration_measure_exclusions.json` on the zero-support-channel precedent
+(`slc.repayments.england_postgraduate`), approved by María if she rules so; until then no size run
+can start on the rebased tree. Logbook row for smoke2 chained on smoke's.
