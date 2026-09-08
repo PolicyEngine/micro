@@ -441,6 +441,24 @@
       "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
       "approved_on": "2026-09-03",
       "expires_on": "2026-10-03"
+    },
+    {
+      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800",
+      "reason": "Zero-support channel under the corrected UC composition proxy: since #879 the payment-distribution rows are measured on the relationship-based uc_calibration_family_type, and no benefit unit in the spine is a couple without children with an annual UC award in this band (final estimate 0.0, -100% on #879's corrected comparison; no pool carrier on the K=15 rowwise clone of spine-p either, where the #355 size selection refuses the row by name). The dense seam carries the row as a capped miss; a size selection cannot carry it. The band catalogue and the unbounded top band are tracked in microcosm#736; the sibling 26,400-27,600 band already sits in this register.",
+      "tracking": "microcosm#736",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#355 (dataset-size experiment; ruling by María 2026-09-08 after the 45,800 smoke's by-name refusal)",
+      "approved_on": "2026-09-08",
+      "expires_on": "2026-12-08"
+    },
+    {
+      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_28_800_to_30_000",
+      "reason": "Zero-support channel under the corrected UC composition proxy: since #879 the payment-distribution rows are measured on the relationship-based uc_calibration_family_type, and no benefit unit in the spine is a couple without children with an annual UC award in this band (final estimate 0.0, -100% on #879's corrected comparison; no pool carrier on the K=15 rowwise clone of spine-p either, where the #355 size selection refuses the row by name). The dense seam carries the row as a capped miss; a size selection cannot carry it. The band catalogue and the unbounded top band are tracked in microcosm#736; the sibling 26,400-27,600 band already sits in this register.",
+      "tracking": "microcosm#736",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#355 (dataset-size experiment; ruling by María 2026-09-08 after the 45,800 smoke's by-name refusal)",
+      "approved_on": "2026-09-08",
+      "expires_on": "2026-12-08"
     }
   ]
 }
