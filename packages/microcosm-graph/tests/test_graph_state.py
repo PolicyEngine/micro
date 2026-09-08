@@ -22,6 +22,7 @@ from microcosm.graph import (
     Node,
     Owned,
     Population,
+    PopulationError,
     Product,
     ProductKind,
     Slice,
@@ -32,7 +33,7 @@ from microcosm.graph import (
     graph_to_json,
     run_graph,
 )
-from microcosm.graph.population import patch
+from microcosm.graph.population import patch, union_populations
 
 spec = importlib.util.spec_from_file_location(
     "_state_toy", Path(__file__).with_name("_toy.py")
@@ -206,6 +207,39 @@ def test_union_remaps_collisions_and_records_source_lineage(tmp_path: Path) -> N
     assert len(lineage["person"]) == combined.n("person")
     assert {entry[1] for entry in lineage["person"]} == {"acs", "asec"}
     assert manifest.mass_ledgers["combined"][-1].operation == "union"
+
+
+def test_union_rejects_incompatible_weight_kinds(tmp_path: Path) -> None:
+    source = toy.read_toy_frame(toy.toy_sources(tmp_path)["survey"])
+    source_weights = source.weights_for("household")
+    incompatible = Frame(
+        {entity: source.table(entity).copy() for entity in source.entities},
+        source.schema,
+        {
+            "household": Weights(
+                source_weights.values.copy(),
+                WeightKind.CALIBRATED,
+            )
+        },
+        source.strata,
+        metadata=source.metadata,
+    )
+    union = Node(
+        "combined",
+        Union.ref,
+        structural=StructuralDelta.UNION,
+        bases=("asec", "acs"),
+        mass="free",
+    )
+
+    with pytest.raises(PopulationError, match="incompatible.*weight kind"):
+        union_populations(
+            {
+                "asec": Population.from_frame(source, "asec"),
+                "acs": Population.from_frame(incompatible, "acs"),
+            },
+            union,
+        )
 
 
 def test_named_weight_anchor_is_aligned_exposed_and_recorded(tmp_path: Path) -> None:

@@ -13,7 +13,10 @@ from microcosm.graph import (
     StructuralDelta,
     compile_graph,
     explain_html,
+    graph_document_from_json,
     graph_from_json,
+    graph_key,
+    load_graph_source,
 )
 
 
@@ -30,6 +33,18 @@ def _load_populations(compiled, manifest: RunManifest, store: ContentStore):
     return replace(manifest, populations=populations)
 
 
+def _load_graph(path: Path):
+    """Load authoritative YAML, generated Graph JSON, or legacy Graph JSON."""
+
+    if path.suffix.lower() in {".yaml", ".yml"}:
+        return load_graph_source(path).graph
+    text = path.read_text(encoding="utf-8")
+    try:
+        return graph_document_from_json(text)
+    except (TypeError, ValueError):
+        return graph_from_json(text)
+
+
 def render_saved_run(
     manifest_path: Path,
     graph_path: Path,
@@ -39,7 +54,7 @@ def render_saved_run(
 ) -> None:
     """Validate and render one saved manifest/graph pair."""
 
-    graph = graph_from_json(graph_path.read_text(encoding="utf-8"))
+    graph = _load_graph(graph_path)
     compiled = compile_graph(graph)
     resolved_store = store_path or manifest_path.parent / "store"
     if not resolved_store.is_dir():
@@ -49,6 +64,8 @@ def render_saved_run(
         )
     store = ContentStore(resolved_store)
     manifest = RunManifest.load(manifest_path, store=store)
+    if manifest.graph_key and manifest.graph_key != graph_key(graph):
+        raise ValueError("The saved manifest belongs to a different Graph.")
     manifest = _load_populations(compiled, manifest, store)
     rendered = explain_html(compiled, manifest)
     output_path.parent.mkdir(parents=True, exist_ok=True)

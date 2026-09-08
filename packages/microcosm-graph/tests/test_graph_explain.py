@@ -13,7 +13,11 @@ from pathlib import Path
 import pytest
 
 import microcosm.graph as graph_api
-from microcosm.graph import describe, explain_html, graph_to_json
+from microcosm.graph import (
+    describe,
+    explain_html,
+    graph_document_to_json,
+)
 
 ROOT = Path(__file__).parents[3]
 
@@ -431,7 +435,7 @@ def test_saved_run_cli_validates_store_and_reattaches_frames(tmp_path: Path) -> 
     graph_path = tmp_path / "run" / "graph.json"
     output_path = tmp_path / "rendered.html"
     run.manifest.save(manifest_path)
-    graph_path.write_text(graph_to_json(run.compiled.graph), encoding="utf-8")
+    graph_path.write_text(graph_document_to_json(run.compiled.graph), encoding="utf-8")
 
     tool = _tool("graph_explain")
     tool.render_saved_run(manifest_path, graph_path, output_path)

@@ -326,6 +326,13 @@ def test_closed_schema_reports_pointer_and_source_location(tmp_path: Path) -> No
     assert (caught.value.line, caught.value.column) == (5, 5)
 
 
+def test_unsupported_graph_source_version_is_rejected(tmp_path: Path) -> None:
+    path = _write_graph(tmp_path / "graph", ("sources.yaml", "nodes.yaml"))
+    path.write_text(path.read_text().replace("schema_version: 1", "schema_version: 2"))
+    with pytest.raises(GraphSourceValidationError, match="schema_version"):
+        graph_from_yaml_file(path)
+
+
 @pytest.mark.parametrize(
     "bad",
     ["../outside.yaml", "/absolute.yaml", "directory\\module.yaml"],

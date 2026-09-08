@@ -26,15 +26,18 @@ Two invocations with the same code produce byte-identical HTML.
 
 ## Render any saved run
 
-Save both sides of the review contract:
+Use the authoritative YAML root and save the manifest. If the run also emits
+optional Graph JSON evidence, write the versioned generated document:
 
 ```python
 from pathlib import Path
 
-from microcosm.graph import graph_to_json
+from microcosm.graph import graph_document_to_json
 
 manifest.save(Path("run/manifest.json"))
-Path("run/graph.json").write_text(graph_to_json(graph), encoding="utf-8")
+Path("run/graph.json").write_text(
+    graph_document_to_json(graph), encoding="utf-8"
+)
 ```
 
 By default, put the run's `ContentStore` at `run/store`, beside the manifest.
@@ -43,12 +46,14 @@ Then render it with:
 ```bash
 uv run python tools/graph_explain.py \
   --manifest run/manifest.json \
-  --graph run/graph.json \
+  --graph path/to/graph.yaml \
   --out run/explain.html
 ```
 
 If the store is elsewhere, add `--store /path/to/store`. The renderer uses
-`graph_from_json`, compiles the graph again, validates the manifest and every
+the authoritative YAML by default; it also accepts generated versioned Graph
+JSON and older unversioned Graph JSON evidence. It compiles the graph again,
+requires the saved manifest's semantic graph identity to match, validates every
 referenced artifact through `RunManifest.load`, and reloads structural frames
 from each receipt's `frame_key`. A missing or corrupt store is an error, not an
 unverified page.
@@ -76,7 +81,7 @@ not read or write files.
 The large SVG is laid out from `CompiledGraph.order` and `predecessors`.
 Horizontal position is topological depth. Dashed background groups are the
 population versions from `CompiledGraph.versions`, including structural
-`create`, `filter`, `expand`, and `reweight` boundaries.
+`create`, `filter`, `expand`, `reweight`, `revision`, and `union` boundaries.
 
 Every node shows its id, kernel reference, role, structural delta, abbreviated
 node key, and store hit or miss. Blue fill means a store miss and green fill
@@ -174,9 +179,11 @@ downstream node is not executed after the owning boundary rejects the dtype.
 ## Portable evidence boundaries
 
 Portable manifest JSON intentionally omits attached populations and transient
-mass ledgers. Structural frame artifacts let the CLI recover weights, strata,
-and before/after totals, but the current receipt exposes only the realized
-maximum weight ratio, not the distribution's samples or bins. The immediate
-post-run demo therefore carries richer attached evidence than a manifest copied
-without its store. Missing evidence is identified in the page wherever it cannot
-be reconstructed faithfully.
+mass-ledger objects. A matching semantic Graph, manifest, and content store can
+now reconstruct any named population product exactly: structural frame
+artifacts restore row states and ordinary or value-revision column artifacts
+restore later changes. The current HTML renderer attaches structural frames for
+its weight and mass views; it does not embed complete reconstructed data values.
+The current receipt exposes only the realized maximum weight ratio, not the
+distribution's samples or bins. Missing evidence is identified in the page
+wherever it cannot be reconstructed faithfully.

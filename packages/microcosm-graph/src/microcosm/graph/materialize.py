@@ -5,10 +5,11 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
+from typing import Protocol
 
 from .canonical import canonical_json, sha256_domain
 from .decl import Graph, Product, ProductKind, compile_graph
@@ -20,13 +21,21 @@ from .store import ContentStore
 
 __all__ = [
     "CandidateIndex",
+    "Materializer",
     "MaterializedProduct",
     "MaterializerRegistry",
     "materialize_products",
 ]
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-type Materializer = Callable[[object, Path], None]
+
+
+class Materializer(Protocol):
+    """A deterministic writer for one declared product codec and version."""
+
+    def __call__(self, value: object, destination: Path) -> None:
+        """Write ``value`` below the caller-provided local destination."""
+        ...
 
 
 @dataclass(frozen=True)

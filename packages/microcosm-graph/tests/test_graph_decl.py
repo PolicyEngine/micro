@@ -8,6 +8,9 @@ owners of declared inputs, and non-finite parameters are rejected.
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
 import pytest
 
 from microcosm.graph import (
@@ -349,3 +352,18 @@ def test_every_declared_name_channel_refuses_dots() -> None:
         WeightTransition("house.hold", "design", "importance")
     with pytest.raises(GraphError, match="may not contain '.'"):
         Graph("toy", (), (), mass_partition=("person", "per.iod"))
+
+
+def test_interface_lock_matches_declaration_and_kernel_modules() -> None:
+    root = Path(__file__).parents[3]
+    expected = {
+        name: digest
+        for line in (root / "docs/graph-interface.lock").read_text().splitlines()
+        for digest, name in (line.split(),)
+    }
+    graph_package = root / "packages/microcosm-graph/src/microcosm/graph"
+    actual = {
+        name: hashlib.sha256((graph_package / name).read_bytes()).hexdigest()
+        for name in ("decl.py", "kernel.py")
+    }
+    assert actual == expected

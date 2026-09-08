@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from importlib import metadata as _metadata
 
+__version__ = "0.1.0"
+
 from .decl import (
     DESCRIPTIVE_FIELDS,
     DTYPES,
@@ -67,7 +69,7 @@ from .kernel import (
     Tolerance,
     source_hash,
 )
-from .keys import platform_fingerprint
+from .keys import graph_key, platform_fingerprint
 from .randomness import keyed_uniform
 from .source_errors import (
     GraphParameterBindingError,
@@ -121,6 +123,7 @@ __all__ = [
     "GraphRunResult",
     "MassRecord",
     "MaterializedProduct",
+    "Materializer",
     "MaterializerRegistry",
     "Node",
     "NodeReceipt",
@@ -161,6 +164,7 @@ __all__ = [
     "explain_html",
     "graph_from_json",
     "graph_from_yaml_file",
+    "graph_key",
     "graph_document_from_json",
     "graph_document_to_json",
     "graph_to_json",
@@ -176,6 +180,7 @@ __all__ = [
     "reconstruct_population",
     "source_hash",
     "validate_kernel_registry",
+    "__version__",
 ]
 
 _FRAME_SERIES = "0.1"
@@ -208,6 +213,7 @@ from .manifest import Decision, NodeReceipt, PopulationView, RunManifest  # noqa
 from .materialize import (  # noqa: E402
     CandidateIndex,
     MaterializedProduct,
+    Materializer,
     MaterializerRegistry,
     materialize_products,
 )

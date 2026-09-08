@@ -298,7 +298,7 @@ jobs:
       - name: Verify clean wheel boundary and import every shard
         run: |
           env -u PYTHONPATH /tmp/wheels-venv/bin/python -I - <<'PY'
-          from importlib import metadata, util
+          from importlib import metadata, resources, util
           from pathlib import Path
           import sys
 
@@ -307,6 +307,7 @@ jobs:
           import microcosm.data
           import microcosm.fit
           import microcosm.frame
+          import microcosm.graph
 
           assert util.find_spec("policyengine_us") is None
           try:
@@ -323,11 +324,18 @@ jobs:
               microcosm.calibrate,
               microcosm.build,
               microcosm.data,
+              microcosm.graph,
           )
           for module in modules:
               path = Path(module.__file__).resolve()
               assert path.is_relative_to(prefix), f"source import escaped wheel venv: {path}"
               print(module.__name__, module.__version__, path)
+
+          graph_schema = resources.files("microcosm.graph").joinpath("schema")
+          assert sorted(path.name for path in graph_schema.iterdir()) == [
+              "graph-module-v1.schema.json",
+              "graph-source-v1.schema.json",
+          ]
           PY
       - name: Spec identity section digests (cross-environment diffing aid)
         run: env -u PYTHONPATH /tmp/wheels-venv/bin/python -I tools/spec_envelope_digests.py be uk

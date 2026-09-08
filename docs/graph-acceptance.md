@@ -315,6 +315,22 @@ Amendments so far (each re-locked):
     records the interface amendment for owner review, not a claim of code
     approval or release certification.
 
+20. **Authored runtime graph and named state semantics.** `Graph.products`
+    gives stable names to population states, coordinates, weight states, typed
+    artifacts, validation outcomes, and post-run exports. `SourceRef` declares
+    its content type, access classification, expected content identities, and
+    authoritative decoder. `Node.requires_success` expresses required
+    validation dependencies. `StructuralDelta.REVISION` creates a new
+    unchanged-row population state with declared rewrites, and
+    `StructuralDelta.UNION` combines two or more compatible population states
+    with deterministic identifiers and stored lineage. `WeightTransition.anchor`
+    names the earlier weight state used for ratio and mass validation. Nested
+    parameters are recursively immutable finite JSON values. These declaration
+    changes are serialized losslessly, compiled into dependency order, and
+    included in semantic graph and affected node identities. Adopted by the
+    independently owned `standardize-runtime-graph` child of PR #873 on
+    2026-09-08; the country migrations remain separate changes.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.

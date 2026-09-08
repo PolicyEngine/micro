@@ -23,6 +23,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 
 from microcosm.graph import platform_fingerprint
 
@@ -74,6 +75,50 @@ def _assert_same_bytes(actual, expected) -> None:
     assert actual.dtype == expected.dtype
     assert actual.to_numpy().tobytes() == expected.to_numpy().tobytes()
     assert np.array_equal(actual.isna().to_numpy(), expected.isna().to_numpy())
+
+
+def _assert_yaml_and_generated_json_equivalence(graph, path: Path) -> None:
+    """Represent one existing Python fixture through both source formats."""
+
+    from microcosm.graph import (
+        graph_document_from_json,
+        graph_document_to_json,
+        graph_key,
+        graph_to_json,
+        load_graph_source,
+    )
+
+    payload = json.loads(graph_to_json(graph))
+    payload["schema_version"] = 1
+    for node in payload["nodes"]:
+        for optional in ("population", "base", "weights"):
+            if node.get(optional) is None:
+                node.pop(optional)
+    products = []
+    for product in payload.get("products", []):
+        target = {
+            ("product" if key == "source" else key): product.pop(key)
+            for key in ("node", "entity", "column", "artifact", "source")
+            if key in product
+        }
+        products.append({**product, "target": target})
+    if products:
+        payload["products"] = products
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    loaded = load_graph_source(path).graph
+    assert graph_key(loaded) == graph_key(graph)
+    assert {source.name: source for source in loaded.sources} == {
+        source.name: source for source in graph.sources
+    }
+    assert {node.id: node for node in loaded.nodes} == {
+        node.id: node for node in graph.nodes
+    }
+    assert {product.name: product for product in loaded.products} == {
+        product.name: product for product in graph.products
+    }
+    generated = graph_document_to_json(graph)
+    assert graph_document_from_json(generated) == graph
 
 
 def _frame_differences(actual, expected) -> str:
@@ -279,6 +324,7 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     # The graph the UK lane ships is also pinned as JSON beside the fixture, so
     # a silent change to the declaration shows up as a fixture diff.
     graph = uk_spine_graph()
+    _assert_yaml_and_generated_json_equivalence(graph, tmp_path / "uk-graph.yaml")
     assert graph_from_json((UK_SPINE_PARITY / "uk_spine.json").read_text()) == graph
     compiled = compile_graph(graph)
     assert len(compiled.order) >= 29, "a CREATE node plus the 28 spine stages"
@@ -341,6 +387,7 @@ def test_h3_us_post_transfer_parity(tmp_path: Path) -> None:
     # The graph the US lane ships is pinned as JSON beside the fixture, so a
     # silent change to the declaration shows up as a fixture diff.
     graph = us_post_transfer_graph()
+    _assert_yaml_and_generated_json_equivalence(graph, tmp_path / "us-graph.yaml")
     assert (
         graph_from_json((US_POST_TRANSFER_PARITY / "us_post_transfer.json").read_text())
         == graph

@@ -16,6 +16,7 @@ from microcosm.frame import Frame
 from microcosm.graph import (
     ContentStore,
     Graph,
+    GraphRuntimeError,
     MaterializerRegistry,
     Product,
     ProductKind,
@@ -91,6 +92,37 @@ def test_named_population_reconstructs_ordinary_patches_without_runtime_inputs(
     _assert_frame_equal(reconstructed, expected)
     assert "target_a" in reconstructed.table("person")
     assert "target_b" in reconstructed.table("person")
+
+
+def test_saved_manifest_rejects_a_different_graph(tmp_path: Path) -> None:
+    graph = _product_graph()
+    run = toy.run_toy(graph, tmp_path / "run")
+    manifest_path = tmp_path / "manifest.json"
+    run.manifest.save(manifest_path)
+    different = Graph(
+        "different-country",
+        graph.sources,
+        graph.nodes,
+        graph.mass_partition,
+        graph.products,
+    )
+
+    with pytest.raises(GraphRuntimeError, match="different Graph"):
+        reconstruct_population(
+            different,
+            run.manifest,
+            run.store,
+            "final.population",
+        )
+    with pytest.raises(GraphRuntimeError, match="different Graph"):
+        materialize_products(
+            different,
+            manifest_path,
+            run.store,
+            tmp_path / "candidate",
+            MaterializerRegistry(),
+            {"final.h5": "microdata.h5"},
+        )
 
 
 def test_structural_coordinates_reference_one_verified_frame_object(

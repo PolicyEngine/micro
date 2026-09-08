@@ -1,7 +1,8 @@
 # microcosm-graph
 
-One object replaces stages, families, batches, banks, and whole-run
-authority receipts: a content-addressed DAG of cell-ownership nodes.
+`microcosm.graph.Graph` is the single declaration compiled and executed for one
+run. Versioned YAML is the human-authored source; a generated, versioned Graph
+JSON document is an optional exact serialization for evidence and interchange.
 
 A `Node` declares the slices it reads, the cells it owns, its parameters,
 and the kernel that computes it. Its key is the hash of that declaration,
@@ -9,8 +10,10 @@ the artifact keys of its inputs, and the kernel's implementation hash. The
 executor projects immutable input views, runs the kernel, patches only the
 owned positions with a storage-preserving assignment, and memoizes every
 output in a content-addressed store keyed by node key. Seeds derive from
-node keys. Provenance (the run manifest) is a list of node keys plus signed
-human decisions and never feeds back into a key.
+node keys. The graph-bound run manifest records the semantic graph identity,
+authored YAML receipts, parameters, verified source bindings, node receipts,
+named products, and signed human decisions. Actual dataframe values and typed
+artifacts remain in `ContentStore` and are referenced by content keys.
 
 `docs/graph-acceptance.md` is the definition of done: every property there
 is an executable test, committed red, and the shard is finished when none
@@ -28,10 +31,93 @@ Module map:
 | `population.py` | Immutable population versions: `Frame` + owner map + weight lineage + mass ledger |
 | `executor.py` | `run_graph`: projection, patching, ownership enforcement, receipts |
 | `manifest.py` | `RunManifest`, `NodeReceipt`, human decision records |
+| `graph_source.py` | Restricted YAML loading, declared parameter binding, and deterministic module composition |
+| `serialize.py` | Optional canonical, versioned Graph JSON serialization |
+| `reconstruct.py` | Named population reconstruction from a Graph, manifest, and content store |
+| `materialize.py` | Versioned post-run codecs and the local candidate index |
+| `runner.py` | One-root helper that compiles once, executes once, saves evidence, then materializes locally |
 | `view.py` | `describe(node)`: the one-screen view |
 
-The shard depends on `microcosm-frame` only. Kernels that wrap fit,
-calibrate, or a rules engine live in those shards and register here.
+The package depends on `microcosm-frame` plus its YAML and JSON Schema parsing
+libraries. It does not depend on `microcosm-build` or a country package.
+Kernels that wrap fitting, calibration, or a rules engine live in their owning
+packages and register here.
+
+## Author and run a graph
+
+The root YAML may contain declarations directly or list exact relative module
+paths. Modules organize source text only: they combine into one `Graph` and are
+never compiled or executed independently.
+
+```yaml
+schema_version: 1
+country: example
+modules: [sources.yaml, population.yaml]
+parameters:
+  period:
+    type: integer
+    required: true
+products:
+  - name: example.final
+    kind: population
+    target: {node: finalize}
+  - name: example.h5
+    kind: export
+    target: {product: example.final}
+    codec: policyengine-h5
+    codec_version: 1
+```
+
+`load_graph_source(path, parameters=...)` parses the restricted YAML 1.2
+subset, validates the closed packaged schema, resolves the explicitly listed
+modules, and freezes declared parameter values. It does not import code named
+by YAML, read runtime sources, expand environment variables, or access the
+network. `compile_graph` derives execution order from declared dependencies,
+not YAML order.
+
+Use `run_graph_source` when a caller wants the complete sequence in one API:
+
+```python
+result = run_graph_source(
+    "graph.yaml",
+    parameters={"period": 2026},
+    sources={"survey": survey_path},
+    store=ContentStore("run/store"),
+    kernels=registry,
+    manifest_path="run/manifest.json",
+    graph_json_path="run/graph.json",  # optional generated evidence
+)
+```
+
+The helper selects one root, compiles one `CompiledGraph`, calls `run_graph`
+once, and saves the completed manifest. Country-specific Python code registers
+kernel implementations and supplies source paths; it does not define a second
+execution plan.
+
+## Reconstruct and materialize stored products
+
+Population products can be reconstructed after the original process exits:
+
+```python
+manifest = RunManifest.from_json(Path("run/manifest.json").read_text())
+frame = reconstruct_population(graph, manifest, store, "example.final")
+```
+
+This needs no source path, kernel registry, or kernel execution. It restores
+structural frames and applies stored ordinary and value-revision column patches
+in canonical execution order through the product's declared node. Structural
+coordinate keys refer to their one stored frame instead of duplicating its
+values; ordinary patches remain standalone exact-value objects. See
+`docs/graph-storage-benchmark.md` for the US fixture measurement.
+
+Large compatibility products are written only after a complete manifest has
+been saved. A `MaterializerRegistry` binds an exact declared codec/version to a
+deterministic local writer and its implementation hash. `materialize_products`
+loads named stored values, writes below the supplied candidate directory, and
+writes `candidate-index.json` last with the manifest identity, graph identity,
+codec identity, and output content identities. It has no publication behavior;
+uploading files, modifying remote release references, or sending notifications
+belongs to a separate command.
 
 ## Reusable typed artifacts
 
@@ -48,10 +134,10 @@ producer declares their type.
 
 The compiler adds these edges to dependency ordering, cycle checks, and gate
 ancestry. A change to recipient inputs can reuse the fitted producer. Typed
-node cache records use schema 2; runs carrying typed edges or outputs use
-manifest schema 3. Legacy nodes omit the new empty declarations from keys and
-JSON, and legacy runs retain manifest schema 2. Cache reload validates the same
-contracts as fresh execution.
+node cache records use schema 2. Graph-bound runs use manifest schema 4; older
+typed runs remain readable as schema 3. Legacy nodes omit the new empty
+declarations from keys and JSON, and legacy runs retain manifest schema 2.
+Cache reload validates the same contracts as fresh execution.
 
 Numeric contracts are deliberately restrictive: bitwise artifacts permit any
 consumer class; platform-bitwise artifacts require platform-bitwise consumers;

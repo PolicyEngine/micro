@@ -10,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 
+import pandas as pd
 import pytest
 
 from microcosm.graph import (
@@ -22,9 +23,12 @@ from microcosm.graph import (
     KernelBase,
     KernelResult,
     LoadedGraphSource,
+    Node,
+    Owned,
     Product,
     ProductKind,
     RunManifest,
+    Slice,
     SourceRef,
     StructuralDelta,
     compile_graph,
@@ -50,6 +54,23 @@ class WrongCodec(KernelBase):
 
     def run(self, context):
         return KernelResult(frame=load_source("frame-store", context.sources["survey"]))
+
+
+class RecordAdvisory(KernelBase):
+    ref = "test.record-advisory@1"
+    capabilities = Capabilities(Determinism.DETERMINISTIC)
+
+    def run(self, context):
+        table = context.tables["release"]
+        assert table["gate_verdict"].iloc[0] == "fail"
+        ids = pd.Index(table["release_id"], name="release_id")
+        return KernelResult(
+            columns={
+                ("release", "advisory_seen"): pd.Series(
+                    [True], index=ids, dtype="boolean"
+                )
+            }
+        )
 
 
 def _sha256(path: Path) -> str:
@@ -251,3 +272,51 @@ def test_failed_required_validation_records_unreached_descendants(
     assert resumed.nodes["income_validation"].hit
     assert resumed.nodes["after_validation"].status == "unreached"
     assert RunManifest.from_json(resumed.to_json()).outcome == "not_successful"
+
+
+def test_advisory_validation_is_recorded_without_blocking_dependents(
+    tmp_path: Path,
+) -> None:
+    advisory = toy.gate_node(
+        "income_advisory",
+        population="survey",
+        column="income",
+        low=-2.0,
+        high=-1.0,
+    )
+    dependent = Node(
+        "record_advisory",
+        RecordAdvisory.ref,
+        inputs=(Slice("release", ("gate_verdict",)),),
+        outputs=(Owned("release", "advisory_seen", "boolean"),),
+        population="survey",
+    )
+    graph = Graph(
+        "toy",
+        (toy.SOURCE,),
+        (dependent, advisory, toy.CREATE),
+        products=(
+            Product("income.advisory", ProductKind.VALIDATION, node=advisory.id),
+        ),
+    )
+    registry = toy.toy_registry()
+    registry.register(RecordAdvisory())
+    store = ContentStore(tmp_path / "store")
+
+    manifest = run_graph(
+        compile_graph(graph),
+        sources=toy.toy_sources(tmp_path),
+        store=store,
+        kernels=registry,
+    )
+
+    validation = manifest.nodes[advisory.id]
+    assert validation.receipt["outcome"] == "fail"
+    assert validation.outcome_key is not None
+    assert (
+        store.load_json(validation.outcome_key, kind="validation-outcome")["outcome"]
+        == "fail"
+    )
+    assert manifest.nodes[dependent.id].status == "executed"
+    assert manifest.products["income.advisory"]["key"] == validation.outcome_key
+    assert manifest.outcome == "success"
