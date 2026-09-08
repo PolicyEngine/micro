@@ -534,6 +534,16 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
         "_refresh_disability_derived_inputs",
         lambda person, spi_people, build_period: person,
     )
+
+    # This test checks parsed/path source resolution, independently of the engine.
+    # Real index coverage lives in test_uk_spi_income.py.
+    def uprating_factors(year):
+        return (
+            {column: 1.25 for column in SPI_INCOME_QRF_OUTPUT_COLUMNS},
+            {"from_period": 2022, "to_period": year, "basis": "synthetic_test"},
+        )
+
+    monkeypatch.setattr(spi_income, "_spi_income_uprating_factors", uprating_factors)
     support_frame = UKSPISupportChannelStageTransform(
         stage=_committed_stage("spi_support_channel"),
         sample_fraction=0.0002,

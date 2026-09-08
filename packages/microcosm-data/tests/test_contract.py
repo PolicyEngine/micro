@@ -137,13 +137,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "0f271dd91e25ec43cc24d39c4a5e11e3b54ff883d5fa2f691bf82b0229eca301"
+    "76afdd6e14bb4fc3d7e03fcceac8c2498d235fbbc7b9e996968ddda607992c15"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "1c47e74e91d7684aa91f6b4ec92f55365b119f4325eb4cfd0628c50e81a99b6a"
+    "f7460ed01621432d42c900013fe6edcf040cf825e90bc3640f2b507efdccda32"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "80e73c97e48bad99cc03dcde5bc0b71a738db3c6f8c5c76b2be6d83e86c5381b"
+    "5f17aaeffdbbca96a7db46878ed65ce6229ffb7fe74480a3f0284395866ef90e"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -888,6 +888,12 @@ def _terminal_gate_details(name: str) -> dict:
             "targets_checked": TARGET_COUNT,
             "max_abs_relative_error": 0.25,
             "failing_targets": {},
+            "reviewed_exclusions": {},
+            "stale_exclusions": [],
+            "dormant_exclusions": [],
+            "expired_exclusions": [],
+            "premature_exclusions": [],
+            "exclusions_evaluated_on": "2026-08-30",
         }
     if name == "input_mass_parity":
         return {

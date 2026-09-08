@@ -27,12 +27,81 @@ _ENTITY_ID = {
     "benunit": "benunit_id",
     "household": "household_id",
 }
+_UC_CALIBRATION_VARIABLES = frozenset(
+    {"uc_calibration_family_type", "uc_calibration_child_count"}
+)
+
+
+def _uc_calibration_composition(
+    frame: Any, simulation: Any, year: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Measure FRS families without promoting an older child to a partner.
+
+    FRS ``is_parent`` identifies adult-file members of benefit units with
+    children, including unmarried partners; ``is_married`` alone would miss
+    cohabiting couples. In units without recorded children all members are
+    the single claimant or couple. These retained roles survive SPI cloning.
+
+    DWP's post-April-2019 child-presence definition includes reported under-20
+    children beyond those eligible for a UC child element. Include those FRS
+    child members as well as UC qualifying children, never the claimants:
+    https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html
+    This is a calibration composition proxy, not a change to UC entitlement.
+    """
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    member_ids = person["person_benunit_id"].to_numpy()
+    ids = benunit["benunit_id"].to_numpy()
+    dependent = (
+        pd.Series(benunit["dependent_children"].to_numpy(), index=ids)
+        .loc[member_ids]
+        .to_numpy()
+    )
+    claimant = (
+        person["is_benunit_head"].to_numpy(dtype=bool)
+        | person["is_parent"].to_numpy(dtype=bool)
+        | (dependent == 0)
+    )
+    claimant_count = (
+        pd.Series(claimant).groupby(member_ids).sum().reindex(ids).to_numpy()
+    )
+    if not np.isin(claimant_count, [1, 2]).all():
+        raise ValueError(
+            "UC calibration families require one or two relationship-defined "
+            "claimants per benefit unit."
+        )
+    qualifying = _values(
+        simulation.calculate(
+            "is_child_or_qualifying_young_person_for_universal_credit", year
+        )
+    ).astype(bool)
+    if len(qualifying) != len(person):
+        raise ValueError("UC child status must align with the person table.")
+    children = ~claimant & (qualifying | (person["age"].to_numpy(dtype=float) < 20))
+    child_count = pd.Series(children).groupby(member_ids).sum().reindex(ids).to_numpy()
+    couple = claimant_count == 2
+    has_children = child_count > 0
+    family_type = np.select(
+        [couple & has_children, couple, has_children],
+        ["COUPLE_WITH_CHILDREN", "COUPLE_NO_CHILDREN", "LONE_PARENT"],
+        default="SINGLE",
+    )
+    return family_type, child_count.astype(float)
 
 
 def compute_uk_measure_input(
     frame: Any, simulation: Any, entity: str, variable: str, year: int
 ) -> tuple[np.ndarray, str]:
     """Compute one policyengine-uk variable at the requested entity grain."""
+
+    if variable in _UC_CALIBRATION_VARIABLES:
+        if entity != "benunit":
+            raise KeyError(f"UC calibration composition is benunit-only: {entity}")
+        family_type, child_count = _uc_calibration_composition(frame, simulation, year)
+        values = (
+            family_type if variable == "uc_calibration_family_type" else child_count
+        )
+        return values, "frs_relationships_and_uc_child_status"
 
     definition = simulation.tax_benefit_system.variables.get(variable)
     if definition is None:
@@ -132,6 +201,8 @@ class UKMeasureResolver:
         provider exception instead of the fence's message.
         """
 
+        if variable in _UC_CALIBRATION_VARIABLES:
+            return entity == "benunit"
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None or entity not in _ENTITY_ID:
             return False
@@ -148,6 +219,8 @@ class UKMeasureResolver:
         return getattr(definition, "value_type", None) in (int, float)
 
     def entity_for(self, variable: str) -> str | None:
+        if variable in _UC_CALIBRATION_VARIABLES:
+            return "benunit"
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None:
             return None

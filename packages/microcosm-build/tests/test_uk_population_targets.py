@@ -588,8 +588,8 @@ def test_uk_uc_composition_and_disability_children_targets_are_rebound() -> None
     }
     allowed_filter_variables = {
         "universal_credit",
-        "num_children",
-        "family_type",
+        "uc_calibration_child_count",
+        "uc_calibration_family_type",
     }
 
     for target_id in composition_target_ids:

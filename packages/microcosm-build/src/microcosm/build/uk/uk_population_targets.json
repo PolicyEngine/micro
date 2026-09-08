@@ -679,8 +679,8 @@
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
-      "ons.population.female_90_plus": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
-      "ons.population.male_90_plus": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
+      "ons.population.female_90_plus": "Mar\u00eda ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
+      "ons.population.male_90_plus": "Mar\u00eda ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
       "hmrc.tfc.government_top_up": "Post-freeze fact family, no uk-data metric.",
       "hmrc.tfc.children_with_used_accounts": "Post-freeze fact family, no uk-data metric.",
       "dfe.funded_childcare.working_parent_children_2_to_4": "Post-freeze fact family, no uk-data metric.",
@@ -723,7 +723,7 @@
       "salary_sacrifice_obr_near_equivalents": "The contract separately maps OBR near-equivalents obr/salary_sacrifice_employee_ni_relief and obr/salary_sacrifice_employer_ni_relief onto hmrc.salary_sacrifice.nics_relief_employee and hmrc.salary_sacrifice.nics_relief_employer.",
       "two_child_limit_year_surface": "Chronicle's 15 dwp/uc/two_child_limit/* facts are the April-2025 publication (period month 2025-04) and are the only TCL facts; there are no 2026 Ledger facts. At 12a1e028, the incumbent pins the same published numbers at {2026}, so at calibration year 2025 Ledger activates all 15 TCL targets while the incumbent drops them from the 652-row union to the 637-row effective surface; the 2026 effective surface remains 652. The same 12a1e028 refresh adds the new incumbent dwp/uc/households row. Fixture B treats the 15 TCL rows as enumerated ledger-side additions.",
       "geography_level_order_canonicalization": "The 9 voa.council_tax_stock.* rows use country, region order to match the rest of the contract; consumers use membership only.",
-      "ons_terminal_sex_band_split": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
+      "ons_terminal_sex_band_split": "Mar\u00eda ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
     },
     "scope_target_ids": [
       "obr.income_tax",
@@ -1406,7 +1406,7 @@
           "value_variable": "total_national_insurance",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity — final estimate bit-identical to obr.ni_employee — fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry."
+          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity \u2014 final estimate bit-identical to obr.ni_employee \u2014 fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry."
         },
         "axiom": {
           "metric_name": "obr/ni",
@@ -3507,12 +3507,12 @@
               "value": 0
             },
             {
-              "variable": "num_children",
+              "variable": "uc_calibration_child_count",
               "operator": "==",
               "value": 1
             }
           ],
-          "notes": "Prepared benefit-unit count: UC receipt and the claim's child count (model num_children, age<18 per benunit). DWP household means the UC unit of assessment, not an ONS household; DWP counts children on the claim including 16-19 qualifying young persons in non-advanced education, whom the age<18 concept omits - declared residue. Re-bound from household grain per microcosm#809 (the dwelling-wide is_child sum counted other benunits' children)."
+          "notes": "Benefit-unit count among positive UC awards. Child counts use retained FRS child members under 20 and UC child/qualifying-young-person status, excluding claimant/parent roles. DWP reported children can exceed those eligible for a child element. Benefit-unit grain retains the microcosm#809 correction for multibenunit households. Simulated entitlement is unchanged."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_with_1_children",
@@ -3566,12 +3566,12 @@
               "value": 0
             },
             {
-              "variable": "num_children",
+              "variable": "uc_calibration_child_count",
               "operator": "==",
               "value": 2
             }
           ],
-          "notes": "Prepared benefit-unit count: UC receipt and the claim's child count (model num_children, age<18 per benunit). DWP household means the UC unit of assessment, not an ONS household; DWP counts children on the claim including 16-19 qualifying young persons in non-advanced education, whom the age<18 concept omits - declared residue. Re-bound from household grain per microcosm#809 (the dwelling-wide is_child sum counted other benunits' children)."
+          "notes": "Benefit-unit count among positive UC awards. Child counts use retained FRS child members under 20 and UC child/qualifying-young-person status, excluding claimant/parent roles. DWP reported children can exceed those eligible for a child element. Benefit-unit grain retains the microcosm#809 correction for multibenunit households. Simulated entitlement is unchanged."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_with_2_children",
@@ -3625,12 +3625,12 @@
               "value": 0
             },
             {
-              "variable": "num_children",
+              "variable": "uc_calibration_child_count",
               "operator": "==",
               "value": 3
             }
           ],
-          "notes": "Prepared benefit-unit count: UC receipt and the claim's child count (model num_children, age<18 per benunit). DWP household means the UC unit of assessment, not an ONS household; DWP counts children on the claim including 16-19 qualifying young persons in non-advanced education, whom the age<18 concept omits - declared residue. Re-bound from household grain per microcosm#809 (the dwelling-wide is_child sum counted other benunits' children)."
+          "notes": "Benefit-unit count among positive UC awards. Child counts use retained FRS child members under 20 and UC child/qualifying-young-person status, excluding claimant/parent roles. DWP reported children can exceed those eligible for a child element. Benefit-unit grain retains the microcosm#809 correction for multibenunit households. Simulated entitlement is unchanged."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_with_3_children",
@@ -3684,12 +3684,12 @@
               "value": 0
             },
             {
-              "variable": "num_children",
+              "variable": "uc_calibration_child_count",
               "operator": "==",
               "value": 4
             }
           ],
-          "notes": "Prepared benefit-unit count: UC receipt and the claim's child count (model num_children, age<18 per benunit). DWP household means the UC unit of assessment, not an ONS household; DWP counts children on the claim including 16-19 qualifying young persons in non-advanced education, whom the age<18 concept omits - declared residue. Re-bound from household grain per microcosm#809 (the dwelling-wide is_child sum counted other benunits' children)."
+          "notes": "Benefit-unit count among positive UC awards. Child counts use retained FRS child members under 20 and UC child/qualifying-young-person status, excluding claimant/parent roles. DWP reported children can exceed those eligible for a child element. Benefit-unit grain retains the microcosm#809 correction for multibenunit households. Simulated entitlement is unchanged."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_with_4_children",
@@ -3743,12 +3743,12 @@
               "value": 0
             },
             {
-              "variable": "num_children",
+              "variable": "uc_calibration_child_count",
               "operator": ">=",
               "value": 5
             }
           ],
-          "notes": "Prepared benefit-unit count: UC receipt and the claim's child count (model num_children, age<18 per benunit). DWP household means the UC unit of assessment, not an ONS household; DWP counts children on the claim including 16-19 qualifying young persons in non-advanced education, whom the age<18 concept omits - declared residue. Re-bound from household grain per microcosm#809 (the dwelling-wide is_child sum counted other benunits' children)."
+          "notes": "Benefit-unit count among positive UC awards. Child counts use retained FRS child members under 20 and UC child/qualifying-young-person status, excluding claimant/parent roles. DWP reported children can exceed those eligible for a child element. Benefit-unit grain retains the microcosm#809 correction for multibenunit households. Simulated entitlement is unchanged."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_with_5+_children",
@@ -3797,12 +3797,12 @@
               "value": 0
             },
             {
-              "variable": "family_type",
+              "variable": "uc_calibration_family_type",
               "operator": "==",
               "value": "SINGLE"
             }
           ],
-          "notes": "Prepared benefit-unit count: UC receipt and family_type == SINGLE (single, no children at benunit grain). DWP household means the UC unit of assessment. Re-bound from household grain per microcosm#809 - the any-benunit family type plus dwelling-wide child sum deleted single claimants sharing a dwelling with another benunit's children. uk-data's +~0.021% undercount inflation is a populace-side value declaration."
+          "notes": "Benefit-unit count among positive UC awards. Family composition uses retained FRS claimant/parent roles, including cohabiting couples, and reported child members under 20 or UC qualifying children. This calibration proxy corrects generic age-only family categories; the native standard-allowance relationship calculation and eligibility exceptions remain separate model concerns. Benefit-unit grain retains microcosm#809."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_single_no_children",
@@ -3851,12 +3851,12 @@
               "value": 0
             },
             {
-              "variable": "family_type",
+              "variable": "uc_calibration_family_type",
               "operator": "==",
               "value": "LONE_PARENT"
             }
           ],
-          "notes": "Prepared benefit-unit count: UC receipt and family_type == LONE_PARENT. DWP's 'Single, with children' bucket is LONE_PARENT at benunit grain - the previous SINGLE-or-LONE_PARENT compound plus dwelling-wide child sum collapses to the single enum value. Re-bound per microcosm#809. uk-data's +~0.021% undercount inflation is a populace-side value declaration."
+          "notes": "Benefit-unit count among positive UC awards. Family composition uses retained FRS claimant/parent roles, including cohabiting couples, and reported child members under 20 or UC qualifying children. This calibration proxy corrects generic age-only family categories; the native standard-allowance relationship calculation and eligibility exceptions remain separate model concerns. Benefit-unit grain retains microcosm#809."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_single_with_children",
@@ -3905,12 +3905,12 @@
               "value": 0
             },
             {
-              "variable": "family_type",
+              "variable": "uc_calibration_family_type",
               "operator": "==",
               "value": "COUPLE_NO_CHILDREN"
             }
           ],
-          "notes": "Prepared benefit-unit count: UC receipt and family_type == COUPLE_NO_CHILDREN. DWP household means the UC unit of assessment. Re-bound from household grain per microcosm#809. uk-data's +~0.021% undercount inflation is a populace-side value declaration."
+          "notes": "Benefit-unit count among positive UC awards. Family composition uses retained FRS claimant/parent roles, including cohabiting couples, and reported child members under 20 or UC qualifying children. This calibration proxy corrects generic age-only family categories; the native standard-allowance relationship calculation and eligibility exceptions remain separate model concerns. Benefit-unit grain retains microcosm#809."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_couple_no_children",
@@ -3959,12 +3959,12 @@
               "value": 0
             },
             {
-              "variable": "family_type",
+              "variable": "uc_calibration_family_type",
               "operator": "==",
               "value": "COUPLE_WITH_CHILDREN"
             }
           ],
-          "notes": "Prepared benefit-unit count: UC receipt and family_type == COUPLE_WITH_CHILDREN. DWP household means the UC unit of assessment. Re-bound from household grain per microcosm#809. uk-data's +~0.021% undercount inflation is a populace-side value declaration."
+          "notes": "Benefit-unit count among positive UC awards. Family composition uses retained FRS claimant/parent roles, including cohabiting couples, and reported child members under 20 or UC qualifying children. This calibration proxy corrects generic age-only family categories; the native standard-allowance relationship calculation and eligibility exceptions remain separate model concerns. Benefit-unit grain retains microcosm#809."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_couple_with_children",
@@ -4009,7 +4009,7 @@
           "groupby_variable": "universal_credit",
           "filters": [
             {
-              "variable": "family_type",
+              "variable": "uc_calibration_family_type",
               "operator": "==",
               "value": "SINGLE"
             }
@@ -4018,7 +4018,7 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper))."
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Calibration composition uses retained FRS claimant/parent roles and UC child or qualifying-young-person status, including reported child members under 20; it does not change simulated entitlement."
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/SINGLE",
@@ -4064,7 +4064,7 @@
           "groupby_variable": "universal_credit",
           "filters": [
             {
-              "variable": "family_type",
+              "variable": "uc_calibration_family_type",
               "operator": "==",
               "value": "LONE_PARENT"
             }
@@ -4073,7 +4073,7 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper))."
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Calibration composition uses retained FRS claimant/parent roles and UC child or qualifying-young-person status, including reported child members under 20; it does not change simulated entitlement."
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/LONE_PARENT",
@@ -4119,7 +4119,7 @@
           "groupby_variable": "universal_credit",
           "filters": [
             {
-              "variable": "family_type",
+              "variable": "uc_calibration_family_type",
               "operator": "==",
               "value": "COUPLE_NO_CHILDREN"
             }
@@ -4128,7 +4128,7 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper))."
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Calibration composition uses retained FRS claimant/parent roles and UC child or qualifying-young-person status, including reported child members under 20; it does not change simulated entitlement."
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN",
@@ -4174,7 +4174,7 @@
           "groupby_variable": "universal_credit",
           "filters": [
             {
-              "variable": "family_type",
+              "variable": "uc_calibration_family_type",
               "operator": "==",
               "value": "COUPLE_WITH_CHILDREN"
             }
@@ -4183,7 +4183,7 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper))."
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Calibration composition uses retained FRS claimant/parent roles and UC child or qualifying-young-person status, including reported child members under 20; it does not change simulated entitlement."
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN",
@@ -8689,7 +8689,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "ONS Table 7 'one family only: couple, no children' is the household being exactly one childless couple and nobody else; with the childless-couple benunit present, person count == 2 is equivalent to the one-family restriction. Without it the binding counted every household *containing* such a couple — a 1.84m overlap with the couple-non-dependent-children and multi-family categories (microcosm#757 audit partition, 2026-08-26)."
+          "notes": "ONS Table 7 'one family only: couple, no children' is the household being exactly one childless couple and nobody else; with the childless-couple benunit present, person count == 2 is equivalent to the one-family restriction. Without it the binding counted every household *containing* such a couple \u2014 a 1.84m overlap with the couple-non-dependent-children and multi-family categories (microcosm#757 audit partition, 2026-08-26)."
         },
         "axiom": {
           "metric_name": "ons/couple_no_children_households",
@@ -9028,10 +9028,15 @@
               "variable": "council_tax_band",
               "operator": "==",
               "value": "A"
+            },
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Dwelling stock proxied by households; one row per VOA geography (English regions at region level, Wales at country level) - the resolved geography binds the region filter (compute/council_tax.py:6-18). uk-data does not target VOA band I."
+          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_a",
@@ -9116,10 +9121,15 @@
               "variable": "council_tax_band",
               "operator": "==",
               "value": "B"
+            },
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Dwelling stock proxied by households; one row per VOA geography (English regions at region level, Wales at country level) - the resolved geography binds the region filter (compute/council_tax.py:6-18). uk-data does not target VOA band I."
+          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_b",
@@ -9204,10 +9214,15 @@
               "variable": "council_tax_band",
               "operator": "==",
               "value": "C"
+            },
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Dwelling stock proxied by households; one row per VOA geography (English regions at region level, Wales at country level) - the resolved geography binds the region filter (compute/council_tax.py:6-18). uk-data does not target VOA band I."
+          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_c",
@@ -9292,10 +9307,15 @@
               "variable": "council_tax_band",
               "operator": "==",
               "value": "D"
+            },
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Dwelling stock proxied by households; one row per VOA geography (English regions at region level, Wales at country level) - the resolved geography binds the region filter (compute/council_tax.py:6-18). uk-data does not target VOA band I."
+          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_d",
@@ -9380,10 +9400,15 @@
               "variable": "council_tax_band",
               "operator": "==",
               "value": "E"
+            },
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Dwelling stock proxied by households; one row per VOA geography (English regions at region level, Wales at country level) - the resolved geography binds the region filter (compute/council_tax.py:6-18). uk-data does not target VOA band I."
+          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_e",
@@ -9468,10 +9493,15 @@
               "variable": "council_tax_band",
               "operator": "==",
               "value": "F"
+            },
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Dwelling stock proxied by households; one row per VOA geography (English regions at region level, Wales at country level) - the resolved geography binds the region filter (compute/council_tax.py:6-18). uk-data does not target VOA band I."
+          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_f",
@@ -9556,10 +9586,15 @@
               "variable": "council_tax_band",
               "operator": "==",
               "value": "G"
+            },
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Dwelling stock proxied by households; one row per VOA geography (English regions at region level, Wales at country level) - the resolved geography binds the region filter (compute/council_tax.py:6-18). uk-data does not target VOA band I."
+          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_g",
@@ -9644,10 +9679,15 @@
               "variable": "council_tax_band",
               "operator": "==",
               "value": "H"
+            },
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Dwelling stock proxied by households; one row per VOA geography (English regions at region level, Wales at country level) - the resolved geography binds the region filter (compute/council_tax.py:6-18). uk-data does not target VOA band I."
+          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_h",
@@ -9726,10 +9766,15 @@
               "variable": "household_num_benunits",
               "operator": ">=",
               "value": 0
+            },
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Dwelling stock proxied by households; one row per VOA geography (English regions at region level, Wales at country level) - the resolved geography binds the region filter (compute/council_tax.py:6-18). uk-data does not target VOA band I."
+          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/total",
