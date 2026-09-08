@@ -235,3 +235,29 @@ commit 2959e177 into `calibration_measure_exclusions.json` on the zero-support-c
 adjudication microcosm#355); the register's census pins move with it (51 entries; 18 payment-band
 exclusions; 82 active payment bands). Smoke re-launched as `f100-k15-h45800-e100-smoke3`, chained on
 smoke2's row. No push until the later rebase.
+
+### Smoke3 — 45,800 on spine-p with the exclusions signed (`--epochs 100 --skip-holdout`, `pi_hi` 1.0)
+
+Passed the by-name check (364 national rows) and **refused at the draw** after 1,512 s (25.2 min;
+11.7 GB): on spine-p's 100-epoch gates the measured numbers are
+
+| quantity | spine-o (S1b, k 55,000) | spine-p (smoke3, k 45,800) |
+|---|---|---|
+| protected carriers = certainties at `pi_hi = 1` | 9,869 | 10,026 |
+| budget search `n_nonzero` | 52,490 | 43,938 |
+| total open-probability mass Σπ | 45,743 | 39,577 |
+| boundary draw m / boundary mass | 45,131 / 35,874 | 35,774 / 29,551 |
+| largest boundary gate | 0.998 | 0.998 |
+| largest feasible k at `pi_hi = 1` | 45,809 | 39,638 |
+| smallest feasible `pi_hi` on the grid | 0.5 | 0.7 (0.8 fails) |
+| `pi_hi = 0.95` | infeasible | infeasible (27,443 × 0.95 = 26,071 > 21,439) |
+
+Reading: the "largest feasible count at `pi_hi = 1`" is not a stable target. The budget search
+re-learns the gates for whatever count is requested and stops on the count of not-fully-closed gates;
+in both measurements the open-probability mass came out at 87–90 % of that count, so requesting the
+measured feasible count would only measure a new, lower one. What the measurement does guarantee is
+feasibility on the same gates at a lower certainty threshold. Smoke4 therefore runs 45,800 at
+`--selection-pi-hi 0.7` (the smallest grid value feasible on these gates), 100 epochs, chained on
+smoke3's row bd9ebb9b…; it is the first run to pass the draw. Risk carried forward to S2: at 100 epochs
+`pi_hi = 0.95` is infeasible by 18 %; whether 2,000 epochs polarise the gates enough is unknown, and
+the count-versus-mass mismatch in the stopping rule does not depend on epochs.
