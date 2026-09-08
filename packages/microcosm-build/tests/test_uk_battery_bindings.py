@@ -57,7 +57,7 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: The shared exclusion-expiry clock, fixed inside the committed register's
 #: validity window (latest approval 2026-09-05, expires 2027-02-10) so the suite
 #: never drifts across an expiry boundary.
-CLOCK = date(2026, 9, 5)
+CLOCK = date(2026, 9, 15)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -680,7 +680,7 @@ class TestUnevidencedArms:
             o.entry.id for o in battery.blocking_outcomes(release_candidate=True)
         }
         assert blocked == {
-            *(set(absent) - {"uk_local_target_fit", "uk_local_per_family_fit"}),
+            *set(absent),
             "uk_local_geography_ladder_post_calibration",
             "uk_qrf_tail_concentration",
         }
@@ -1000,14 +1000,14 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 19_932
+        assert result.details["candidate_targets"] == 19_419
         assert result.details["reference_targets"] == 22_530
-        # 1,587 signed area deferrals from the membership file plus the 1,011
+        # 2,100 signed area deferrals from the membership file plus the 1,011
         # ladder-derived households@area rows: census_households binds from the
         # OA-ladder artifact (microcosm#542), never from Chronicle facts, so the
         # in-code default surface excludes it by rule rather than by absence.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_587 + 1_011
+        assert len(exclusions) == 2_100 + 1_011
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
@@ -1040,14 +1040,23 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
 
     entry = {entry.id: entry for entry in uk_gates.gates}["uk_local_area_support"]
     binding = UK_GATE_REGISTRY["area_support"]
+    # The committed register carries the two micro local authorities Maria
+    # excluded on the measured K=4 shortfalls (microcosm#762 A4); the
+    # synthetic roster carries them below the floor so the committed entries
+    # apply instead of reading as unknown.
     support = pd.DataFrame(
         {
-            "geography_level": ["constituency", "local_authority"],
-            "area_code": ["E14000001", "E06000001"],
-            "assigned_households": [50, 50],
-            "nonzero_households": [50, 50],
-            "effective_sample_size": [50.0, 50.0],
-            "nonzero_source_households": [50, 50],
+            "geography_level": [
+                "constituency",
+                "local_authority",
+                "local_authority",
+                "local_authority",
+            ],
+            "area_code": ["E14000001", "E06000001", "E06000053", "E09000001"],
+            "assigned_households": [50, 50, 7, 14],
+            "nonzero_households": [50, 50, 7, 14],
+            "effective_sample_size": [50.0, 50.0, 6.8, 12.1],
+            "nonzero_source_households": [50, 50, 7, 14],
         }
     )
     monkeypatch.setattr(
@@ -1055,7 +1064,7 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
         "_local_area_roster",
         lambda _resource, _levels: {
             "constituency": ("E14000001",),
-            "local_authority": ("E06000001",),
+            "local_authority": ("E06000001", "E06000053", "E09000001"),
         },
     )
     context = EvidenceContext(
@@ -1067,7 +1076,20 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
 
     committed = binding.evaluate(context, entry.parameters)
     assert committed.passed is True
-    assert committed.details["reviewed_exclusions"] == {}
+    assert set(committed.details["reviewed_exclusions"]) == {
+        "local_authority/E06000053",
+        "local_authority/E09000001",
+    }
+    assert committed.details["excluded_area_count"] == 2
+    exclusions = battery_bindings.load_uk_reviewed_exclusion_register(
+        None,
+        resource="local_area_support_exclusions.json",
+    )
+    a14_suffix = (
+        " Per microcosm#762 A14 the authority's own local-authority cells are "
+        "signed-deferred (`local_authority_support_floor_excluded`)."
+    )
+    assert all(record.reason.endswith(a14_suffix) for record in exclusions.values())
 
     monkeypatch.setattr(
         battery_bindings,
@@ -1240,3 +1262,58 @@ class TestBindingUnits:
         )
         assert result.passed is False
         assert "reference_registry" in result.failures[0]
+
+
+@pytest.mark.parametrize(
+    "gate_id,weights,relative_error",
+    [
+        ("uk_local_target_fit", [1.0] * 200, 0.30),
+        ("uk_local_per_family_fit", [1.0] * 200, 0.30),
+        ("uk_local_weight_ratio", [1000.0] + [1.0] * 199, 0.0),
+        ("uk_local_weight_ess", [1e9] + [1.0] * 199, 0.0),
+    ],
+)
+def test_measured_local_quality_failure_blocks_release(
+    gate_id, weights, relative_error, tmp_path
+):
+    """Use real program errors and weights, then exercise battery enforcement."""
+    from microcosm.build.uk_runtime.calibration_run import uk_scoped_gate_manifest
+
+    manifest = uk_scoped_gate_manifest(
+        frozenset({gate_id}), phases=("terminal",), policy_suffix="local_candidate"
+    )
+    person, benunit, household = _tables(n=len(weights), weights=weights)
+    frame = uk_national_frame(
+        person=person, benunit=benunit, household=household, time_period="2025"
+    )
+    diagnostics = pd.DataFrame(
+        [
+            {
+                "family": "obr",
+                "area_code": "UK",
+                "metric": f"program_{i}",
+                "relative_error": relative_error,
+            }
+            for i in range(5)
+        ]
+    )
+    report_path = tmp_path / "gates.json"
+    battery = GateBatteryRun(
+        manifest,
+        release_id="synthetic-quality-refusal",
+        report_path=report_path,
+        release_candidate=True,
+        registry=UK_GATE_REGISTRY,
+    )
+    battery.run_phase(
+        "terminal",
+        EvidenceContext(
+            frame=frame, artifacts={"local_target_diagnostics": diagnostics}
+        ),
+    )
+    with pytest.raises(GateBatteryBlockedError):
+        battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+    report = battery.report_payload()
+    assert report["shippable"] is False
+    assert report["gates"][gate_id]["status"] == "failed"
+    assert report["gates"][gate_id]["criticality"] == "release_blocking"

@@ -18,6 +18,8 @@ from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     materialize_uk_ledger_targets,
+    uk_ladder_household_uprating,
+    uk_ledger_households_total,
     uk_local_target_surface,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
@@ -1351,3 +1353,285 @@ def test_uk_local_target_surface_receipts_a_single_cell_dropped_by_the_fanout_ru
     }
     assert ("K03000001", 2) in entries
     assert entries[("K02000001", 1)].startswith("Single cell at this geography")
+
+
+def _households_total_fact(period: int, value: float, **overrides):
+    fact = {
+        "concept_alignment": {"canonical_concept": "ons.households_total"},
+        "geography": {"id": "K02000001", "level": "country"},
+        "period": {"type": "calendar_year", "value": period},
+        "dimensions": {},
+        "value": value,
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{period}",
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{period}",
+        "lineage": {"source_record_id": f"ons.table5.all_households.cy{period}"},
+    }
+    fact.update(overrides)
+    return fact
+
+
+def test_uk_ledger_households_total_selects_exactly_one_fact() -> None:
+    facts = (
+        _households_total_fact(2021, 28_119_000.0),
+        _households_total_fact(2025, 29_003_000.0),
+        _households_total_fact(
+            2025,
+            1.0,
+            concept_alignment={"canonical_concept": "ons.average_household_size"},
+        ),
+        _households_total_fact(2025, 5.0, geography={"id": "E92000001"}),
+        _households_total_fact(2025, 7.0, dimensions={"household_type": "lone"}),
+    )
+    reference = uk_ledger_households_total(facts, period=2025)
+    assert reference == {
+        "concept": "ons.households_total",
+        "geography_id": "K02000001",
+        "period": 2025,
+        "value": 29_003_000.0,
+        "semantic_fact_key": "ledger.semantic_fact.v2:2025",
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:2025",
+        "source_record_id": "ons.table5.all_households.cy2025",
+    }
+    with pytest.raises(ValueError, match="found 0"):
+        uk_ledger_households_total(facts, period=2030)
+    with pytest.raises(ValueError, match="found 2"):
+        uk_ledger_households_total(
+            (*facts, _households_total_fact(2025, 29_003_000.0)), period=2025
+        )
+    with pytest.raises(ValueError, match="positive finite"):
+        uk_ledger_households_total((_households_total_fact(2025, 0.0),), period=2025)
+
+
+def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
+    small_ladder = SimpleNamespace(
+        households=np.asarray([10.0, 20.0]),
+        constituency_code=np.asarray(["E14000001", "S14000001"]),
+        local_authority_code=np.asarray(["E06000001", "S12000005"]),
+        metadata={"oa_vintage": "ew:2021_census;scotland:2022_census;ni:dz2021"},
+    )
+    small_reference = uk_ledger_households_total(
+        (_households_total_fact(2025, 33.0),), period=2025
+    )
+    small = uk_ladder_household_uprating(small_ladder, small_reference, period=2025)
+    assert small["applied"] is True
+    assert small["factor"] == pytest.approx(1.1)
+    assert small["ladder_households_total"] == 30.0
+    assert small["ladder_oa_vintage"].startswith("ew:2021_census")
+    assert small["reference"] == small_reference
+    assert "A15" in small["adjudication"]
+    with pytest.raises(ValueError, match="calibration period"):
+        uk_ladder_household_uprating(small_ladder, small_reference, period=2024)
+
+    def tenure_spec(name, value, **metadata):
+        return TargetSpec(
+            name=name,
+            entity="household",
+            value=value,
+            measure="tenure/social_rent",
+            period=2025,
+            source="ONS",
+            family="ons_housing",
+            metadata={
+                "contract_target_id": "ons.tenure.social_rent",
+                "geography_level": "local_authority",
+                **metadata,
+            },
+        )
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="dwp.uc.households@2025",
+                entity="household",
+                value=90.0,
+                measure="uc_households",
+                period=2025,
+                source="DWP",
+                family="dwp_universal_credit",
+                metadata={
+                    "contract_target_id": "dwp.uc.households",
+                    "geography_level": "country",
+                    "geography_id": "K03000001",
+                },
+            ),
+            # A census-2021 tenure cell held to 2025 (A17: uprated), a
+            # Scottish census-2022 hold (uprated), and a tenure cell compiled
+            # from a 2025 fact with no hold (never touched).
+            tenure_spec(
+                "ons.tenure.social_rent@E06000001@2025",
+                50.0,
+                geography_id="E06000001",
+                uprating_from_period=2021,
+                uprating_to_period=2025,
+            ),
+            tenure_spec(
+                "ons.tenure.social_rent@S12000005@2025",
+                40.0,
+                geography_id="S12000005",
+                uprating_from_period=2022,
+                uprating_to_period=2025,
+            ),
+            tenure_spec(
+                "ons.tenure.social_rent@E06000002@2025",
+                30.0,
+                geography_id="E06000002",
+            ),
+        ],
+        country="uk",
+    )
+    ladder = SimpleNamespace(
+        households=np.asarray([10.0, 20.0, 5.0]),
+        constituency_code=np.asarray(["E14000001", "S14000001", "E14000002"]),
+        local_authority_code=np.asarray(["E06000001", "S12000005", "E06000002"]),
+        metadata={"oa_vintage": "ew:2021_census;scotland:2022_census;ni:dz2021"},
+    )
+    reference = uk_ledger_households_total(
+        (_households_total_fact(2025, 38.5),), period=2025
+    )
+    uprating = uk_ladder_household_uprating(ladder, reference, period=2025)
+    assert uprating["factor"] == pytest.approx(1.1)
+    as_published, receipt = uk_local_target_surface(
+        registry, ladder, bound_national_target_ids=(), period=2025
+    )
+    assert receipt["ladder_household_uprating"]["applied"] is False
+    assert receipt["ladder_household_uprating"]["tenure_cells"]["applied"] is False
+    published_rows = as_published.loc[as_published["metric"] == "households"]
+    assert published_rows["value"].tolist() == [10.0, 5.0, 20.0, 10.0, 5.0, 20.0]
+    tenure_published = as_published.loc[as_published["metric"] == "tenure/social_rent"]
+    assert tenure_published["value"].tolist() == [50.0, 40.0, 30.0]
+
+    uprated, receipt = uk_local_target_surface(
+        registry,
+        ladder,
+        bound_national_target_ids=(),
+        period=2025,
+        ladder_household_uprating=uprating,
+    )
+    rows = uprated.loc[uprated["metric"] == "households"]
+    assert rows["value"].tolist() == pytest.approx([11.0, 5.5, 22.0, 11.0, 5.5, 22.0])
+    tenure_rows = uprated.loc[uprated["metric"] == "tenure/social_rent"]
+    assert tenure_rows["value"].tolist() == pytest.approx([55.0, 44.0, 30.0])
+    tenure_receipt = receipt["ladder_household_uprating"]["tenure_cells"]
+    assert tenure_receipt["applied"] is True
+    assert tenure_receipt["cells"] == 2
+    assert tenure_receipt["by_census_vintage"] == {"2021": 1, "2022": 1}
+    assert "A17" in tenure_receipt["adjudication"]
+    assert {
+        k: v
+        for k, v in receipt["ladder_household_uprating"].items()
+        if k != "tenure_cells"
+    } == uprating
+    declined, receipt = uk_local_target_surface(
+        registry,
+        ladder,
+        bound_national_target_ids=(),
+        period=2025,
+        ladder_household_uprating={"applied": False, "reason": "no facts"},
+    )
+    assert declined.loc[declined["metric"] == "households", "value"].tolist() == [
+        10.0,
+        5.0,
+        20.0,
+        10.0,
+        5.0,
+        20.0,
+    ]
+    declined_receipt = receipt["ladder_household_uprating"]
+    assert declined_receipt["tenure_cells"]["applied"] is False
+    assert {k: v for k, v in declined_receipt.items() if k != "tenure_cells"} == {
+        "applied": False,
+        "reason": "no facts",
+    }
+    with pytest.raises(ValueError, match="factor is invalid"):
+        uk_local_target_surface(
+            registry,
+            ladder,
+            bound_national_target_ids=(),
+            period=2025,
+            ladder_household_uprating={"applied": True, "factor": 0.0},
+        )
+
+
+def test_census_vintage_hold_follows_the_ladder_vintage_not_a_constant() -> None:
+    from microcosm.build.uk_runtime.ledger_targets import (
+        _census_vintage_years,
+        _is_census_vintage_hold,
+    )
+
+    assert _census_vintage_years("ew:2021_census;scotland:2022_census;ni:dz2021") == {
+        2021,
+        2022,
+    }
+    later = _census_vintage_years("ew:2031_census;scotland:2032_census;ni:dz2031")
+    held_2031 = {"uprating_from_period": "2031", "uprating_to_period": "2035"}
+    assert _is_census_vintage_hold(held_2031, 2035, census_years=later) is True
+    # A hold from a non-census vintage never takes the census household factor.
+    held_2033 = {"uprating_from_period": "2033", "uprating_to_period": "2035"}
+    assert _is_census_vintage_hold(held_2033, 2035, census_years=later) is False
+    assert _census_vintage_years("") == frozenset()
+
+
+@pytest.mark.parametrize(
+    "vintage,from_period,reason,eligible",
+    [
+        (None, 2021, "missing_ladder_oa_vintage", False),
+        ("midyear_2024", 2021, "non_census_ladder_vintage", False),
+        (
+            "ew:2021_census",
+            2020,
+            "hold_not_from_ladder_census_vintage_or_wrong_period",
+            False,
+        ),
+        ("ew:2021_census", 2021, "census_vintage_hold_uprated", True),
+    ],
+)
+def test_tenure_receipt_counts_attempted_and_skipped_holds(
+    vintage, from_period, reason, eligible
+):
+    ladder = SimpleNamespace(
+        households=np.asarray([10.0]),
+        constituency_code=np.asarray(["E14000001"]),
+        local_authority_code=np.asarray(["E06000001"]),
+        metadata={} if vintage is None else {"oa_vintage": vintage},
+    )
+    reference = uk_ledger_households_total(
+        (_households_total_fact(2025, 11.0),), period=2025
+    )
+    uprating = uk_ladder_household_uprating(ladder, reference, period=2025)
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="ons.tenure.social_rent@E06000001@2025",
+                entity="household",
+                value=5.0,
+                measure="tenure/social_rent",
+                period=2025,
+                source="ONS",
+                family="ons_housing",
+                metadata={
+                    "contract_target_id": "ons.tenure.social_rent",
+                    "geography_level": "local_authority",
+                    "geography_id": "E06000001",
+                    "uprating_from_period": from_period,
+                    "uprating_to_period": 2025,
+                },
+            )
+        ],
+        country="uk",
+    )
+    surface, receipt = uk_local_target_surface(
+        registry,
+        ladder,
+        bound_national_target_ids=(),
+        period=2025,
+        ladder_household_uprating=uprating,
+    )
+    tenure = receipt["ladder_household_uprating"]["tenure_cells"]
+    assert tenure["attempted_cells"] == tenure["total_cells"] == 1
+    assert tenure["eligible_cells"] == tenure["cells"] == int(eligible)
+    assert tenure["skipped_cells"] == int(not eligible)
+    assert tenure["holds"][0]["reason"] == reason
+    assert tenure["holds"][0]["ladder_oa_vintage"] == (vintage or "")
+    assert surface.loc[
+        surface["metric"] == "tenure/social_rent", "value"
+    ].tolist() == pytest.approx([5.5 if eligible else 5.0])

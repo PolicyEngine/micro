@@ -1468,6 +1468,9 @@ def rotated_uk_local_holdout(
         # under ``grain_equal`` this loss is not on the training scale (which
         # spans the national rows as a third grain). Report-only either way.
         "loss_weight_scale": "held_local_grains_only",
+        "target_weight_rule": target_weight_rule,
+        "population": "held_out_local_targets",
+        "grains": sorted(set(problem.target_frame["area_type"].astype(str))),
         "n_folds": summary.n_folds,
         "seed": UK_LOCAL_HOLDOUT_SEED,
         "solve_seed": solve_seed,

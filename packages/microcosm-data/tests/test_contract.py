@@ -137,13 +137,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "5a596f72e5412d97d7938864ce44426634f22622655b2a3efcc76aaa4274d485"
+    "0f271dd91e25ec43cc24d39c4a5e11e3b54ff883d5fa2f691bf82b0229eca301"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "9debdfbc78c4f48734c9851ff14fa88f84788d184ae05bb54558c43e82cc6345"
+    "1c47e74e91d7684aa91f6b4ec92f55365b119f4325eb4cfd0628c50e81a99b6a"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "c405d55f92528775565f8f6c9807bc187de42662e71b59132bf0ec3f5d2caae2"
+    "80e73c97e48bad99cc03dcde5bc0b71a738db3c6f8c5c76b2be6d83e86c5381b"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -1240,17 +1240,9 @@ def _gate_battery_payload(
         gates[entry_id] = {
             "gate": gate,
             "phase": phase,
-            "criticality": (
-                "diagnostic"
-                if entry_id
-                in {
-                    "uk_local_target_fit",
-                    "uk_local_per_family_fit",
-                    "uk_local_weight_ratio",
-                    "uk_local_weight_ess",
-                }
-                else "release_blocking"
-            ),
+            # PR #870 review: every entry is release-blocking, the local fit and
+            # weight gates included.
+            "criticality": "release_blocking",
             "status": "passed",
             "failures": [],
             "details": details,

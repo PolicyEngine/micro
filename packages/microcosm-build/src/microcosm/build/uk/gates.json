@@ -779,45 +779,45 @@
       "id": "uk_local_target_fit",
       "gate": "target_fit",
       "phase": "terminal",
-      "criticality": "diagnostic",
+      "criticality": "release_blocking",
       "parameters": {
         "surface": "local_candidate",
         "max_abs_relative_error": 0.25
       },
-      "notes": "Report every bound local target outside 25% absolute relative error. Diagnostic until the first #762 measured-fit receipt arms it."
+      "notes": "Every bound target must be within 25% absolute relative error. Release-blocking following PR #870 review; the numeric threshold is unchanged."
     },
     {
       "id": "uk_local_per_family_fit",
       "gate": "per_family_fit",
       "phase": "terminal",
-      "criticality": "diagnostic",
+      "criticality": "release_blocking",
       "parameters": {
         "within": 0.1,
         "min_family_share": 0.5,
         "hard_within": 0.25,
         "min_hard_family_share": 0.5
       },
-      "notes": "Report 10% fit shares per bound family and the 25% broad-fit share, so a weak family cannot hide in the aggregate. Diagnostic until the first #762 measured-fit receipt arms it."
+      "notes": "Each bound family of at least five rows needs at least half within 25%; the within-10% share remains diagnostic. Release-blocking following PR #870 review; existing evaluator thresholds and family-size policy are unchanged."
     },
     {
       "id": "uk_local_weight_ratio",
       "gate": "weight_ratio",
       "phase": "terminal",
-      "criticality": "diagnostic",
+      "criticality": "release_blocking",
       "parameters": {
         "maximum_max_to_median_ratio": 100.0
       },
-      "notes": "The reviewed local doctrine ratio is 100.0. It ships diagnostic until #762 records the first measured candidate and arms the threshold."
+      "notes": "Maximum-to-median positive weight ratio must not exceed 100.0. Release-blocking following PR #870 review; the numeric threshold is unchanged."
     },
     {
       "id": "uk_local_weight_ess",
       "gate": "weight_ess",
       "phase": "terminal",
-      "criticality": "diagnostic",
+      "criticality": "release_blocking",
       "parameters": {
         "minimum_ess_fraction": 0.01
       },
-      "notes": "The local ESS-fraction diagnostic uses the national analogue's 0.01 floor and remains diagnostic until #762's measured arming review."
+      "notes": "Effective sample size must be at least 0.01 of rows. Release-blocking following PR #870 review; the numeric threshold is unchanged."
     }
   ]
 }

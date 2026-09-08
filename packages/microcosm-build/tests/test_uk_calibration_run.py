@@ -16,8 +16,10 @@ from microcosm.build.chronicle_epoch import (
     PUBLISHED_CONSUMER_ARTIFACT_SCHEMA_VERSION,
 )
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.gate_battery import (
+    _canonical_json_bytes as canonical_json_bytes,
+)
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
-from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.uk_runtime import calibration_run
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
