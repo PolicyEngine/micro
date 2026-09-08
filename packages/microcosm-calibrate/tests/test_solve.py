@@ -9,7 +9,9 @@ a record budget with L0.
 
 from __future__ import annotations
 
+import json
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -2105,3 +2107,54 @@ def test_mass_reason_rides_the_free_mass_record() -> None:
         calibrate(frame, targets, epochs=4, mass="conserve", mass_reason=reason)
     with pytest.raises(ValueError, match="non-empty string"):
         calibrate(frame, targets, epochs=4, mass_reason="   ")
+
+
+@pytest.mark.parametrize("case_id", ["conserved_mass", "l2_regularized", "l0_gated"])
+def test_best_iterate_preserves_pre_change_excluded_paths(case_id: str) -> None:
+    """Independent pre-change weights, trajectory and gate bytes stay exact.
+
+    The data-only oracle records the unmodified solver's source revision and
+    hash. It is not regenerated from the implementation under test. The cases
+    exercise the three separate exclusions from best-iterate selection.
+    """
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures/pre_best_iterate/controls.json").read_text()
+    )
+    inputs = fixture["inputs"]
+    n = len(inputs["initial_weights"])
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": range(n),
+                    "income": inputs["income"],
+                    "eligible": inputs["eligible"],
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.array(inputs["initial_weights"]), WeightKind.DESIGN)},
+    )
+    targets = TargetSet(tuple(Target(**item) for item in fixture["targets"]))
+    case = next(item for item in fixture["cases"] if item["id"] == case_id)
+    result = calibrate(frame, targets, **case["options"])
+
+    for name, expected in case["expected_float64_le_hex"].items():
+        actual = np.asarray(getattr(result, name))
+        assert actual.dtype == np.dtype("float64")
+        assert actual.astype("<f8").tobytes() == bytes.fromhex(expected), name
+    assert result.options["iterate_selection"] == "closing_state"
+    assert result.n_nonzero == case["n_nonzero"]
+    assert not np.array_equal(result.weights, inputs["initial_weights"])
+    if case_id == "conserved_mass":
+        assert result.weights.sum() == pytest.approx(sum(inputs["initial_weights"]))
+    elif case_id == "l2_regularized":
+        assert result.options["l2_lambda"] > 0
+    else:
+        assert result.l0_lambda > 0
+        assert np.all(
+            (result.gate_open_probabilities > 0) & (result.gate_open_probabilities < 1)
+        )

@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
+from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 from microcosm.graph import (
     Capabilities,
     Determinism,
@@ -92,11 +93,18 @@ _STAGE_MODULES = {
     "age_tail": "age_tail",
 }
 
-# Imported helper modules are not traversed by ``source_hash``. These three
-# stages use the shared FRS claimant/couple roles to determine their output.
+# Imported modules are not traversed by ``source_hash``. Bind relationship
+# helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
     "frs_spine": (uc_relationships,),
-    "uc_reporter_redraw": (uc_relationships,),
+    "frs_legacy_proxies": (uk_engine_adapter,),
+    "frs_education_grant_split": (uk_engine_adapter,),
+    "frs_brma": (uk_engine_adapter,),
+    "was_wealth": (uk_engine_adapter,),
+    "lcfs_consumption": (uk_engine_adapter,),
+    "etb_vat": (uk_engine_adapter,),
+    "etb_services": (uk_engine_adapter,),
+    "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
     "uc_capital_coherence": (uc_relationships,),
 }
 

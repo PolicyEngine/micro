@@ -20,6 +20,12 @@ def frs_uc_claimant_mask(person: pd.DataFrame, benunit: pd.DataFrame) -> np.ndar
     eligibility, receipt of a couple standard allowance, or legal marriage.
     Dependent child-file members do not become partners on their 18th birthday.
     Membership is never changed here.
+
+    Persist this mask as the Boolean ``is_uc_claimant`` input. It is
+    authoritative over PolicyEngine-UK's calculator fallback: a 17-year-old
+    partner or an older nonqualifying dependent cannot reliably be inferred
+    from age and education alone. Reporter payment landing uses a separate
+    established convention; this mask identifies every claimant or partner.
     """
     required_person = {"person_benunit_id", "is_benunit_head", "is_parent"}
     required_benunit = {"benunit_id", "dependent_children"}

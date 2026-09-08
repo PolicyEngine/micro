@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
 )
 from microcosm.calibrate import TargetRegistry
+from microcosm.frame.adapters.policyengine_uk import validate_uc_claimant_input
 
 _ENTITY_LINK = {"benunit": "person_benunit_id", "household": "person_household_id"}
 _ENTITY_ID = {
@@ -184,6 +185,7 @@ class UKMeasureResolver:
                 frame, _provenance = load_uk_national_frame(source_path)
         self.frame = frame
         self.simulation = factory(dataset=str(source_path))
+        validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
         self._receipt = {
             "mode": mode,
             "source_path": str(source_path),

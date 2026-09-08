@@ -437,6 +437,12 @@ def _claimant_rows(
     uc_child: np.ndarray,
     sp_age: np.ndarray,
 ) -> np.ndarray:
+    """Choose the payment landing row, separately from claim membership.
+
+    The shared FRS mask identifies one or two claimants. This established
+    landing rule selects one eldest non-child, preferring working age, and
+    does not redefine those claimants or their partner roles.
+    """
     age = _finite_numeric(person["age"], label="person.age")
     person_id = person["person_id"].to_numpy()
     adult = ~uc_child

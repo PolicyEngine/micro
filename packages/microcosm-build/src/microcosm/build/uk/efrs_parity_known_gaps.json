@@ -309,7 +309,7 @@
     "employment_income": "employment_income_before_lsr"
    },
    "package": "policyengine-uk",
-   "version": "2.94.0"
+   "version": "2.89.0"
   },
   "entity_records": {
    "benunit": 618980,

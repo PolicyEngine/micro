@@ -294,6 +294,45 @@ def test_uc_relationship_helper_changes_affected_kernel_hashes(monkeypatch) -> N
     assert registry.implementation_hash(control_ref) == before[control_ref]
 
 
+def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
+    from microcosm.frame.adapters import policyengine_uk
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    stages = (
+        "frs_legacy_proxies",
+        "frs_education_grant_split",
+        "frs_brma",
+        "was_wealth",
+        "lcfs_consumption",
+        "etb_vat",
+        "etb_services",
+        "uc_reporter_redraw",
+    )
+    affected = [graph.node(stage).kernel for stage in stages]
+    controls = [
+        graph.node(stage).kernel
+        for stage in ("frs_council_tax", "uc_capital_coherence")
+    ]
+    before = {ref: registry.implementation_hash(ref) for ref in affected + controls}
+    adapter_path = Path(policyengine_uk.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_adapter_bytes(path):
+        content = original(path)
+        return (
+            content + b"\n# adapter-only change\n"
+            if path.resolve() == adapter_path
+            else content
+        )
+
+    monkeypatch.setattr(Path, "read_bytes", changed_adapter_bytes)
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref]
+    for ref in controls:
+        assert registry.implementation_hash(ref) == before[ref]
+
+
 def test_uk_graph_json_round_trip_is_canonical() -> None:
     graph = uk_spine_graph()
     serialized = graph_to_json(graph)
