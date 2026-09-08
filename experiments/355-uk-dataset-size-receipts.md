@@ -325,7 +325,45 @@ artifact regenerated. Dry run on spine-p with the composed surface: 314 cells co
 
 ### S2 — the experiment: 55,000 households, `--selection-pi-hi 0.95 --epochs 2000 --skip-holdout`
 
-Launched 2026-09-08 ~17:50Z on spine-p from the clean tree at 1079ef87, chained on smoke4's Logbook row
-363c8c4f…, run `spine-p/f100-k15-h55000-e2000-p95-s42`, `/usr/bin/time -l`. Expected 3 to 8 hours; the
-draw is on the mass basis, so the exact count is feasible by construction at the requested threshold.
-(recorded when it completes)
+Launched 2026-09-08 17:32Z on spine-p from the clean tree at 1079ef87, chained on smoke4's Logbook row
+363c8c4f…, run `spine-p/f100-k15-h55000-e2000-p95-s42`, `/usr/bin/time -l`.
+
+**REFUSED at the draw after 4.8 h** (17,247 s wall, 20,855 s user, 10.9 GB peak RSS; exit 1 at 22:20Z;
+Logbook row d5a33c11… `disposition failed`, `phases_reached … targets_bound, error`, chained on 363c8c4f…;
+the next run chains on d5a33c11…). Same message as S1/S1b: `degenerate boundary mass … adjust pi_hi or k`,
+now with the feasibility receipt. Nothing beyond `run.log` and the error receipt was written: the driver
+keeps no checkpoint between the dense solve and the draw, so the 2,000-epoch dense reference and the L0
+probes are lost with the refusal.
+
+The stub above said the exact count was "feasible by construction" on the mass basis. That was wrong,
+and the numbers say why:
+
+- The budget search stops as soon as `|Σπ − k| ≤ tol` with `tol = max(1, round(0.05 × k))` = 2,750 rows
+  at 55,000 (`solve.py::_search_l0_lambda_for_budget`). It accepted Σπ = 54,834, i.e. 166 rows short of
+  the request, at `selection_l0_lambda` 1.3335e-06. The mass basis changed what each probe measures, not
+  the band that ends the search.
+- The gates are near-binary at 2,000 epochs: 10,026 protected carriers at π = 1 exactly, 44,537 gates
+  in [0.95, 1) averaging 0.9996 (54,446 above 0.99, 51,100 above 0.999), and the other 738,127 gates
+  averaging 0.0004 (π p50 0.00016, p90 0.0015). Σπ over that tail is 291 at `pi_hi` 0.95.
+- An exact-k draw at threshold h needs `(k − n_{π≥h}) × max_{π<h} ≤ Σ_{π<h} π`. At 0.95: 437 boundary
+  draws × 0.947 = 414 > 291. At 1.0: 44,974 × 0.999999 > 44,808 (Σπ < k, so infeasible outright; the
+  largest feasible k at `pi_hi` 1 is 54,834). Scan: 0.999 (3,900 draws / mass 3,745) no; 0.99 no; 0.98 no;
+  0.9 (428 / 282) no; 0.8 (421 / 276) no; 0.7 (415 × 0.691 = 287 vs 272) no by 15 mass units; **0.5
+  (405 × 0.463 = 188 vs 266) yes**, with 54,595 certainties. The feasible ceiling on this run's π vector
+  lies in (0.5, 0.7).
+- Had the search landed 166 rows above 55,000 instead of below, `pi_hi` 1.0 would have been feasible;
+  which side of the request the ±5% band lands on is chance, not design.
+
+What this means for the machinery: with the informed L0 at 2,000 epochs the selection is essentially
+deterministic (≈54.6k gates open, ≈400 rows drawn from a 738k tail), so `pi_hi` only decides whether the
+few dozen gates between 0.5 and 0.95 are certainties or boundary draws, and the exact-count draw is
+feasible only when the requested threshold sits below that shoulder. Honouring an arbitrary `pi_hi`
+would need the search to stop on the draw's feasibility condition at that threshold rather than on the
+±5% mass band (a further `solve.py` change, pins move again, one to three extra probes at ~1 h each),
+and a checkpoint of the dense solve and the gate probabilities before the draw would make a refusal
+cost a refit rerun rather than 4.8 h. Both are for María to rule on; neither was started.
+
+Options put to María (2026-09-09): (B) rerun S2 at `--selection-pi-hi 0.5`, no code change; the dense
+solve and the search are seeded and deterministic, so this run's scan is the feasibility evidence for
+the rerun (expected, not yet verified at scale); (A) the feasibility-aware stopping rule, then rerun at
+0.95; (C) the pre-draw checkpoint, independent of A/B.
