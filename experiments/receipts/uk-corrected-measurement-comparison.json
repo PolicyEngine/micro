@@ -120,7 +120,7 @@
       "spine_origin_code_pin": "d43b4203c6ebe10e062cb3ef3034e66731ea055d",
       "spine_origin_receipt": {
         "path": "experiments/receipts/uk-publication-spi-comparison.json",
-        "git_revision": "5a1581e32b107601104ca5c2800100cdf99be42e",
+        "git_revision": "a20d8c31936d5d0d4d193891d2c11d74217a038f",
         "sha256": "71502cc84f0cc8a896f32c5bceb7472839afa49c693ce79e2a86783f65ea52fa",
         "run_key": "control",
         "artifact": "spine.h5",
@@ -1101,7 +1101,7 @@
       "spine_origin_code_pin": "fc49b48200e1e15fe35bb4e15b948992bf03c28d",
       "spine_origin_receipt": {
         "path": "experiments/receipts/uk-publication-spi-comparison.json",
-        "git_revision": "5a1581e32b107601104ca5c2800100cdf99be42e",
+        "git_revision": "a20d8c31936d5d0d4d193891d2c11d74217a038f",
         "sha256": "71502cc84f0cc8a896f32c5bceb7472839afa49c693ce79e2a86783f65ea52fa",
         "run_key": "treatment",
         "artifact": "spine.h5",
@@ -10790,7 +10790,7 @@
     "builder": "experiments/build_879_corrected_measurement_receipt.py",
     "baseline_receipt": {
       "path": "experiments/receipts/uk-corrected-measurement-comparison.json",
-      "git_revision": "5a1581e32b107601104ca5c2800100cdf99be42e",
+      "git_revision": "a20d8c31936d5d0d4d193891d2c11d74217a038f",
       "sha256": "4e8bda6ba2eba3b7df56b56a565a6dd488c7d9c3739d46e4fb44bc45a41b6a93"
     },
     "calibration_rerun": false,

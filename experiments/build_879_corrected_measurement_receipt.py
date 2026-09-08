@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 
-SOURCE_COMMIT = "5a1581e32b107601104ca5c2800100cdf99be42e"
+SOURCE_COMMIT = "a20d8c31936d5d0d4d193891d2c11d74217a038f"
 BASELINE_PATH = "experiments/receipts/uk-corrected-measurement-comparison.json"
 ORIGIN_PATH = "experiments/receipts/uk-publication-spi-comparison.json"
 BASELINE_SHA256 = "4e8bda6ba2eba3b7df56b56a565a6dd488c7d9c3739d46e4fb44bc45a41b6a93"
