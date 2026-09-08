@@ -24,21 +24,15 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     _fact_matches_selector,
     compile_ledger_target_references,
-    target_spec_from_materialized_declaration,
 )
 from microcosm.build.target_materialization import (
     TargetMaterializationResult,
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
-from microcosm.build.uk_runtime.ladder_targets import (
-    constituency_household_targets,
-    local_authority_household_targets,
-)
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
     AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
-    UK_LADDER_HOUSEHOLD_TARGET_ID,
     area_groups_from_codes,
     load_uk_local_geography_contract,
     metric_names,
@@ -97,7 +91,7 @@ UK_CROSS_GRAIN_BRIDGES = (
             "ons.household_composition.lone_parent_non_dependent_children_households",
             "ons.household_composition.multi_family_households",
         ),
-        lower_side=UK_LADDER_HOUSEHOLD_TARGET_ID,
+        lower_side="contract:external:census_households/households",
     ),
     CrossGrainBridge(
         bridge_id="national_uc_caseload_vs_uc_households_by_area",
@@ -909,8 +903,9 @@ def apply_uk_cross_grain_reconciliation(
     )
 
 
-#: The Ledger concept the A15 ladder uprating stands on: ONS "Families and
-#: households in the UK", Table 5 all-households row, UK, calendar year.
+#: The Chronicle concept used to compute the A15 census-tenure hold factor:
+#: ONS "Families and households in the UK", Table 5 all-households row, UK,
+#: calendar year.
 UK_LEDGER_HOUSEHOLDS_TOTAL_CONCEPT = "ons.households_total"
 UK_LEDGER_HOUSEHOLDS_TOTAL_GEOGRAPHY = "K02000001"
 
@@ -925,7 +920,7 @@ def uk_ledger_households_total(
     Exactly one fact must carry the ``ons.households_total`` concept at the
     UK country geography for the calendar year ``period`` with no
     dimensions; zero or several fail closed by name, so an artifact that
-    lacks the vintage cannot silently bind the census-vintage ladder rows.
+    lacks the requested period cannot silently uprate held census-tenure rows.
     """
 
     target_period = int(period)
@@ -987,14 +982,14 @@ def uk_ladder_household_uprating(
     *,
     period: int | str,
 ) -> dict[str, Any]:
-    """Derive the single national factor that moves the ladder's census
-    household counts to the calibration period (microcosm#762 A15).
+    """Derive the national factor for census-vintage tenure holds (A15).
 
     The OA ladder's household counts are the 2021 (England, Wales, Northern
-    Ireland) and 2022 (Scotland) census counts; the candidate calibrates at
-    ``period``. One factor — the Ledger's published UK household total at
-    ``period`` over the ladder's total — uprates every ladder household row
-    while the ladder keeps its census shares for assignment and support.
+    Ireland) and 2022 (Scotland) census values. This function computes one
+    national factor — the published household total at ``period`` divided by
+    the ladder total — for eligible Chronicle tenure cells held from those
+    census vintages. It does not modify Chronicle household-count targets or
+    infer local growth.
     """
 
     households = np.asarray(ladder.households, dtype=np.float64)
@@ -1022,10 +1017,10 @@ def uk_ladder_household_uprating(
         "adjudication": "microcosm#762 (A15, ruling 2026-09-03)",
         "reason": (
             "The OA ladder's household counts are census-vintage (2021; "
-            "Scotland 2022); the candidate calibrates at the FRS release's "
-            "calibration year, so every ladder household row is scaled by one "
-            "national factor to the Ledger's published UK household total for "
-            "that year. Assignment shares and support counts stay census-based."
+            "Scotland 2022), while the Chronicle household reference is at the "
+            "calibration year. Eligible Chronicle tenure cells held from those "
+            "vintages use one national factor (target / ladder total); Chronicle "
+            "household-count targets remain unchanged."
         ),
     }
 
@@ -1073,7 +1068,6 @@ def _is_census_vintage_hold(
 
 def uk_local_target_surface(
     local_registry: TargetRegistry,
-    ladder: Any,
     *,
     bound_national_target_ids: Iterable[str],
     period: int | str,
@@ -1084,10 +1078,9 @@ def uk_local_target_surface(
     """Assemble and reconcile the present-cell UK local target surface.
 
     ``ladder_household_uprating`` is the A15 receipt from
-    :func:`uk_ladder_household_uprating`; when given, every ladder household
-    row is scaled by its ``factor`` and the receipt rides the returned
-    cross-grain receipt. Without it the ladder rows bind as published and
-    the receipt says so.
+    :func:`uk_ladder_household_uprating`. Its factor applies only to eligible
+    census-vintage tenure cells. Household totals on this surface always come
+    from ``local_registry`` Chronicle references like every other target.
     """
 
     if ladder_household_uprating is None:
@@ -1095,13 +1088,13 @@ def uk_local_target_surface(
         uprating_receipt: dict[str, Any] = {
             "applied": False,
             "reason": (
-                "no Ledger household reference supplied; ladder household rows "
-                "bind at their census vintage."
+                "no household-period reference supplied; eligible census tenure "
+                "rows retain their published values."
             ),
         }
     elif not ladder_household_uprating.get("applied"):
-        # A declined receipt (no Ledger facts on this path) rides through
-        # unchanged so the manifest says why the rows bind as published.
+        # A declined receipt rides through unchanged so the manifest says why
+        # eligible census tenure rows retain their published values.
         uprating_factor = 1.0
         uprating_receipt = dict(ladder_household_uprating)
         uprating_receipt["applied"] = False
@@ -1113,12 +1106,11 @@ def uk_local_target_surface(
             )
         uprating_receipt = dict(ladder_household_uprating)
     # microcosm#762 A17 (ruling 2026-09-03): the census tenure cells are the
-    # same household universe as the ladder rows split by tenure, carried
-    # with identity holds from their census vintage; when the ladder rows
-    # uprate, the held tenure cells uprate by the same national factor so the
-    # partition keeps its published shares at the uprated level. A tenure
-    # cell compiled from a fact at the calibration period carries no hold
-    # and is never touched.
+    # same household universe split by tenure, carried with identity holds
+    # from their census vintage. When a current-period household total produces
+    # a national factor, the held tenure cells use that factor so the published
+    # tenure shares remain unchanged. A tenure cell compiled from a fact at the
+    # calibration period carries no hold and is never touched.
     tenure_uprated: dict[str, int] = {}
     tenure_holds: list[dict[str, Any]] = []
 
@@ -1129,41 +1121,10 @@ def uk_local_target_surface(
     target_id_to_metric = {
         target_id: metric for metric, target_id in _uk_local_metric_target_ids().items()
     }
-    local_contract = load_uk_local_geography_contract()
-    contract_targets = {
-        str(target["target_id"]): target for target in local_contract["targets"]
-    }
-    try:
-        ladder_household_declaration = contract_targets[UK_LADDER_HOUSEHOLD_TARGET_ID]
-    except KeyError as error:
-        raise ValueError(
-            "UK target contract must declare the geography-ladder household "
-            f"target {UK_LADDER_HOUSEHOLD_TARGET_ID!r}."
-        ) from error
-    hierarchy_catalog = local_contract.get("hierarchy")
-    if not isinstance(hierarchy_catalog, Mapping):
-        raise ValueError("UK target contract must declare a hierarchy catalog.")
-    ladder_specs = tuple(
-        target_spec_from_materialized_declaration(
-            ladder_household_declaration,
-            hierarchy_catalog,
-            name=f"{UK_LADDER_HOUSEHOLD_TARGET_ID}@{row.code}",
-            value=float(row.households) * uprating_factor,
-            period=period,
-            source="UK OA geography ladder",
-            geography_level=AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL[area_type],
-            geography_id=str(row.code),
-        )
-        for area_type, targets in (
-            ("constituency", constituency_household_targets(ladder)),
-            ("la", local_authority_household_targets(ladder)),
-        )
-        for row in targets.itertuples(index=False)
-    )
     output_rows: list[dict[str, Any]] = []
     reconciliation_rows: list[dict[str, Any]] = []
     national_control_groups: dict[tuple[str, str], list[tuple[str, str, float]]] = {}
-    for spec in (*local_registry.specs, *ladder_specs):
+    for spec in local_registry.specs:
         geography_level, geography_id = _spec_geography(spec)
         contract_target_id = str(
             spec.metadata.get("contract_target_id", spec.name.split("@", 1)[0])
@@ -1242,11 +1203,7 @@ def uk_local_target_surface(
                 {
                     "grain": area_type,
                     "geography_id": geography_id,
-                    "target_id": (
-                        contract_target_id
-                        if spec.metadata.get("materialization_kind")
-                        else f"contract:{contract_target_id}"
-                    ),
+                    "target_id": f"contract:{contract_target_id}",
                     "value": value,
                     "_output_position": output_position,
                 }
@@ -1350,7 +1307,10 @@ def uk_local_target_surface(
         if str(target_id) not in fanout_target_ids
     )
 
-    reconciliation = pd.DataFrame(reconciliation_rows)
+    reconciliation = pd.DataFrame(
+        reconciliation_rows,
+        columns=["grain", "geography_id", "target_id", "value", "_output_position"],
+    )
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
         reconciliation[["grain", "geography_id", "target_id", "value"]],
         bound_control_ids,
@@ -1370,9 +1330,9 @@ def uk_local_target_surface(
         "adjudication": "microcosm#762 (A17, ruling 2026-09-03)",
         "reason": (
             "census tenure cells (ONS Census 2021; Scotland's Census 2022) held "
-            "to the calibration period are the ladder's household universe split "
-            "by tenure; they take the ladder rows' national household factor so "
-            "the published tenure shares hold at the uprated level."
+            "to the calibration period describe the same household universe as "
+            "the geography input split by tenure; they take the national factor "
+            "computed from that input so published tenure shares remain unchanged."
         ),
     }
     receipt["ladder_household_uprating"] = uprating_receipt

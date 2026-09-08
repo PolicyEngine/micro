@@ -1017,18 +1017,19 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 19_419
+        assert result.details["candidate_targets"] == 20_428
         assert result.details["reference_targets"] == 22_530
-        # 2,100 signed area deferrals from the membership file plus the 1,011
-        # ladder-derived households@area rows: census_households binds from the
-        # OA-ladder artifact (microcosm#542), never from Chronicle facts, so the
-        # in-code default surface excludes it by rule rather than by absence.
+        # Every absence must be recorded in the generated Chronicle membership
+        # report; household targets are present in the compiled registry.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 2_100 + 1_011
-        households = [
-            name for name in exclusions if str(name).startswith("households@")
-        ]
-        assert len(households) == 1_011
+        assert len(exclusions) == 2_102
+        household_exclusions = {
+            str(name) for name in exclusions if str(name).startswith("households@")
+        }
+        assert household_exclusions == {
+            "households@E06000053",
+            "households@E09000001",
+        }
         assert result.details["missing_reference_targets"] == []
 
     def test_missing_required_stage_fails_with_the_assertion_text(

@@ -1047,11 +1047,29 @@ _REGION_VALUE_ALIASES = {
 }
 
 
+def ladder_assignment_provenance(ladder: UkOaLadder) -> dict[str, object]:
+    """Return the geography input metadata recorded in candidate manifests."""
+
+    metadata = ladder.metadata
+    return {
+        "kind": metadata["kind"],
+        "coverage": metadata["coverage"],
+        "oa_vintage": metadata["oa_vintage"],
+        "constituency_sampling_basis": metadata["constituency_sampling_basis"],
+        "layer_vintages": {
+            layer: item["vintage"] for layer, item in metadata["layers"].items()
+        },
+        "output_areas": int(len(ladder)),
+        "households_total": float(np.asarray(ladder.households).sum()),
+    }
+
+
 __all__ = [
     "GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR",
     "GEOGRAPHY_LADDER_VINTAGES_ATTR",
     "UK_ENGLAND_WALES_REGION_CODES",
     "UK_GEOGRAPHY_LADDER_COLUMNS",
+    "ladder_assignment_provenance",
     "UK_LONDON_REGION_CODE",
     "UK_OA_LADDER_DERIVED_LAYERS",
     "UK_OA_LADDER_KIND",

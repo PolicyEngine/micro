@@ -17,7 +17,6 @@ from microcosm.build.ledger_targets import (
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
     target_spec_from_ledger_reference,
-    target_spec_from_materialized_declaration,
 )
 from microcosm.calibrate import (
     CalibrationHierarchySeed,
@@ -346,48 +345,6 @@ def _ledger_fact(**overrides):
     }
     fact.update(overrides)
     return fact
-
-
-def test_materialized_declaration_compiles_the_normalized_hierarchy() -> None:
-    target = {
-        "target_id": "census.households",
-        "label": "Occupied households",
-        "family": "census_households",
-        "geography_levels": ["local_authority"],
-        "measurement": {"entity": "household"},
-        "bindings": {"policyengine": {"metric_name": "households"}},
-        "category_id": "ons.household_composition",
-        "materialization": {"kind": "geography_ladder"},
-    }
-    hierarchy_catalog = {
-        "providers": {"ons": {"label": "Office for National Statistics"}},
-        "categories": {
-            "ons.household_composition": {
-                "provider_id": "ons",
-                "label": "Household composition",
-            }
-        },
-    }
-
-    spec = target_spec_from_materialized_declaration(
-        target,
-        hierarchy_catalog,
-        name="census.households@E06000001",
-        value=100.0,
-        period=2025,
-        source="Test geography ladder",
-        geography_level="local_authority",
-        geography_id="E06000001",
-        geography_label="Hartlepool",
-    )
-
-    assert spec.measure == "households"
-    assert spec.metadata["contract_target_id"] == "census.households"
-    assert spec.hierarchy is not None
-    assert spec.hierarchy.provider.label == "Office for National Statistics"
-    assert spec.hierarchy.category.label == "Household composition"
-    assert spec.hierarchy.geography.label == "Hartlepool"
-    assert spec.hierarchy.target.label == "Occupied households"
 
 
 def _consumer_fact_row(**overrides):
@@ -2300,6 +2257,61 @@ def test__given_selector_uses_record_set_spec_id__then_layout_spec_id_matches() 
     assert spec.metadata["ledger_selector_record_set_spec_id"] == (
         "irs_soi.table_1_1.v1"
     )
+
+
+def test__given_selector_any_of__then_each_alternative_is_conjunctive() -> None:
+    selected = _consumer_fact_row_for_period(2023, value=100.0)
+    selected["layout"]["record_set_spec_id"] = "households.by_area.v1"
+    duplicate = _consumer_fact_row_for_period(2023, value=250.0)
+    duplicate["aggregate_fact_key"] = "ledger.aggregate_fact.v2:duplicate"
+    duplicate["layout"]["record_set_spec_id"] = "tenure.all_households.v1"
+    reference = LedgerTargetReference(
+        name="households selected",
+        ledger_selector={
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "any_of": [
+                {
+                    "source_name": "irs_soi",
+                    "record_set_spec_id": "households.by_area.v1",
+                },
+                {
+                    "source_name": "nrs",
+                    "record_set_spec_id": "tenure.all_households.v1",
+                },
+            ],
+        },
+        entity="tax_unit",
+        measure="households",
+        period=2024,
+        family="households",
+    )
+
+    registry = compile_ledger_target_references(
+        [duplicate, selected], [reference], country="us"
+    )
+
+    assert registry.specs[0].value == 100.0
+    assert "ledger_selector_any_of" not in registry.specs[0].metadata
+
+
+@pytest.mark.parametrize("alternatives", [[], [{}], "not-a-list"])
+def test__given_invalid_selector_any_of__then_refuses(alternatives) -> None:
+    reference = LedgerTargetReference(
+        name="invalid alternatives",
+        ledger_selector={"any_of": alternatives},
+        entity="tax_unit",
+        measure="households",
+        period=2024,
+        family="households",
+    )
+
+    with pytest.raises(ValueError, match="selector field 'any_of'"):
+        compile_ledger_target_references(
+            [_consumer_fact_row_for_period(2023, value=100.0)],
+            [reference],
+            country="us",
+        )
 
 
 def test__given_count_x_mean_reference__then_amount_multiplies_ordered_members() -> (

@@ -158,7 +158,6 @@ def _filter_contract_by_geography_levels(
         target
         for target in contract.get("targets", ())
         if set(target.get("geography_levels") or ()) <= allowed_levels
-        and not target.get("materialization")
     ]
     return filtered
 
@@ -267,14 +266,12 @@ def _geography_id_for_target(target: Mapping[str, Any]) -> str:
 def _sum_target_ids(contract: Mapping[str, Any]) -> frozenset[str]:
     target_ids: set[str] = set()
     for target in contract.get("targets", ()):
-        selector = target.get("ledger_selector")
-        if not isinstance(selector, Mapping):
-            continue
+        selector = target["ledger_selector"]
         binding = target["bindings"]["policyengine"]
         if "value_expression" in binding:
             target_ids.add(str(target["target_id"]))
         if any(
-            key != "dimensions" and isinstance(value, list)
+            key not in {"any_of", "dimensions"} and isinstance(value, list)
             for key, value in selector.items()
         ):
             target_ids.add(str(target["target_id"]))
@@ -304,9 +301,7 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
 def _selector_pins(contract: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     pins: dict[str, dict[str, Any]] = {}
     for target in contract.get("targets", ()):
-        selector = target.get("ledger_selector")
-        if not isinstance(selector, Mapping):
-            continue
+        selector = target["ledger_selector"]
         dimension_values = selector.get("dimension_values")
         if selector.get(
             "source_concept"

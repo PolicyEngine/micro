@@ -17,7 +17,7 @@ import pytest
 from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_spool_rows
 from microcosm.build.uk_runtime import (
     assemble_uk_oa_ladder,
-    ladder_target_provenance,
+    ladder_assignment_provenance,
     load_uk_oa_ladder,
     read_uk_single_year_weight_metadata,
     write_uk_national_frame,
@@ -112,7 +112,90 @@ def _fixture_hierarchy(
     )
 
 
-def _load_builder_module():
+def _synthetic_chronicle_household_specs(
+    ladder,
+    *,
+    values_by_prefix: dict[str, float] | None = None,
+) -> list[TargetSpec]:
+    values_by_prefix = values_by_prefix or {
+        "E": 3.0,
+        "W": 10.0,
+        "S": 10.0,
+        "N": 10.0,
+    }
+    target_id = "external:census_households/households"
+    areas_by_level = {
+        "constituency": sorted(set(map(str, ladder.constituency_code))),
+        "local_authority": sorted(set(map(str, ladder.local_authority_code))),
+    }
+    return [
+        TargetSpec(
+            name=f"{target_id}@{area_code}",
+            entity="household",
+            measure="households",
+            value=values_by_prefix[area_code[0]],
+            period=2025,
+            source="synthetic Chronicle fact fixture",
+            family="census_households",
+            metadata={
+                "contract_target_id": target_id,
+                "geography_level": geography_level,
+                "geography_id": area_code,
+                "ledger_fact_period": "2021",
+            },
+            hierarchy=_fixture_hierarchy(
+                f"{target_id}@{area_code}",
+                provider_id="ons",
+                provider_label="Office for National Statistics",
+                category_id="ons.household_composition",
+                category_label="Household composition",
+                geography_id=area_code,
+                geography_label=area_code,
+                geography_level=geography_level,
+            ),
+        )
+        for geography_level, area_codes in areas_by_level.items()
+        for area_code in area_codes
+    ]
+
+
+def _synthetic_chronicle_target_inputs(args) -> dict[str, object]:
+    """Supply declared target rows for tests that exercise later build stages."""
+
+    ladder = load_uk_oa_ladder(args.ladder)
+    local_registry = TargetRegistry(
+        _synthetic_chronicle_household_specs(ladder),
+        country="uk",
+    )
+    national_registry = TargetRegistry([], country="uk")
+    from microcosm.build.uk_runtime.ledger_targets import UK_CROSS_GRAIN_BRIDGES
+
+    reviewed_unbound = {
+        target: {
+            "tracking": "synthetic-rowwise-candidate-test",
+            "reason": "National composition targets are outside this test's scope.",
+        }
+        for target in UK_CROSS_GRAIN_BRIDGES[0].higher_target_ids
+    }
+    artifact = SimpleNamespace(
+        provenance=lambda: {
+            "facts_sha256": "1" * 64,
+            "manifest_sha256": "2" * 64,
+            "artifact_id": "synthetic-chronicle-fixture",
+        }
+    )
+    return {
+        "artifact": artifact,
+        "calibration_year": 2025,
+        "national_registry": national_registry,
+        "band_edge_registry": national_registry,
+        "local_registry": local_registry,
+        "measure_exclusions": {},
+        "reviewed_unbound_higher_targets": reviewed_unbound,
+    }
+
+
+def _load_builder_module(*, synthetic_targets: bool = True):
     root = Path(__file__).resolve().parents[3]
     path = root / "tools" / "build_uk_rowwise_candidate.py"
     spec = importlib.util.spec_from_file_location(
@@ -122,7 +205,58 @@ def _load_builder_module():
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
+    if synthetic_targets:
+        module._load_joint_target_inputs = _synthetic_chronicle_target_inputs
+
+        def _synthetic_engine_surface(frame, national_registry, **_kwargs):
+            household_ids = frame.table("household")["household_id"].tolist()
+            metrics = {
+                area_type: pd.DataFrame(
+                    {"households": np.ones(len(household_ids), dtype=float)},
+                    index=household_ids,
+                )
+                for area_type in ("constituency", "la")
+            }
+            return (
+                frame,
+                lambda solved: solved,
+                module.UKRowwiseNationalRows(
+                    targets=national_registry.to_target_set(),
+                    registry=national_registry,
+                    families=(),
+                ),
+                metrics,
+                {
+                    "mode": "synthetic",
+                    "engine_version": "synthetic",
+                    "households": len(household_ids),
+                    "persons": len(frame.table("person")),
+                    "benunits": len(frame.table("benunit")),
+                    "national_inputs": 0,
+                    "local_metrics": {"constituency": 1, "la": 1},
+                    "blocks": 1,
+                },
+            )
+
+        module._resolve_candidate_engine_surface = _synthetic_engine_surface
     return module
+
+
+def test_candidate_requires_pinned_chronicle_target_artifact(tmp_path) -> None:
+    builder = _load_builder_module(synthetic_targets=False)
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "input.h5"),
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="require a pinned Chronicle artifact"):
+        builder._load_joint_target_inputs(args)
 
 
 def _ladder_metadata() -> dict[str, object]:
@@ -308,6 +442,31 @@ def _write_staging_h5(
         ),
     )
     write_uk_national_frame(dataset, path)
+    path.with_suffix(".build.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "pipeline": "synthetic-uk-frs-spine",
+                "stages": [],
+                "entity_row_counts": {
+                    entity: int(len(dataset.table(entity)))
+                    for entity in dataset.entities
+                },
+                "household_weight_kind": WeightKind.IMPORTANCE.value,
+                "household_weight_total": float(
+                    dataset.weights_for("household").values.sum()
+                ),
+                "spine_gate_bypass": {
+                    "reviewed": True,
+                    "reason": "Synthetic rowwise-candidate unit-test fixture.",
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def test_candidate_build_writes_calibrated_h5_and_evidence(
@@ -407,10 +566,16 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
 
     manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
     assert manifest["candidate_scope"] == "adjudicated_partial"
-    assert manifest["bound_target_families"] == ["census_households/constituency"]
+    assert manifest["bound_target_families"] == [
+        "census_households/constituency",
+        "census_households/la",
+    ]
     adjudications = manifest["binding_adjudications"]
     assert adjudications["register_resource"] == "local_binding_adjudications.json"
-    assert adjudications["bound_families"] == ["census_households/constituency"]
+    assert adjudications["bound_families"] == [
+        "census_households/constituency",
+        "census_households/la",
+    ]
     assert adjudications["evaluated_on"]
     seed = adjudications["stood_on"]["census_households/constituency"][
         "census_disclosure_control_noise"
@@ -427,14 +592,17 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         "voa_dwellings_vs_household_frame",
     ]
     cross_grain = manifest["cross_grain"]
-    assert cross_grain["bound_national_targets"] == []
     assert cross_grain["bound_higher_targets"] == []
-    assert cross_grain["inconsistencies_in_force"] == []
-    assert cross_grain["groups"] == []
+    assert len(cross_grain["inconsistencies_in_force"]) == 2
+    assert {group["winning_grain"] for group in cross_grain["groups"]} == {
+        "constituency"
+    }
     assert cross_grain["empty_legs_licensed"] == []
     assert cross_grain["controls_without_lower_rows"] == []
-    assert cross_grain["absence"]
-    assert manifest["ladder_target_provenance"] == ladder_target_provenance(ladder)
+    assert cross_grain["absence"] is None
+    assert manifest["ladder_assignment_provenance"] == (
+        ladder_assignment_provenance(ladder)
+    )
     assert manifest["gate"]["passed"] is True
     assert manifest["gate"]["phase"] == "post_calibration"
     assert manifest["gate"]["details"]
@@ -477,13 +645,18 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         "clone_count": 15,
     }
     assert manifest["ladder_household_uprating"]["applied"] is False
-    assert manifest["solve"]["n_targets"] == 4
+    assert manifest["solve"]["n_targets"] == 8
+    assert manifest["solve"]["n_targets_by_kind"] == {
+        "local": 8,
+        "ladder": 0,
+        "national": 0,
+    }
     assert manifest["solve"]["n_households"] == 416
     assert np.isfinite(manifest["solve"]["initial_loss"])
     assert np.isfinite(manifest["solve"]["final_loss"])
     assert np.isfinite(manifest["solve"]["max_abs_relative_error"])
     assert np.isfinite(manifest["solve"]["median_abs_relative_error"])
-    assert manifest["solve"]["past_cap"]["n_targets"] == 4
+    assert manifest["solve"]["past_cap"]["n_targets"] == 8
     assert manifest["support"]["min_assigned_households"] == 104
     assert manifest["support"]["min_nonzero_households"] == 104
     assert manifest["support"]["min_effective_sample_size"] == pytest.approx(104.0)
@@ -494,15 +667,15 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     calibration_diagnostics = json.loads(
         (output_dir / builder.CALIBRATION_DIAGNOSTICS_FILENAME).read_text()
     )
-    assert len(diagnostics) == 4
+    assert len(diagnostics) == 8
     assert diagnostics["metric"].unique().tolist() == ["households"]
     assert len(support) == 8
-    assert past_cap["n_targets"] == 4
+    assert past_cap["n_targets"] == 8
     assert calibration_diagnostics["schema_version"] == 8
     uk_diagnostics = calibration_diagnostics["uk_diagnostics"]
     assert len(uk_diagnostics["weakest_families"]) == 1
-    assert len(uk_diagnostics["weakest_areas_by_fit"]["bottom_by_fit"]) == 4
-    assert uk_diagnostics["weakest_areas_by_fit"]["n_areas_scored"] == 4
+    assert len(uk_diagnostics["weakest_areas_by_fit"]["bottom_by_fit"]) == 8
+    assert uk_diagnostics["weakest_areas_by_fit"]["n_areas_scored"] == 8
     assert {
         row["country"] for row in uk_diagnostics["weakest_areas_by_fit"]["countries"]
     } == {
@@ -587,36 +760,22 @@ def test_candidate_dry_run_plans_without_solve_or_write(
         "pre_household_count": 12,
         "post_household_count": 12,
     }
-    assert plan["bound_target_families"] == ["census_households/constituency"]
-    adjudications = plan["binding_adjudications"]
-    assert adjudications["register_resource"] == "local_binding_adjudications.json"
-    assert adjudications["bound_families"] == ["census_households/constituency"]
-    assert adjudications["evaluated_on"]
-    assert (
-        "census_disclosure_control_noise"
-        in adjudications["stood_on"]["census_households/constituency"]
-    )
-    assert adjudications["dormant"] == [
-        "full_frs_tei_band_unavailable",
-        "hmrc_spi_frame_model_proxy",
-        "population_universe_private_households",
-        "uc_unit_vs_household_grain",
-        "voa_dwellings_vs_household_frame",
-    ]
     cross_grain = plan["cross_grain"]
-    assert cross_grain["bound_national_targets"] == []
     assert cross_grain["bound_higher_targets"] == []
-    assert cross_grain["inconsistencies_in_force"] == []
-    assert cross_grain["groups"] == []
+    assert len(cross_grain["inconsistencies_in_force"]) == 2
+    assert {group["winning_grain"] for group in cross_grain["groups"]} == {
+        "constituency"
+    }
     assert cross_grain["empty_legs_licensed"] == []
     assert cross_grain["controls_without_lower_rows"] == []
-    assert cross_grain["absence"]
-    assert plan["ladder_target_provenance"] == ladder_target_provenance(ladder)
-    assert plan["shapes"]["person"][0] == 24
-    assert plan["shapes"]["benunit"][0] == 24
-    assert plan["shapes"]["household"][0] == 24
-    assert plan["shapes"]["local_matrix"] == [4, 24]
-    assert plan["target_count"] == 4
+    assert cross_grain["absence"] is None
+    assert plan["ladder_assignment_provenance"] == ladder_assignment_provenance(ladder)
+    assert plan["matrix"] == {
+        "rows": 8,
+        "columns": 24,
+        "local_rows": 8,
+        "national_rows": 0,
+    }
     assert not output_dir.exists()
     assert not (output_dir / "logbook-spool").exists()
 
@@ -774,7 +933,7 @@ def test_candidate_engine_surface_reuses_one_resolver(
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
-    builder = _load_builder_module()
+    builder = _load_builder_module(synthetic_targets=False)
     input_h5 = tmp_path / "staging.h5"
     _write_staging_h5(input_h5)
     frame, _ = builder.load_uk_national_frame(input_h5)
@@ -832,7 +991,7 @@ def test_candidate_engine_surface_resolves_real_per_clone_blocks(
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
-    builder = _load_builder_module()
+    builder = _load_builder_module(synthetic_targets=False)
     input_h5 = tmp_path / "staging.h5"
     ladder_path = tmp_path / "ladder.npz"
     _write_staging_h5(input_h5)
@@ -903,11 +1062,11 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     tmp_path,
     capsys,
 ) -> None:
-    """The driver solves one local/ladder/national matrix at both rung postures."""
+    """The driver solves one local and national matrix at both sample sizes."""
 
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
-    builder = _load_builder_module()
+    builder = _load_builder_module(synthetic_targets=False)
     input_h5 = tmp_path / "staging.h5"
     ladder_path = tmp_path / "ladder.npz"
     _write_staging_h5(
@@ -1011,6 +1170,15 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     )
     local_registry = TargetRegistry(
         [
+            *_synthetic_chronicle_household_specs(
+                ladder,
+                values_by_prefix={
+                    "E": 4.0 / 3.0,
+                    "W": 10.0,
+                    "S": 10.0,
+                    "N": 9.0,
+                },
+            ),
             TargetSpec(
                 name="ons.tenure.owned_outright@E09000001",
                 entity="household",
@@ -1171,7 +1339,6 @@ def test_joint_candidate_f100_and_f001_end_to_end(
         return {"constituency": support, "la": support}
 
     monkeypatch.setattr(builder, "uk_ladder_area_support_summary", support_summary)
-
     dry_out = tmp_path / "joint-dry"
     assert (
         builder.main(
@@ -1277,8 +1444,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
             check_dtype=True,
         )
     assert f100["solve"]["n_targets_by_kind"] == {
-        "local": 1,
-        "ladder": 12,
+        "local": 13,
+        "ladder": 0,
         "national": len(national_registry.specs),
     }
     assert f100["solve"]["n_targets"] == 13 + len(national_registry.specs)
@@ -1505,7 +1672,7 @@ def test_candidate_setup_failure_records_failed_row(monkeypatch, tmp_path) -> No
     )
 
 
-def test_candidate_refuses_separate_assignment_and_target_ladders(
+def test_candidate_refuses_separate_loaded_geography_ladders(
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
@@ -1513,10 +1680,10 @@ def test_candidate_refuses_separate_assignment_and_target_ladders(
     builder = _load_builder_module()
     input_h5 = tmp_path / "staging.h5"
     first_path = tmp_path / "assignment_ladder.npz"
-    second_path = tmp_path / "target_ladder.npz"
+    second_path = tmp_path / "matrix_geography_ladder.npz"
     _write_staging_h5(input_h5)
     assignment_ladder = _write_ladder(first_path)
-    target_ladder = _write_ladder(
+    matrix_geography_ladder = _write_ladder(
         second_path,
         household_counts=(4.0, 9.0, 10.0, 10.0),
     )
@@ -1531,9 +1698,15 @@ def test_candidate_refuses_separate_assignment_and_target_ladders(
     )
 
     with pytest.raises(ValueError, match="same loaded"):
-        builder._build_bound_problem(
+        builder._build_joint_problem(
             assignment,
-            target_ladder=target_ladder,
+            geography_ladder=matrix_geography_ladder,
+            local_registry=TargetRegistry([], country="uk"),
+            national_registry=TargetRegistry([], country="uk"),
+            local_metrics={},
+            period=2025,
+            sample_fraction=1.0,
+            reviewed_unbound_higher_targets={},
         )
 
 

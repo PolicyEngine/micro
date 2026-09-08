@@ -49,7 +49,7 @@ __all__ = [
 #: UK-only extension version nested inside the shared calibration diagnostics.
 UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 
-#: Stable vocabulary used by the UK target registry and future OA-ladder rows.
+#: Stable vocabulary used by the UK target registry.
 #: ``"la"`` is accepted only as an input adapter and is serialized as
 #: ``"local_authority"``.
 UK_TARGET_GEOGRAPHY_LEVELS: tuple[str, ...] = (

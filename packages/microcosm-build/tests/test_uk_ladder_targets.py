@@ -1,13 +1,4 @@
-"""Census household-count targets from the sha-pinned ladder (#495 inc 6c).
-
-The first bound local target family. Census occupied-household counts by
-constituency (and local authority) come straight from the full-UK ladder
-artifact, whose three household-count sources are already sha-pinned per
-layer — no new external pinning. The family is universe-compatible with the
-FRS instrument (census occupied households vs the survey's own household
-frame), unlike person-grain families that inherit the
-population_universe_private_households adjudication.
-"""
+"""UK geography input provenance and local household-measure tests."""
 
 from __future__ import annotations
 
@@ -18,9 +9,7 @@ import pytest
 from microcosm.build.uk_runtime import (
     assemble_uk_oa_ladder,
     compute_household_metrics,
-    constituency_household_targets,
     load_uk_oa_ladder,
-    local_authority_household_targets,
     metric_names,
 )
 
@@ -75,31 +64,6 @@ def _ladder(tmp_path):
     return load_uk_oa_ladder(path)
 
 
-def test_constituency_household_targets_sum_ladder_counts(tmp_path) -> None:
-    ladder = _ladder(tmp_path)
-    targets = constituency_household_targets(ladder)
-    assert list(targets.columns) == ["code", "households"]
-    rows = dict(zip(targets["code"], targets["households"], strict=True))
-    assert rows == {
-        "E14000001": pytest.approx(55.0),
-        "E14000002": pytest.approx(30.0),
-        "S14000001": pytest.approx(35.0),
-    }
-    # Deterministic order for target-surface stability.
-    assert targets["code"].tolist() == sorted(targets["code"].tolist())
-
-
-def test_local_authority_household_targets_sum_ladder_counts(tmp_path) -> None:
-    ladder = _ladder(tmp_path)
-    targets = local_authority_household_targets(ladder)
-    rows = dict(zip(targets["code"], targets["households"], strict=True))
-    assert rows == {
-        "E09000001": pytest.approx(55.0),
-        "E09000002": pytest.approx(30.0),
-        "S12000033": pytest.approx(35.0),
-    }
-
-
 def test_households_metric_is_in_the_computed_surface() -> None:
     assert "households" in metric_names("constituency")
     assert "households" in metric_names("la")
@@ -150,62 +114,26 @@ def test_census_family_and_pinned_sources() -> None:
     family = families["census_households"]
     source_ids = set(family["sources"])
     assert {
-        "nomis_ts041_ew_oa_households",
-        "nrs_census_2022_index",
-        "nisra_dz21_households",
+        "ons_census2021_ts041_households_by_area",
+        "nrs_census2022_uv404_households_by_area",
+        "nisra_census2021_households_by_area",
     } <= source_ids
 
     sources = {row["source_id"]: row for row in census["sources"]}
     for source_id in source_ids:
-        assert sources[source_id]["status"] == "pinned_in_ladder"
+        assert sources[source_id]["status"] == "pinned_in_ledger_facts"
+        assert sources[source_id]["ledger_fact_pin"]["source_commit"] == "6fb700e"
 
     metrics = {row["name"]: row for row in census["metrics"]}
     assert metrics["households"]["family"] == "census_households"
     assert set(metrics["households"]["area_types"]) == {"constituency", "la"}
 
 
-def test_household_targets_refuse_missing_and_normalize_padded_codes(
-    tmp_path,
-) -> None:
-    ladder = _ladder(tmp_path)
-
-    class Doctored:
-        households = ladder.households
-        constituency_code = np.asarray(
-            ["E14000001", None, "E14000002", "S14000001"], dtype=object
-        )
-
-    with pytest.raises(ValueError, match="missing"):
-        constituency_household_targets(Doctored())
-
-    class Padded:
-        households = ladder.households
-        constituency_code = np.asarray(
-            ["E14000001", " E14000001 ", "E14000002", "S14000001"],
-            dtype=object,
-        )
-
-    targets = constituency_household_targets(Padded())
-    rows = dict(zip(targets["code"], targets["households"], strict=True))
-    # Padded variants collapse into one area instead of splitting it.
-    assert rows["E14000001"] == pytest.approx(55.0)
-
-
-def test_household_targets_schema_is_stable_for_both_grains(tmp_path) -> None:
-    ladder = _ladder(tmp_path)
-    for targets in (
-        constituency_household_targets(ladder),
-        local_authority_household_targets(ladder),
-    ):
-        assert list(targets.columns) == ["code", "households"]
-        assert targets["code"].tolist() == sorted(targets["code"].tolist())
-
-
-def test_ladder_target_provenance_names_the_pairing(tmp_path) -> None:
-    from microcosm.build.uk_runtime import ladder_target_provenance
+def test_ladder_assignment_provenance_names_the_input(tmp_path) -> None:
+    from microcosm.build.uk_runtime import ladder_assignment_provenance
 
     ladder = _ladder(tmp_path)
-    provenance = ladder_target_provenance(ladder)
+    provenance = ladder_assignment_provenance(ladder)
     assert provenance["kind"] == "uk_oa_ladder"
     assert provenance["coverage"] == "uk"
     assert provenance["layer_vintages"]["constituency"] == "2024_pcon"
@@ -217,9 +145,9 @@ def test_local_metric_surface_is_append_only() -> None:
     # Positional stability: adding a metric must never renumber the metrics
     # already in the surface, because consumers address them by index
     # (local_rowwise builds target_index as area_index * n_metrics +
-    # metric_index). The ladder-derived "households" metric was itself
-    # appended under this rule, so it keeps its index rather than staying
-    # last: a later family lands after it, never before it.
+    # metric_index). The Chronicle-backed "households" metric was appended
+    # under this rule, so it keeps its index rather than staying last: a later
+    # family lands after it, never before it.
     prefix_through_households = {
         "constituency": (
             "hmrc/self_employment_income/amount",

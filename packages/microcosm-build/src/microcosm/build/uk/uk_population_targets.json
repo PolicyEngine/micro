@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "country": "uk",
-  "description": "UK population calibration contract: value-free national and local-geography target declarations over Chronicle facts and explicitly named Microcosm materializations. Selection contracts live in Microcosm per the chronicle#166 ruling (2026-08-13): Chronicle is a facts-only layer; Microcosm owns which facts or derived inputs are targets and how they bind to the model. This resource consolidates the former national and local-geography contracts into one population contract while preserving both target levels and their provenance accounting blocks. Observed values resolve from hash-pinned Chronicle consumer-facts artifacts or the declaration's named Microcosm materializer at build time.",
+  "description": "UK population calibration contract: value-free national and local-geography target declarations over Chronicle facts. Selection contracts live in Microcosm per the chronicle#166 ruling (2026-08-13): Chronicle is a facts-only layer; Microcosm owns which facts are targets and how they bind to the model. This resource consolidates the former national and local-geography contracts into one population contract while preserving both target levels and their provenance accounting blocks. Observed values resolve from hash-pinned Chronicle consumer-facts artifacts at build time.",
   "allowed_value_operations": [
     "identity",
     "sum",
@@ -1324,7 +1324,7 @@
       },
       {
         "target_id": "external:census_households/households",
-        "basis": "Household totals are derived from the pinned UK OA geography ladder rather than Chronicle facts."
+        "basis": "Chronicle publishes UK-wide census household counts at constituency and local-authority level; Microcosm activates them through one multi-record-set selector."
       }
     ],
     "scope_target_ids": [
@@ -14000,7 +14000,6 @@
     },
     {
       "target_id": "external:census_households/households",
-      "label": "Occupied households",
       "family": "census_households",
       "geography_levels": [
         "constituency",
@@ -14021,9 +14020,22 @@
           "value_rule": "uk.household.count"
         }
       },
-      "materialization": {
-        "kind": "uk_oa_geography_ladder",
-        "field": "households"
+      "ledger_selector": {
+        "source_measure_id": "households",
+        "entity_name": "household",
+        "any_of": [
+          {
+            "record_set_spec_id": "uk.local_geography.households.by_constituency.v1"
+          },
+          {
+            "record_set_spec_id": "uk.local_geography.households.by_local_authority.v1"
+          },
+          {
+            "source_name": "nrs",
+            "record_set_spec_id": "uk.local_geography.tenure.all_households.v1"
+          }
+        ],
+        "period_type": "calendar_year"
       },
       "category_id": "ons.household_composition"
     },

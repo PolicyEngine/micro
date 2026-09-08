@@ -38,6 +38,10 @@ from microcosm.calibrate.diagnostics import diagnostics_payload
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.calibrate.score import score_targets
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from tools.generate_uk_local_target_references import (
+    LOCAL_GEOGRAPHY_LEVELS,
+    _filter_contract_by_geography_levels as _filter_local_contract,
+)
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
     _annual_uc_award_band_token,
@@ -174,6 +178,21 @@ def _expected_reference_entity(target: dict) -> str:
 
 def _fixture_feed_rows() -> list[dict]:
     return [json.loads(line) for line in FIXTURE_FEED_ROWS.read_text().splitlines()]
+
+
+def test_local_reference_authoring_includes_chronicle_household_target() -> None:
+    contract = _load_uk_resource("uk_population_targets.json")
+
+    filtered = _filter_local_contract(
+        contract,
+        allowed_levels=LOCAL_GEOGRAPHY_LEVELS,
+    )
+
+    assert "external:census_households/households" in {
+        target["target_id"] for target in filtered["targets"]
+    }
+    assert all(target["ledger_selector"] for target in filtered["targets"])
+    assert all("materialization" not in target for target in contract["targets"])
 
 
 def test_uk_target_references_load_as_typed_non_empty_resource() -> None:

@@ -168,12 +168,12 @@
       "adjudications": [
         "census_disclosure_control_noise"
       ],
-      "description": "Weighted household counts by area, bound to census occupied-household totals summed from the sha-pinned UK OA ladder artifact (constituency_household_targets / local_authority_household_targets). Universe-compatible with the FRS instrument: census occupied households match the survey's own household frame, so the person-universe adjudication does not bind here.",
+      "description": "Weighted household counts by area, bound to census occupied-household facts in the sha-pinned Chronicle consumer feed. Universe-compatible with the FRS instrument: census occupied households match the survey's own household frame, so the person-universe adjudication does not bind here.",
       "family": "census_households",
       "sources": [
-        "nomis_ts041_ew_oa_households",
-        "nrs_census_2022_index",
-        "nisra_dz21_households"
+        "ons_census2021_ts041_households_by_area",
+        "nrs_census2022_uv404_households_by_area",
+        "nisra_census2021_households_by_area"
       ]
     },
     {
@@ -588,11 +588,20 @@
         "la"
       ],
       "latest_vintage": "Census Day 2021-03-21",
-      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py (recorded in the artifact's source_files map).",
-      "product": "Census 2021 table TS041 (number of households), England and Wales, output-area grain \u2014 the E&W leg of the ladder's household counts.",
+      "ledger_fact_pin": {
+        "artifact": ".codex-work/consumer_facts_uk.jsonl",
+        "build": "build-bundle --suite uk -> build-consumer-artifact",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
+        "source_repo": "PolicyEngine/chronicle"
+      },
+      "notes": "Chronicle record-set specifications publish one household-count fact for every England and Wales area in the Microcosm crosswalk.",
+      "product": "Census 2021 table TS041 (number of households), England and Wales, published at 2024 parliamentary-constituency and 2023 local-authority boundaries.",
       "publisher": "Office for National Statistics (via Nomis)",
-      "source_id": "nomis_ts041_ew_oa_households",
-      "status": "pinned_in_ladder",
+      "source_id": "ons_census2021_ts041_households_by_area",
+      "status": "pinned_in_ledger_facts",
       "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip",
       "verified_on": "2026-07-22"
     },
@@ -602,11 +611,20 @@
         "la"
       ],
       "latest_vintage": "Census Day 2022-03-20",
-      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py; the in-zip specification defines HouseholdCount as the 2022 Census occupied household count.",
-      "product": "Census 2022 index zip: Postcode_To_OA.csv census occupied household counts (cell-key perturbed), summed by OA2022 \u2014 the Scotland leg of the ladder's household counts.",
+      "ledger_fact_pin": {
+        "artifact": ".codex-work/consumer_facts_uk.jsonl",
+        "build": "build-bundle --suite uk -> build-consumer-artifact",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
+        "source_repo": "PolicyEngine/chronicle"
+      },
+      "notes": "Chronicle selects the all-occupied-households value from UV404 for every Scottish area in the Microcosm crosswalk.",
+      "product": "Census 2022 index zip: Postcode_To_OA.csv census occupied household counts, published at 2024 parliamentary-constituency and council-area boundaries.",
       "publisher": "National Records of Scotland",
-      "source_id": "nrs_census_2022_index",
-      "status": "pinned_in_ladder",
+      "source_id": "nrs_census2022_uv404_households_by_area",
+      "status": "pinned_in_ledger_facts",
       "url": "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip",
       "verified_on": "2026-07-22"
     },
@@ -616,11 +634,20 @@
         "la"
       ],
       "latest_vintage": "Census Day 2021-03-21",
-      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py.",
-      "product": "Census 2021 table-builder HOUSEHOLD dataset at DZ21 grain \u2014 the NI leg of the ladder's household counts.",
+      "ledger_fact_pin": {
+        "artifact": ".codex-work/consumer_facts_uk.jsonl",
+        "build": "build-bundle --suite uk -> build-consumer-artifact",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
+        "source_repo": "PolicyEngine/chronicle"
+      },
+      "notes": "Chronicle publishes one household-count fact for every Northern Ireland area in the Microcosm crosswalk.",
+      "product": "Census 2021 flexible HOUSEHOLD tables at 2024 parliamentary-constituency and 2014 local-government-district boundaries.",
       "publisher": "Northern Ireland Statistics and Research Agency",
-      "source_id": "nisra_dz21_households",
-      "status": "pinned_in_ladder",
+      "source_id": "nisra_census2021_households_by_area",
+      "status": "pinned_in_ledger_facts",
       "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21",
       "verified_on": "2026-07-22"
     },
@@ -744,7 +771,6 @@
   "status_definitions": {
     "bound_in_code": "The household-side metric is computed by local_targets.compute_household_metrics today.",
     "documented_unpinned": "The official product exists and was verified at the recorded URL on verified_on, but no exact table, vintage, or hash is pinned; binding work pins it per family.",
-    "pinned_in_ladder": "The product is downloaded and sha-pinned per build by the UK OA ladder artifact tool, which records every source hash in the artifact metadata; target values derive from the artifact's own sums.",
     "pinned_in_ledger_facts": "The official product's target facts are present in the sha-pinned Ledger consumer fact feed recorded on the source row.",
     "review_required_before_binding": "The fence is a reviewed adjudication requirement enforced by the rowwise doctrine solve (local_rowwise.require_adjudicated_uk_local_binding): binding a family whose fences lack an in-force entry in local_binding_adjudications.json is refused before any solve runs.",
     "signed_deferred": "The official product is present or documented, but this target surface does not bind it in the current compile; the source row carries signed_reason_id and signed_rationale."

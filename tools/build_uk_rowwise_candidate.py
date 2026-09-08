@@ -1,13 +1,10 @@
-"""Build a joint local, ladder, and national UK rowwise candidate.
+"""Build a joint local and national UK rowwise candidate.
 
 Pinned Ledger facts supply the local and national registries. The command
 samples before cloning, resolves both local grains and national measures on the
 cloned frame, and calibrates every row in one doctrine solve. A dry run compiles
 the registries and reports analytical matrix/support evidence without running
 the policy engine, solving, or writing output files.
-
-For pre-#762 synthetic fixtures, omitting the Ledger arguments retains the
-adjudicated constituency-household compatibility path.
 """
 
 from __future__ import annotations
@@ -68,18 +65,15 @@ from microcosm.build.uk_runtime import (
     UKRowwiseDoctrineSolve,
     UKRowwiseLocalMatrix,
     UKRowwiseNationalRows,
-    apply_uk_cross_grain_reconciliation,
-    build_uk_rowwise_local_matrix,
     build_uk_rowwise_local_surface_matrix,
     clone_uk_dataset_with_ladder_geography,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     compute_household_metrics,
-    constituency_household_targets,
     drop_injected_measure_inputs,
     inject_measure_inputs,
+    ladder_assignment_provenance,
     ladder_clone_index_column,
-    ladder_target_provenance,
     load_bound_spine_sidecar,
     load_uk_local_area_crosswalk,
     load_uk_national_frame,
@@ -123,8 +117,6 @@ from microcosm.build.uk_runtime.national_sampling import (
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import Frame, MassChangeRecord
 
-BOUND_TARGET_FAMILIES = ("census_households/constituency",)
-BOUND_NATIONAL_TARGETS: tuple[str, ...] = ()
 CANDIDATE_FILENAME_TEMPLATE = "microcosm_uk_{calibration_year}_local.h5"
 LOCAL_GATE_REPORT_FILENAME_TEMPLATE = (
     "microcosm_uk_{calibration_year}_local.local_gates.json"
@@ -739,18 +731,15 @@ def _run_candidate(
         national_frame, _national_provenance = load_uk_national_frame(input_h5)
         calibration_year = int(load_uk_frs_release().calibration_year)
         args._calibration_year = calibration_year
-        if args.ledger_facts is not None:
-            spine_sidecar_path = input_h5.with_suffix(".build.json")
-            spine_sidecar = load_bound_spine_sidecar(
-                spine_sidecar_path,
-                national_frame,
-            )
-            args._spine_provenance = spine_provenance_from_sidecar(
-                spine_sidecar_path,
-                spine_sidecar,
-            )
-        else:
-            args._spine_provenance = {}
+        spine_sidecar_path = input_h5.with_suffix(".build.json")
+        spine_sidecar = load_bound_spine_sidecar(
+            spine_sidecar_path,
+            national_frame,
+        )
+        args._spine_provenance = spine_provenance_from_sidecar(
+            spine_sidecar_path,
+            spine_sidecar,
+        )
         national_frame, sampling = _sample_candidate_frame(
             national_frame,
             fraction=args.sample_fraction,
@@ -780,42 +769,35 @@ def _run_candidate(
             ladder_path=ladder_path,
         )
         ladder = load_uk_oa_ladder(ladder_path)
-        target_provenance = ladder_target_provenance(ladder)
+        assignment_provenance = ladder_assignment_provenance(ladder)
         joint_inputs = _load_joint_target_inputs(args)
-        if joint_inputs is not None:
-            # microcosm#762 A15: the ladder's census household counts bind at
-            # the calibration year through one national factor from the
-            # Ledger's published UK household total (fail-closed by name on a
-            # real Ledger artifact; a synthetic artifact without facts binds
-            # the rows as published and says so, which the release posture
-            # refuses).
-            facts = getattr(joint_inputs.get("artifact"), "facts", None)
-            if facts is None:
-                joint_inputs["ladder_household_uprating"] = {
-                    "applied": False,
-                    "reason": (
-                        "the joint target inputs carry no Ledger facts; ladder "
-                        "household rows bind at their census vintage."
+        # The national household fact supplies the factor for held census-
+        # tenure cells. Local household target values are already present in
+        # joint_inputs["local_registry"] from Chronicle.
+        facts = getattr(joint_inputs.get("artifact"), "facts", None)
+        if facts is None:
+            joint_inputs["ladder_household_uprating"] = {
+                "applied": False,
+                "reason": "the joint target inputs carry no Chronicle facts.",
+            }
+        else:
+            joint_inputs["ladder_household_uprating"] = (
+                uk_ladder_household_uprating(
+                    ladder,
+                    uk_ledger_households_total(
+                        facts, period=joint_inputs["calibration_year"]
                     ),
-                }
-            else:
-                joint_inputs["ladder_household_uprating"] = (
-                    uk_ladder_household_uprating(
-                        ladder,
-                        uk_ledger_households_total(
-                            facts, period=joint_inputs["calibration_year"]
-                        ),
-                        period=joint_inputs["calibration_year"],
-                    )
+                    period=joint_inputs["calibration_year"],
                 )
-            if args.release_candidate and not joint_inputs[
-                "ladder_household_uprating"
-            ].get("applied"):
-                raise SystemExit(
-                    "error: --release-candidate requires the A15 ladder household "
-                    "uprating: "
-                    + str(joint_inputs["ladder_household_uprating"].get("reason"))
-                )
+            )
+        if args.release_candidate and not joint_inputs["ladder_household_uprating"].get(
+            "applied"
+        ):
+            raise SystemExit(
+                "error: --release-candidate requires the A15 census-tenure "
+                "uprating: "
+                + str(joint_inputs["ladder_household_uprating"].get("reason"))
+            )
         doctrine, doctrine_override = uk_local_doctrine_with_overrides(
             UK_LOCAL_SOLVE_DOCTRINE,
             (
@@ -844,7 +826,7 @@ def _run_candidate(
         if state is not None:
             append_phase(state, "cloned")
 
-        if joint_inputs is not None and args.dry_run:
+        if args.dry_run:
             plan = _joint_dry_run_plan(
                 args,
                 clone=clone,
@@ -854,7 +836,7 @@ def _run_candidate(
                 source_year=source_year,
                 input_artifact=input_artifact,
                 ladder_artifact=ladder_artifact,
-                target_provenance=target_provenance,
+                assignment_provenance=assignment_provenance,
             )
             _assert_artifacts_unchanged(
                 input_h5=input_h5,
@@ -865,60 +847,41 @@ def _run_candidate(
             print(_json_text(plan), end="")
             return 0
 
-        if joint_inputs is None:
-            print("binding census household targets...", file=sys.stderr, flush=True)
-            household, problem, cross_grain = _build_bound_problem(
-                assignment,
-                target_ladder=ladder,
-            )
-            solve_frame = clone.frame
-            restore = None
-            national_rows = None
-            bound_families = BOUND_TARGET_FAMILIES
-            measure_resolution: Mapping[str, Any] = {}
-            args._rung_surface = {
-                "fraction": float(args.sample_fraction),
-                "dropped_cells": 0,
-                "dropped_by_grain": {},
-                "dropped_by_family": {},
-            }
-        else:
-            print("resolving joint local and national surface...", file=sys.stderr)
-            (
-                solve_frame,
-                restore,
-                national_rows,
-                local_metrics,
-                measure_resolution,
-            ) = _resolve_candidate_engine_surface(
-                clone.frame,
-                joint_inputs["national_registry"],
-                period=joint_inputs["calibration_year"],
-                scratch_dir=out_dir.parent
-                / f".{out_dir.name}.candidate-engine-scratch",
-                band_edge_registry=joint_inputs["band_edge_registry"],
-                blocks=args.engine_blocks,
-            )
-            (
-                household,
-                problem,
-                cross_grain,
-                bound_families,
-                rung_surface,
-            ) = _build_joint_problem(
-                assignment,
-                target_ladder=ladder,
-                local_registry=joint_inputs["local_registry"],
-                national_registry=joint_inputs["national_registry"],
-                local_metrics=local_metrics,
-                period=joint_inputs["calibration_year"],
-                sample_fraction=args.sample_fraction,
-                reviewed_unbound_higher_targets=joint_inputs[
-                    "reviewed_unbound_higher_targets"
-                ],
-                ladder_household_uprating=joint_inputs.get("ladder_household_uprating"),
-            )
-            args._rung_surface = rung_surface
+        print("resolving joint local and national surface...", file=sys.stderr)
+        (
+            solve_frame,
+            restore,
+            national_rows,
+            local_metrics,
+            measure_resolution,
+        ) = _resolve_candidate_engine_surface(
+            clone.frame,
+            joint_inputs["national_registry"],
+            period=joint_inputs["calibration_year"],
+            scratch_dir=out_dir.parent / f".{out_dir.name}.candidate-engine-scratch",
+            band_edge_registry=joint_inputs["band_edge_registry"],
+            blocks=args.engine_blocks,
+        )
+        (
+            household,
+            problem,
+            cross_grain,
+            bound_families,
+            rung_surface,
+        ) = _build_joint_problem(
+            assignment,
+            geography_ladder=ladder,
+            local_registry=joint_inputs["local_registry"],
+            national_registry=joint_inputs["national_registry"],
+            local_metrics=local_metrics,
+            period=joint_inputs["calibration_year"],
+            sample_fraction=args.sample_fraction,
+            reviewed_unbound_higher_targets=joint_inputs[
+                "reviewed_unbound_higher_targets"
+            ],
+            ladder_household_uprating=joint_inputs.get("ladder_household_uprating"),
+        )
+        args._rung_surface = rung_surface
         args._bound_families = tuple(bound_families)
         args._joint_inputs_receipt = joint_inputs
         args._measure_resolution = dict(measure_resolution)
@@ -943,7 +906,7 @@ def _run_candidate(
                 source_year=source_year,
                 input_artifact=input_artifact,
                 ladder_artifact=ladder_artifact,
-                target_provenance=target_provenance,
+                assignment_provenance=assignment_provenance,
                 binding_adjudications=binding_adjudications,
                 cross_grain=cross_grain,
             )
@@ -1129,7 +1092,7 @@ def _run_candidate(
             output_paths=output_paths,
             input_artifact=input_artifact,
             ladder_artifact=ladder_artifact,
-            target_provenance=target_provenance,
+            assignment_provenance=assignment_provenance,
             cross_grain=cross_grain,
         )
         append_phase(state, "published")
@@ -1224,9 +1187,19 @@ def _verify_requested_pin(
     artifact["pin_verified"] = True
 
 
-def _load_joint_target_inputs(args: argparse.Namespace) -> dict[str, Any] | None:
-    if args.ledger_facts is None:
-        return None
+def _load_joint_target_inputs(args: argparse.Namespace) -> dict[str, Any]:
+    ledger_arguments = {
+        "--ledger-facts": args.ledger_facts,
+        "--ledger-facts-sha256": args.ledger_facts_sha256,
+        "--ledger-manifest-sha256": args.ledger_manifest_sha256,
+    }
+    missing = [name for name, value in ledger_arguments.items() if value is None]
+    if missing:
+        raise ValueError(
+            "UK rowwise candidates require a pinned Chronicle artifact; missing "
+            + ", ".join(missing)
+            + "."
+        )
     artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
@@ -1315,7 +1288,7 @@ def _joint_surface_registry(
 def _build_joint_problem(
     assignment: _LadderAssignment,
     *,
-    target_ladder: UkOaLadder,
+    geography_ladder: UkOaLadder,
     local_registry: TargetRegistry,
     national_registry: TargetRegistry,
     local_metrics: Mapping[str, pd.DataFrame],
@@ -1330,9 +1303,10 @@ def _build_joint_problem(
     tuple[str, ...],
     dict[str, Any],
 ]:
-    if assignment.ladder is not target_ladder:
+    if assignment.ladder is not geography_ladder:
         raise ValueError(
-            "assignment and targets must come from the same loaded UK OA ladder object."
+            "assignment and target-matrix geography support must use the same "
+            "loaded UK OA ladder object."
         )
     household = assignment.result.frame.table("household").reset_index(drop=True)
     household_index = pd.Index(household["household_id"], name="household_id")
@@ -1353,7 +1327,6 @@ def _build_joint_problem(
     national_ids = _national_contract_target_ids(national_registry)
     surface, cross_grain = uk_local_target_surface(
         _joint_surface_registry(local_registry, national_registry),
-        target_ladder,
         bound_national_target_ids=national_ids,
         period=period,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
@@ -1431,8 +1404,8 @@ def _build_joint_problem(
         ),
     }
     rosters = {
-        "constituency": tuple(map(str, np.unique(target_ladder.constituency_code))),
-        "la": tuple(map(str, np.unique(target_ladder.local_authority_code))),
+        "constituency": tuple(map(str, np.unique(geography_ladder.constituency_code))),
+        "la": tuple(map(str, np.unique(geography_ladder.local_authority_code))),
     }
     problem = build_uk_rowwise_local_surface_matrix(
         metrics,
@@ -1474,7 +1447,7 @@ def _joint_dry_run_plan(
     source_year: int,
     input_artifact: Mapping[str, Any],
     ladder_artifact: Mapping[str, Any],
-    target_provenance: Mapping[str, Any],
+    assignment_provenance: Mapping[str, Any],
 ) -> dict[str, Any]:
     national_registry = joint_inputs["national_registry"]
     surface, cross_grain = uk_local_target_surface(
@@ -1482,7 +1455,6 @@ def _joint_dry_run_plan(
             joint_inputs["local_registry"],
             national_registry,
         ),
-        ladder,
         bound_national_target_ids=_national_contract_target_ids(national_registry),
         period=joint_inputs["calibration_year"],
         reviewed_unbound_higher_targets=joint_inputs["reviewed_unbound_higher_targets"],
@@ -1589,7 +1561,7 @@ def _joint_dry_run_plan(
         "candidate_clone_support": clone_support,
         "releasable": False,
         "engine": "not_run",
-        "ladder_target_provenance": dict(target_provenance),
+        "ladder_assignment_provenance": dict(assignment_provenance),
     }
 
 
@@ -1613,64 +1585,6 @@ def _local_vintage_census(registry: TargetRegistry) -> list[dict[str, object]]:
         }
         for (family, level, resolved, target), cells in sorted(counts.items())
     ]
-
-
-def _build_bound_problem(
-    assignment: _LadderAssignment,
-    *,
-    target_ladder: UkOaLadder,
-) -> tuple[pd.DataFrame, UKRowwiseLocalMatrix, dict[str, Any]]:
-    """Bind the one target family, refusing separately loaded ladders."""
-
-    if assignment.ladder is not target_ladder:
-        raise ValueError(
-            "assignment and targets must come from the same loaded UK OA ladder object."
-        )
-    clone = assignment.result
-    household = clone.frame.table("household").reset_index(drop=True)
-    household_index = pd.Index(
-        household["household_id"],
-        name="household_id",
-    )
-    metrics = pd.DataFrame(
-        {"households": np.ones(len(household), dtype=np.float64)},
-        index=household_index,
-    )
-    assigned = pd.Series(
-        household["constituency_code"].astype(str).to_numpy(),
-        index=household_index,
-        name="constituency_code",
-    )
-    targets = constituency_household_targets(target_ladder)
-    local_surface = pd.DataFrame(
-        {
-            "grain": "constituency",
-            "geography_id": targets["code"].astype(str),
-            "target_id": "external:census_households/households",
-            "value": targets["households"].to_numpy(dtype=np.float64),
-        }
-    )
-    reconciled_surface, cross_grain = apply_uk_cross_grain_reconciliation(
-        local_surface,
-        BOUND_NATIONAL_TARGETS,
-    )
-    targets = targets.copy()
-    targets["households"] = reconciled_surface["value"].to_numpy(dtype=np.float64)
-    problem = build_uk_rowwise_local_matrix(
-        metrics,
-        assigned,
-        targets,
-        area_type="constituency",
-        code_column="code",
-    )
-    return (
-        household,
-        problem,
-        {
-            "bound_national_targets": list(BOUND_NATIONAL_TARGETS),
-            **cross_grain,
-        },
-    )
 
 
 def _candidate_area_support(
@@ -1967,7 +1881,7 @@ def _dry_run_plan(
     source_year: int,
     input_artifact: Mapping[str, Any],
     ladder_artifact: Mapping[str, Any],
-    target_provenance: Mapping[str, Any],
+    assignment_provenance: Mapping[str, Any],
     binding_adjudications: Mapping[str, Any],
     cross_grain: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1979,7 +1893,7 @@ def _dry_run_plan(
         "bound_target_families": list(args._bound_families),
         "binding_adjudications": dict(binding_adjudications),
         "cross_grain": dict(cross_grain),
-        "ladder_target_provenance": dict(target_provenance),
+        "ladder_assignment_provenance": dict(assignment_provenance),
         "inputs": {
             "dataset": dict(input_artifact),
             "ladder": dict(ladder_artifact),
@@ -2026,7 +1940,7 @@ def _write_output_bundle(
     output_paths: Mapping[str, Path],
     input_artifact: Mapping[str, Any],
     ladder_artifact: Mapping[str, Any],
-    target_provenance: Mapping[str, Any],
+    assignment_provenance: Mapping[str, Any],
     cross_grain: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Stage the complete bundle, then publish atomically per file."""
@@ -2124,7 +2038,7 @@ def _write_output_bundle(
             source_year=source_year,
             input_artifact=input_artifact,
             ladder_artifact=ladder_artifact,
-            target_provenance=target_provenance,
+            assignment_provenance=assignment_provenance,
             cross_grain=cross_grain,
             calibration_diagnostics=calibration_diagnostics,
             outputs=outputs,
@@ -2148,7 +2062,7 @@ def _manifest(
     source_year: int,
     input_artifact: Mapping[str, Any],
     ladder_artifact: Mapping[str, Any],
-    target_provenance: Mapping[str, Any],
+    assignment_provenance: Mapping[str, Any],
     cross_grain: Mapping[str, Any],
     calibration_diagnostics: Mapping[str, Any],
     outputs: Mapping[str, Any],
@@ -2179,13 +2093,12 @@ def _manifest(
     area_exclusion_details = (
         area_gate.get("details", {}) if isinstance(area_gate, Mapping) else {}
     )
-    ladder_rows = int(
-        problem.target_frame["target_name"]
-        .astype(str)
-        .str.startswith("external:census_households/households@")
-        .sum()
-    )
-    local_rows = int(len(problem.target_frame) - ladder_rows)
+    # Every local row now comes from the compiled Chronicle registry. Keep the
+    # historical manifest key at zero so existing release readers can consume
+    # the schema while no target is classified by its identifier or by the
+    # geography-assignment ladder.
+    ladder_rows = 0
+    local_rows = int(len(problem.target_frame))
     sample_stage = (
         []
         if args.sample_fraction == 1.0
@@ -2206,7 +2119,7 @@ def _manifest(
         "bound_target_families": list(args._bound_families),
         "binding_adjudications": dict(solve.binding_adjudications),
         "cross_grain": dict(cross_grain),
-        "ladder_target_provenance": dict(target_provenance),
+        "ladder_assignment_provenance": dict(assignment_provenance),
         "parameters": _parameters(args, source_year=source_year),
         "inputs": {
             "dataset": dict(input_artifact),
@@ -2219,7 +2132,7 @@ def _manifest(
             },
             "ladder": {
                 **dict(ladder_artifact),
-                "layer_vintages": dict(target_provenance),
+                "layer_vintages": dict(assignment_provenance["layer_vintages"]),
                 "matches_local_area_crosswalk_pin": True,
             },
             **(

@@ -55,7 +55,6 @@ __all__ = [
     "METRIC_STATUS_BOUND_IN_CODE",
     "SOURCE_STATUS_DOCUMENTED_UNPINNED",
     "SOURCE_STATUS_PINNED_IN_LEDGER_FACTS",
-    "SOURCE_STATUS_PINNED_IN_LADDER",
     "SOURCE_STATUS_SIGNED_DEFERRED",
     "assert_uk_local_target_census_current",
     "build_uk_local_target_census",
@@ -71,7 +70,6 @@ CENSUS_RESOURCE = "uk_local_target_census.json"
 METRIC_STATUS_BOUND_IN_CODE = "bound_in_code"
 SOURCE_STATUS_DOCUMENTED_UNPINNED = "documented_unpinned"
 SOURCE_STATUS_PINNED_IN_LEDGER_FACTS = "pinned_in_ledger_facts"
-SOURCE_STATUS_PINNED_IN_LADDER = "pinned_in_ladder"
 SOURCE_STATUS_SIGNED_DEFERRED = "signed_deferred"
 FENCE_ENFORCEMENT_REVIEW = "review_required_before_binding"
 
@@ -150,17 +148,15 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
         "family": "census_households",
         "description": (
             "Weighted household counts by area, bound to census occupied-"
-            "household totals summed from the sha-pinned UK OA ladder "
-            "artifact (constituency_household_targets / "
-            "local_authority_household_targets). Universe-compatible with "
-            "the FRS instrument: census occupied households match the "
-            "survey's own household frame, so the person-universe "
-            "adjudication does not bind here."
+            "household facts in the sha-pinned Chronicle consumer feed. "
+            "Universe-compatible with the FRS instrument: census occupied "
+            "households match the survey's own household frame, so the "
+            "person-universe adjudication does not bind here."
         ),
         "sources": [
-            "nomis_ts041_ew_oa_households",
-            "nrs_census_2022_index",
-            "nisra_dz21_households",
+            "ons_census2021_ts041_households_by_area",
+            "nrs_census2022_uv404_households_by_area",
+            "nisra_census2021_households_by_area",
         ],
         "adjudications": [_CENSUS_DISCLOSURE_FENCE_ID],
     },
@@ -287,55 +283,60 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
-        "source_id": "nomis_ts041_ew_oa_households",
+        "source_id": "ons_census2021_ts041_households_by_area",
         "publisher": "Office for National Statistics (via Nomis)",
         "product": (
             "Census 2021 table TS041 (number of households), England and "
-            "Wales, output-area grain — the E&W leg of the ladder's "
-            "household counts."
+            "Wales, published at 2024 parliamentary-constituency and 2023 "
+            "local-authority boundaries."
         ),
         "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip",
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2021-03-21",
-        "status": SOURCE_STATUS_PINNED_IN_LADDER,
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
-            "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py "
-            "(recorded in the artifact's source_files map)."
+            "Chronicle record-set specifications publish one household-count "
+            "fact for every England and Wales area in the Microcosm crosswalk."
         ),
     },
     {
-        "source_id": "nrs_census_2022_index",
+        "source_id": "nrs_census2022_uv404_households_by_area",
         "publisher": "National Records of Scotland",
         "product": (
             "Census 2022 index zip: Postcode_To_OA.csv census occupied "
-            "household counts (cell-key perturbed), summed by OA2022 — the "
-            "Scotland leg of the ladder's household counts."
+            "household counts, published at 2024 parliamentary-constituency "
+            "and council-area boundaries."
         ),
         "url": "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip",
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2022-03-20",
-        "status": SOURCE_STATUS_PINNED_IN_LADDER,
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
-            "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py; "
-            "the in-zip specification defines HouseholdCount as the 2022 "
-            "Census occupied household count."
+            "Chronicle selects the all-occupied-households value from UV404 "
+            "for every Scottish area in the Microcosm crosswalk."
         ),
     },
     {
-        "source_id": "nisra_dz21_households",
+        "source_id": "nisra_census2021_households_by_area",
         "publisher": "Northern Ireland Statistics and Research Agency",
         "product": (
-            "Census 2021 table-builder HOUSEHOLD dataset at DZ21 grain — "
-            "the NI leg of the ladder's household counts."
+            "Census 2021 flexible HOUSEHOLD tables at 2024 parliamentary-"
+            "constituency and 2014 local-government-district boundaries."
         ),
         "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21",
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2021-03-21",
-        "status": SOURCE_STATUS_PINNED_IN_LADDER,
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": _SOURCES_VERIFIED_ON,
-        "notes": ("Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py."),
+        "notes": (
+            "Chronicle publishes one household-count fact for every Northern "
+            "Ireland area in the Microcosm crosswalk."
+        ),
     },
     {
         "source_id": "dwp_stat_xplore_uc",
@@ -657,12 +658,6 @@ _STATUS_DEFINITIONS: dict[str, str] = {
     SOURCE_STATUS_PINNED_IN_LEDGER_FACTS: (
         "The official product's target facts are present in the sha-pinned "
         "Ledger consumer fact feed recorded on the source row."
-    ),
-    SOURCE_STATUS_PINNED_IN_LADDER: (
-        "The product is downloaded and sha-pinned per build by the UK OA "
-        "ladder artifact tool, which records every source hash in the "
-        "artifact metadata; target values derive from the artifact's own "
-        "sums."
     ),
     SOURCE_STATUS_SIGNED_DEFERRED: (
         "The official product is present or documented, but this target "

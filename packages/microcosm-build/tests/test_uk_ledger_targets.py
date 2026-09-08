@@ -22,11 +22,63 @@ from microcosm.build.uk_runtime.ledger_targets import (
     uk_ledger_households_total,
     uk_local_target_surface,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyGeography,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+)
 
 FIXTURE_FEED_ROWS = (
     Path(__file__).parent / "fixtures" / "uk_target_reference_feed_rows.jsonl"
 )
+
+
+def _household_specs() -> tuple[TargetSpec, ...]:
+    return tuple(
+        TargetSpec(
+            name=f"external:census_households/households@{area_code}",
+            entity="household",
+            value=value,
+            measure="households",
+            period=2025,
+            source="Chronicle",
+            family="census_households",
+            metadata={
+                "contract_target_id": "external:census_households/households",
+                "geography_level": geography_level,
+                "geography_id": area_code,
+            },
+            hierarchy=CalibrationHierarchy(
+                provider=HierarchyNode(
+                    id="ons", label="Office for National Statistics"
+                ),
+                category=HierarchyCategory(
+                    id="ons.household_composition",
+                    label="Household composition",
+                    provider_id="ons",
+                ),
+                geography=HierarchyGeography(
+                    id=area_code,
+                    label=area_code,
+                    level=geography_level,
+                ),
+                dimensions=(),
+                target=HierarchyNode(
+                    id=f"external:census_households/households@{area_code}",
+                    label="Occupied households",
+                ),
+            ),
+        )
+        for geography_level, area_code, value in (
+            ("constituency", "E14000001", 40.0),
+            ("constituency", "S14000001", 10.0),
+            ("local_authority", "E06000001", 40.0),
+            ("local_authority", "S12000005", 10.0),
+        )
+    )
 
 
 def test_uk_local_target_surface_uses_registry_names_and_reconciles() -> None:
@@ -74,18 +126,12 @@ def test_uk_local_target_surface_uses_registry_names_and_reconciles() -> None:
                     "geography_id": "S14000001",
                 },
             ),
+            *_household_specs(),
         ],
         country="uk",
     )
-    ladder = SimpleNamespace(
-        households=np.asarray([10.0, 20.0]),
-        constituency_code=np.asarray(["E14000001", "S14000001"]),
-        local_authority_code=np.asarray(["E06000001", "S12000005"]),
-    )
-
     surface, receipt = uk_local_target_surface(
         registry,
-        ladder,
         bound_national_target_ids=("dwp.uc.households",),
         period=2025,
     )
@@ -96,10 +142,10 @@ def test_uk_local_target_surface_uses_registry_names_and_reconciles() -> None:
         "dwp.uc.households_by_area@E14000001",
         "dwp.uc.households_by_area@S14000001",
     ]
-    ladder_rows = surface.loc[surface["metric"] == "households"]
-    assert set(ladder_rows["area_type"]) == {"constituency", "la"}
-    assert all(ladder_rows["period"] == 2025)
-    for row in ladder_rows.itertuples(index=False):
+    household_rows = surface.loc[surface["metric"] == "households"]
+    assert set(household_rows["area_type"]) == {"constituency", "la"}
+    assert all(household_rows["period"] == 2025)
+    for row in household_rows.itertuples(index=False):
         hierarchy = row.hierarchy
         assert hierarchy.provider.id == "ons"
         assert hierarchy.provider.label == "Office for National Statistics"
@@ -142,21 +188,18 @@ def test_uk_local_target_surface_fires_k020_household_partition_bridge() -> None
         ],
         country="uk",
     )
-    ladder = SimpleNamespace(
-        households=np.asarray([10.0, 20.0]),
-        constituency_code=np.asarray(["E14000001", "S14000001"]),
-        local_authority_code=np.asarray(["E06000001", "S12000005"]),
+    registry = TargetRegistry(
+        (*registry.specs, *_household_specs()),
+        country="uk",
     )
-
     surface, receipt = uk_local_target_surface(
         registry,
-        ladder,
         bound_national_target_ids=composition_ids,
         period=2025,
     )
 
-    ladder_rows = surface.loc[surface["metric"] == "households"]
-    assert ladder_rows.groupby("area_type")["value"].sum().to_dict() == {
+    household_rows = surface.loc[surface["metric"] == "households"]
+    assert household_rows.groupby("area_type")["value"].sum().to_dict() == {
         "constituency": pytest.approx(100.0),
         "la": pytest.approx(100.0),
     }
@@ -182,14 +225,6 @@ def _national_geography_spec(metadata: dict[str, str]) -> TargetSpec:
         source="DWP",
         family="uc_households",
         metadata={"contract_target_id": "dwp.uc.households", **metadata},
-    )
-
-
-def _minimal_target_surface_ladder() -> SimpleNamespace:
-    return SimpleNamespace(
-        households=np.asarray([10.0]),
-        constituency_code=np.asarray(["E14000001"]),
-        local_authority_code=np.asarray(["E06000001"]),
     )
 
 
@@ -244,11 +279,6 @@ def test_uk_local_target_surface_excludes_fanout_from_cross_grain_controls() -> 
 
     surface, receipt = uk_local_target_surface(
         TargetRegistry(specs, country="uk"),
-        SimpleNamespace(
-            households=np.asarray([30.0, 15.0]),
-            constituency_code=np.asarray(["E14000001", "S14000001"]),
-            local_authority_code=np.asarray(["E06000001", "S12000005"]),
-        ),
         bound_national_target_ids=("dwp.uc.payment_distribution_single",),
         period=2025,
     )
@@ -293,7 +323,6 @@ def test_uk_local_target_surface_keeps_single_national_control(monkeypatch) -> N
 
     _, receipt = module.uk_local_target_surface(
         TargetRegistry([spec], country="uk"),
-        _minimal_target_surface_ladder(),
         bound_national_target_ids=("dwp.uc.payment_distribution_single",),
         period=2025,
     )
@@ -319,7 +348,6 @@ def test_uk_local_target_surface_refuses_named_nonfinite_national_cell() -> None
     with pytest.raises(ValueError, match="bad-cell.*non-finite"):
         uk_local_target_surface(
             TargetRegistry(specs, country="uk"),
-            _minimal_target_surface_ladder(),
             bound_national_target_ids=("dwp.uc.payment_distribution_single",),
             period=2025,
         )
@@ -350,7 +378,6 @@ def test_uk_local_target_surface_refuses_fanout_across_levels() -> None:
     ):
         uk_local_target_surface(
             TargetRegistry(specs, country="uk"),
-            _minimal_target_surface_ladder(),
             bound_national_target_ids=(target_id,),
             period=2025,
         )
@@ -387,7 +414,6 @@ def test_uk_local_target_surface_refuses_invalid_compiled_geography(
     with pytest.raises(ValueError, match=message):
         uk_local_target_surface(
             registry,
-            _minimal_target_surface_ladder(),
             bound_national_target_ids=(),
             period=2025,
         )
@@ -1272,13 +1298,13 @@ def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
             {
                 "grain": "constituency",
                 "geography_id": "E14000001",
-                "target_id": "external:census_households/households",
+                "target_id": "contract:external:census_households/households",
                 "value": 40.0,
             },
             {
                 "grain": "constituency",
                 "geography_id": "S14000001",
-                "target_id": "external:census_households/households",
+                "target_id": "contract:external:census_households/households",
                 "value": 10.0,
             },
         ]
@@ -1286,7 +1312,12 @@ def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
         household_surface, household_bridge.higher_target_ids
     )
-    assert receipt["groups"][0]["bridge_id"] == household_bridge.bridge_id
+    household_group = next(
+        group
+        for group in receipt["groups"]
+        if group["bridge_id"] == household_bridge.bridge_id
+    )
+    assert household_group["bridge_id"] == household_bridge.bridge_id
     assert reconciled.loc[10:, "value"].tolist() == [80.0, 20.0]
 
     uc_surface = pd.DataFrame(
@@ -1318,7 +1349,7 @@ def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
     assert reconciled.loc[1:, "value"].tolist() == [60.0, 30.0]
 
 
-def test_reviewed_household_composition_gap_leaves_census_ladder_unbound():
+def test_reviewed_household_composition_gap_leaves_local_households_unbound():
     household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
     missing = {
         "ons.household_composition.unrelated_adult_households",
@@ -1344,13 +1375,13 @@ def test_reviewed_household_composition_gap_leaves_census_ladder_unbound():
             {
                 "grain": "constituency",
                 "geography_id": "E14000001",
-                "target_id": "external:census_households/households",
+                "target_id": "contract:external:census_households/households",
                 "value": 40.0,
             },
             {
                 "grain": "constituency",
                 "geography_id": "S14000001",
-                "target_id": "external:census_households/households",
+                "target_id": "contract:external:census_households/households",
                 "value": 10.0,
             },
         ]
@@ -1453,7 +1484,6 @@ def test_uk_local_target_surface_refuses_bridge_control_fanout() -> None:
     with pytest.raises(ValueError, match="bridge control"):
         uk_local_target_surface(
             TargetRegistry(specs, country="uk"),
-            _minimal_target_surface_ladder(),
             bound_national_target_ids=("dwp.uc.households",),
             period=2025,
         )
@@ -1473,7 +1503,6 @@ def test_uk_local_target_surface_receipts_a_single_cell_dropped_by_the_fanout_ru
     )
     _, receipt = uk_local_target_surface(
         TargetRegistry(specs, country="uk"),
-        _minimal_target_surface_ladder(),
         bound_national_target_ids=("dwp.uc.payment_distribution_single",),
         period=2025,
     )
@@ -1532,7 +1561,7 @@ def test_uk_ledger_households_total_selects_exactly_one_fact() -> None:
         uk_ledger_households_total((_households_total_fact(2025, 0.0),), period=2025)
 
 
-def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
+def test_uk_ladder_household_uprating_scales_eligible_tenure_only() -> None:
     small_ladder = SimpleNamespace(
         households=np.asarray([10.0, 20.0]),
         constituency_code=np.asarray(["E14000001", "S14000001"]),
@@ -1584,6 +1613,30 @@ def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
                     "geography_id": "K03000001",
                 },
             ),
+            *[
+                TargetSpec(
+                    name=f"external:census_households/households@{area_code}",
+                    entity="household",
+                    value=value,
+                    measure="households",
+                    period=2025,
+                    source="Chronicle",
+                    family="census_households",
+                    metadata={
+                        "contract_target_id": (
+                            "external:census_households/households"
+                        ),
+                        "geography_level": geography_level,
+                        "geography_id": area_code,
+                    },
+                )
+                for geography_level, area_code, value in (
+                    ("constituency", "E14000001", 10.0),
+                    ("constituency", "S14000001", 20.0),
+                    ("local_authority", "E06000001", 10.0),
+                    ("local_authority", "S12000005", 20.0),
+                )
+            ],
             # A census-2021 tenure cell held to 2025 (A17: uprated), a
             # Scottish census-2022 hold (uprated), and a tenure cell compiled
             # from a 2025 fact with no hold (never touched).
@@ -1621,24 +1674,23 @@ def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
     uprating = uk_ladder_household_uprating(ladder, reference, period=2025)
     assert uprating["factor"] == pytest.approx(1.1)
     as_published, receipt = uk_local_target_surface(
-        registry, ladder, bound_national_target_ids=(), period=2025
+        registry, bound_national_target_ids=(), period=2025
     )
     assert receipt["ladder_household_uprating"]["applied"] is False
     assert receipt["ladder_household_uprating"]["tenure_cells"]["applied"] is False
     published_rows = as_published.loc[as_published["metric"] == "households"]
-    assert published_rows["value"].tolist() == [10.0, 5.0, 20.0, 10.0, 5.0, 20.0]
+    assert published_rows["value"].tolist() == [10.0, 20.0, 10.0, 20.0]
     tenure_published = as_published.loc[as_published["metric"] == "tenure/social_rent"]
     assert tenure_published["value"].tolist() == [50.0, 40.0, 30.0]
 
     uprated, receipt = uk_local_target_surface(
         registry,
-        ladder,
         bound_national_target_ids=(),
         period=2025,
         ladder_household_uprating=uprating,
     )
     rows = uprated.loc[uprated["metric"] == "households"]
-    assert rows["value"].tolist() == pytest.approx([11.0, 5.5, 22.0, 11.0, 5.5, 22.0])
+    assert rows["value"].tolist() == [10.0, 20.0, 10.0, 20.0]
     tenure_rows = uprated.loc[uprated["metric"] == "tenure/social_rent"]
     assert tenure_rows["value"].tolist() == pytest.approx([55.0, 44.0, 30.0])
     tenure_receipt = receipt["ladder_household_uprating"]["tenure_cells"]
@@ -1653,17 +1705,14 @@ def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
     } == uprating
     declined, receipt = uk_local_target_surface(
         registry,
-        ladder,
         bound_national_target_ids=(),
         period=2025,
         ladder_household_uprating={"applied": False, "reason": "no facts"},
     )
     assert declined.loc[declined["metric"] == "households", "value"].tolist() == [
         10.0,
-        5.0,
         20.0,
         10.0,
-        5.0,
         20.0,
     ]
     declined_receipt = receipt["ladder_household_uprating"]
@@ -1675,7 +1724,6 @@ def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
     with pytest.raises(ValueError, match="factor is invalid"):
         uk_local_target_surface(
             registry,
-            ladder,
             bound_national_target_ids=(),
             period=2025,
             ladder_household_uprating={"applied": True, "factor": 0.0},
@@ -1751,7 +1799,6 @@ def test_tenure_receipt_counts_attempted_and_skipped_holds(
     )
     surface, receipt = uk_local_target_surface(
         registry,
-        ladder,
         bound_national_target_ids=(),
         period=2025,
         ladder_household_uprating=uprating,

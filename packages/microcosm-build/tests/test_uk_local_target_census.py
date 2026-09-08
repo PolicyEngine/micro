@@ -22,7 +22,6 @@ from microcosm.build.uk_runtime.local_target_census import (
     CENSUS_SCHEMA_VERSION,
     METRIC_STATUS_BOUND_IN_CODE,
     SOURCE_STATUS_DOCUMENTED_UNPINNED,
-    SOURCE_STATUS_PINNED_IN_LADDER,
     SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
     SOURCE_STATUS_SIGNED_DEFERRED,
     assert_uk_local_target_census_current,
@@ -98,7 +97,6 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
         assert source["status"] in {
             SOURCE_STATUS_DOCUMENTED_UNPINNED,
             SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
-            SOURCE_STATUS_PINNED_IN_LADDER,
             SOURCE_STATUS_SIGNED_DEFERRED,
         }
         if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:

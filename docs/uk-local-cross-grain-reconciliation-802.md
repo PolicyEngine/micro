@@ -13,9 +13,10 @@ Exact matches use the measurement fields `concept`, `entity`, `map_to`, and
 `filters`. Explicit UK bridges cover relationships that those fields
 cannot express on their own:
 
-- The 10-cell `ons.household_composition.*` partition sums to the national
-  household-count control and bridges to the ladder-derived
-  `census_households/households` metric.
+- The 10-cell `ons.household_composition.*` partition sums to a national
+  household-count control and bridges to the Chronicle-backed
+  `census_households/households` targets at constituency and local-authority
+  level.
 - `dwp.uc.households` bridges to `dwp.uc.households_by_area`. The four
   `dwp.uc.payment_distribution_*` rows also match the by-area target exactly
   and form a separate exhaustive national partition.
@@ -63,12 +64,11 @@ published local values still bind as published when no same-concept national
 control is bound. If one is bound in the same solve, country wins and the
 standing rule rescales the local values before calibration.
 
-Today the rowwise candidate binds only `census_households/constituency` and
-declares no bound national targets. The pass therefore records an absence
-receipt and leaves all target values numerically identical. Increment #762
-must extend the mixed-grain surface through
-`apply_uk_cross_grain_reconciliation`; the existing rowwise area-type fence
-remains the structural backstop.
+The rowwise candidate compiles both constituency and local-authority household
+targets from Chronicle. It passes those rows, together with any compiled
+national controls, through `apply_uk_cross_grain_reconciliation`. The receipt
+records which controls were present and whether the operator changed any local
+values; the rowwise area-type validation remains the structural backstop.
 
 ## Rescope from the issue text
 

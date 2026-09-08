@@ -1,11 +1,10 @@
 """Guarantees for the merged UK population calibration contract resource.
 
-``uk/uk_population_targets.json`` is the consumer-side selection contract for
-Chronicle facts and explicitly declared Microcosm-derived targets
-(chronicle#166 ruling: contracts live in Microcosm; Chronicle is facts-only).
-It carries the national and local-geography target rows in one value-free
-resource, with separate scoped provenance blocks for the retired national
-registry and local profile surfaces.
+``uk/uk_population_targets.json`` is the consumer-side selection contract over
+Chronicle facts (chronicle#166 ruling: contracts live in Microcosm; Chronicle
+is facts-only). It carries the national and local-geography target rows in one
+value-free resource, with separate scoped provenance blocks for the retired
+national registry and local profile surfaces.
 """
 
 from __future__ import annotations
@@ -54,7 +53,14 @@ NATIONAL_SELECTOR_KEYS = {
     "period_value",
     "layout_groupby_value_id",
 }
-LOCAL_SELECTOR_KEYS = {"source_name", "source_measure_id", "record_set_spec_id"}
+LOCAL_SELECTOR_KEYS = {
+    "any_of",
+    "entity_name",
+    "period_type",
+    "source_name",
+    "source_measure_id",
+    "record_set_spec_id",
+}
 POLICYENGINE_BINDING_KEYS = {
     "affected_flag_variable",
     "band",
@@ -343,22 +349,20 @@ def test_uk_population_targets_declare_selector_vocabularies_and_bindings() -> N
     metric_names_seen: list[str] = []
     for target in resource["targets"]:
         target_id = target["target_id"]
-        selector = target.get("ledger_selector")
-        materialization = target.get("materialization")
-        assert bool(selector) != bool(materialization), target_id
+        selector = target["ledger_selector"]
+        assert selector, target_id
+        assert "materialization" not in target, target_id
         binding = target["bindings"]["policyengine"]
         metric_names_seen.append(binding["metric_name"])
 
         if target_id in registry_scope:
-            assert selector is not None
             assert set(selector) <= NATIONAL_SELECTOR_KEYS, target_id
             assert "assertion" not in selector, target_id
             assert set(binding) <= POLICYENGINE_BINDING_KEYS, target_id
             kind = binding.get("kind")
             assert kind is None or kind in BINDING_KINDS, target_id
         elif target_id in profile_scope:
-            if selector is not None:
-                assert set(selector) <= LOCAL_SELECTOR_KEYS, target_id
+            assert set(selector) <= LOCAL_SELECTOR_KEYS, target_id
             assert "chronicle_selector" not in target
             assert set(target["bindings"]) == {"policyengine", "axiom"}
             assert set(binding) <= LOCAL_POLICYENGINE_BINDING_KEYS, target_id
@@ -556,21 +560,37 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
     assert len(metric_names_from_target_profile(resource, "la")) == 30
 
 
-def test_uk_population_targets_declare_ladder_household_target_metadata() -> None:
+def test_uk_population_targets_declare_chronicle_household_target_metadata() -> None:
     target = _target_by_id(_load(), "external:census_households/households")
 
-    assert target["label"] == "Occupied households"
     assert target["category_id"] == "ons.household_composition"
     assert target["geography_levels"] == ["constituency", "local_authority"]
     assert target["bindings"]["policyengine"] == {
         "metric_name": "households",
         "value_variable": "household_count",
     }
-    assert target["materialization"] == {
-        "kind": "uk_oa_geography_ladder",
-        "field": "households",
+    assert target["ledger_selector"] == {
+        "source_measure_id": "households",
+        "entity_name": "household",
+        "any_of": [
+            {
+                "record_set_spec_id": (
+                    "uk.local_geography.households.by_constituency.v1"
+                )
+            },
+            {
+                "record_set_spec_id": (
+                    "uk.local_geography.households.by_local_authority.v1"
+                )
+            },
+            {
+                "source_name": "nrs",
+                "record_set_spec_id": "uk.local_geography.tenure.all_households.v1",
+            },
+        ],
+        "period_type": "calendar_year",
     }
-    assert "ledger_selector" not in target
+    assert "materialization" not in target
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:

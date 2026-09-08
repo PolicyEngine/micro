@@ -98,105 +98,6 @@ def hierarchy_seed_from_catalog(
     )
 
 
-def target_spec_from_materialized_declaration(
-    target: Mapping[str, object],
-    hierarchy_catalog: Mapping[str, object],
-    *,
-    name: str,
-    value: float,
-    period: int | str,
-    source: str,
-    geography_level: str,
-    geography_id: str,
-    geography_label: str | None = None,
-    dimensions: Iterable[HierarchyDimension] = (),
-    backend: str = "policyengine",
-) -> TargetSpec:
-    """Compile a non-Chronicle target declaration and value into a target spec."""
-
-    target_id = str(target.get("target_id") or "").strip()
-    if not target_id:
-        raise ValueError("A materialized target declaration must have a target_id.")
-    materialization = target.get("materialization")
-    materialization_kind = (
-        str(materialization.get("kind") or "").strip()
-        if isinstance(materialization, Mapping)
-        else ""
-    )
-    if not materialization_kind:
-        raise ValueError(
-            f"Materialized target {target_id!r} must declare a non-empty "
-            "materialization.kind."
-        )
-    declared_levels = {
-        str(level).strip()
-        for level in (target.get("geography_levels") or ())
-        if str(level).strip()
-    }
-    if geography_level not in declared_levels:
-        raise ValueError(
-            f"Materialized target {target_id!r} does not declare geography "
-            f"level {geography_level!r}."
-        )
-    target_label = str(target.get("label") or "").strip()
-    if not target_label:
-        raise ValueError(f"Materialized target {target_id!r} must declare a label.")
-    bindings = target.get("bindings")
-    if not isinstance(bindings, Mapping):
-        raise ValueError(f"Materialized target {target_id!r} has no bindings mapping.")
-    binding = bindings.get(backend)
-    if not isinstance(binding, Mapping):
-        raise ValueError(
-            f"Materialized target {target_id!r} has no {backend!r} binding."
-        )
-    measure = str(binding.get("metric_name") or "").strip()
-    if not measure:
-        raise ValueError(
-            f"Materialized target {target_id!r} has no {backend!r} metric_name."
-        )
-    measurement = target.get("measurement")
-    measurement_entity = (
-        str(measurement.get("entity") or "").strip()
-        if isinstance(measurement, Mapping)
-        else ""
-    )
-    entity = str(
-        binding.get("from_entity")
-        or binding.get("map_to")
-        or measurement_entity
-        or "household"
-    )
-    category_id = str(target.get("category_id") or "").strip()
-    seed = hierarchy_seed_from_catalog(hierarchy_catalog, category_id)
-    hierarchy = _complete_calibration_hierarchy(
-        seed,
-        name=name,
-        target_label=target_label,
-        geography_level=geography_level,
-        geography_id=geography_id,
-        geography_label=geography_label or geography_id,
-        dimensions=tuple(dimensions),
-    )
-    return TargetSpec(
-        name=name,
-        entity=entity,
-        value=value,
-        measure=measure,
-        period=period,
-        source=source,
-        family=str(target.get("family") or "unspecified"),
-        signed=bool(target.get("signed", False)),
-        metadata={
-            "contract_target_id": target_id,
-            "geography_level": geography_level,
-            "geography_id": geography_id,
-            "measure_kind": "prepared_column",
-            "materialization_kind": materialization_kind,
-        },
-        hierarchy=hierarchy,
-    )
-
-
 @dataclass(frozen=True)
 class LedgerTargetMapping:
     """How Microcosm maps Ledger facts to model-ready target rows.
@@ -1000,29 +901,6 @@ def _calibration_hierarchy(
         else _geography_fallback_label(geography_id)
     )
     fact_label = _chronicle_target_label(facts, target_period=target_period)
-    return _complete_calibration_hierarchy(
-        seed,
-        name=reference.name,
-        target_label=fact_label or _humanize_identifier(reference.name),
-        geography_level=geography_level,
-        geography_id=geography_id,
-        geography_label=geography_label,
-        dimensions=_inherited_dimensions(facts),
-    )
-
-
-def _complete_calibration_hierarchy(
-    seed: CalibrationHierarchySeed,
-    *,
-    name: str,
-    target_label: str,
-    geography_level: str,
-    geography_id: str,
-    geography_label: str,
-    dimensions: tuple[HierarchyDimension, ...],
-) -> CalibrationHierarchy:
-    """Complete a normalized category seed with per-target hierarchy fields."""
-
     return CalibrationHierarchy(
         provider=seed.provider,
         category=seed.category,
@@ -1031,10 +909,10 @@ def _complete_calibration_hierarchy(
             label=geography_label,
             level=geography_level,
         ),
-        dimensions=dimensions,
+        dimensions=_inherited_dimensions(facts),
         target=HierarchyNode(
-            id=name,
-            label=target_label,
+            id=reference.name,
+            label=fact_label or _humanize_identifier(reference.name),
         ),
     )
 
@@ -2432,6 +2310,8 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     if reference.value_operation == "difference":
         metadata["ledger_value_formula"] = "minuend - subtrahend"
     for key, value in sorted(reference.ledger_selector.items()):
+        if key == "any_of":
+            continue
         if isinstance(value, Mapping):
             continue
         if value is not None and value != "":
@@ -2494,14 +2374,32 @@ def _source_record_id(fact: object) -> str:
 def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool:
     """Return whether a consumer fact satisfies a structured reference selector.
 
-    A list-valued scalar key matches by membership; an empty list is refused
+    ``any_of`` contains alternative selector mappings; the fact must match at
+    least one alternative as well as every field beside ``any_of``. A
+    list-valued scalar key matches by membership; an empty list is refused
     rather than treated as match-nothing, because it reads like match-anything.
     Note ``dimensions: []`` is NOT an empty membership list — it is the
     list-form dimensions selector's exact name-set match for the dimensionless
     total row (see :func:`_dimensions_match`).
     """
 
+    alternatives = selector.get("any_of")
+    if alternatives is not None:
+        if not isinstance(alternatives, (list, tuple)) or not alternatives:
+            raise ValueError(
+                "Ledger fact selector field 'any_of' must be a non-empty list "
+                "of non-empty selector mappings."
+            )
+        if any(not isinstance(item, Mapping) or not item for item in alternatives):
+            raise ValueError(
+                "Ledger fact selector field 'any_of' must contain only non-empty "
+                "selector mappings."
+            )
+        if not any(_fact_matches_selector(fact, item) for item in alternatives):
+            return False
     for key, expected in selector.items():
+        if key == "any_of":
+            continue
         if key == "dimensions":
             if not _dimensions_match(fact, expected):
                 return False

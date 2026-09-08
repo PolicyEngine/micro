@@ -144,6 +144,32 @@ def test_authoring_refuses_target_without_a_declared_category() -> None:
         )
 
 
+def test_authoring_refuses_target_without_a_chronicle_selector() -> None:
+    contract = _single_age_contract()
+    contract["targets"][0].pop("ledger_selector")
+
+    with pytest.raises(ValueError, match="must declare a non-empty ledger_selector"):
+        author_area_target_references(
+            contract,
+            [],
+            _area_config(areas=("A1",)),
+        )
+
+
+def test_authoring_refuses_target_materialization() -> None:
+    contract = _single_age_contract()
+    contract["targets"][0]["materialization"] = {
+        "kind": "synthetic_runtime_value"
+    }
+
+    with pytest.raises(ValueError, match="declares unsupported materialization"):
+        author_area_target_references(
+            contract,
+            [],
+            _area_config(areas=("A1",)),
+        )
+
+
 def test_author_area_target_references_refuses_unsigned_absence() -> None:
     contract = _single_age_contract()
     facts = [
