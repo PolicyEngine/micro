@@ -287,3 +287,24 @@ loss cap these rows distort the dense solve as much as the selection, so they bl
 `pi_hi`. Ruling requested: extend the signed deferral to the whole target (the surface returns to R17's
 ten local families, making the comparison like for like) and fix the metric's semantics (a weighted
 mean among private renters, on the PIPR period policy) as its own change; or fix the metric first.
+
+**Evaluation plumbing pass on smoke4** (`evaluate_size_run.sh`, 1,446 s, 12.1 GB peak): every step ran or
+skipped for a stated reason and the tree `evaluation/00…90` came out as designed. 00 run acceptance,
+10 dense-reference deltas, 20 comparison with R17 (both manifest shapes read), 40 the incumbent-surface
+evaluator on the compact frame (98.9 s; frozen-versus-recomputed maximum divergence 0.125 on the
+population-normalised national rows, a signal to watch at S2), 50 downstream: T3 distributions
+(112 s, 7.5 GB; 191 variables: 151 pass / 28 attention / 11 fail / 1 expected), T4 admin benchmarks
+(65 s, 8.2 GB), T5 eight reforms (1,085 s, 12.1 GB), the #731 scorecard on the smoke (6 s, 3.3 GB) and
+on R17 (59 s, 11.1 GB), 90 the summary with the pre-registered table (all fit flags red, as a
+100-epoch smoke must be; footprint real: 187 MB H5, 22 min, 10.6 GB). Two findings: step 30 needs the
+frozen scoring register as an input (candidate runs never write it; R14 compiled it separately) — the
+command now takes `--scoring-registry`; and the #731 scorecard on the incumbent enhanced-FRS snapshot
+fails inside policyengine-uk 2.94.0's dataset loader (`load_dataset … UnboundLocalError: data`), so the
+incumbent leg of the three-way scorecard needs a snapshot that loader accepts (the R17 and smoke legs ran).
+
+**Ruling (María, 2026-09-08, evening): fix the rent metric (option b) and make the size selection's budget
+search stop on open-probability mass; then run S2.** Mass basis: `calibrate(..., budget_basis=
+"open_probability_mass")` measures each probe by Σπ (the gates' expected open count) instead of the count
+of not-fully-closed weights; the size refit uses it and records `selection_budget_basis`. On a 60-record
+toy problem the mass basis lands Σπ 20.2 for a budget of 20 where the count basis gives count 19 with
+mass 18.5. `solve.py` is an attested module, so the spec-engine identities are re-cut once more.
