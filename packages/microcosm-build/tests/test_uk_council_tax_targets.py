@@ -197,12 +197,13 @@ def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> 
         for row in _membership()["signed_deferrals"]
         if row["reason_id"] == "local_authority_support_floor_excluded"
     ]
-    assert len(rows) == 24
-    assert sum(len(row["area_ids"]) for row in rows) == 43
+    assert len(rows) == 25
+    assert sum(len(row["area_ids"]) for row in rows) == 45
     assert {
         area_id: sum(area_id in row["area_ids"] for row in rows)
         for area_id in ("E06000053", "E09000001")
-    } == {"E06000053": 20, "E09000001": 23}
+    } == {"E06000053": 21, "E09000001": 24}
+    assert "external:census_households/households" in {row["target_id"] for row in rows}
     assert all(row["defer_if_compiles"] is True for row in rows)
     assert all(not row["target_id"].endswith("band_h") for row in rows)
     assert {
@@ -235,13 +236,14 @@ def test_a14_deferral_declarations_cover_only_currently_active_cells() -> None:
         for row in declarations
         if row.reason_id == "local_authority_support_floor_excluded"
     ]
-    assert len(support) == 24
-    assert sum(len(row.area_ids) for row in support) == 43
+    assert len(support) == 25
+    assert sum(len(row.area_ids) for row in support) == 45
     by_area = {
         area_id: sum(area_id in row.area_ids for row in support)
         for area_id in ("E06000053", "E09000001")
     }
-    assert by_area == {"E06000053": 20, "E09000001": 23}
+    assert by_area == {"E06000053": 21, "E09000001": 24}
+    assert "external:census_households/households" in {row.target_id for row in support}
     assert all(row.defer_if_compiles for row in support)
     assert all(not row.target_id.endswith("band_h") for row in support)
 
