@@ -9,13 +9,19 @@ a record budget with L0.
 
 from __future__ import annotations
 
+import hashlib
+import importlib.util
+import inspect
 import json
+import platform
 import warnings
+from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 
 from microcosm.calibrate import (
     CalibrationResult,
@@ -2109,17 +2115,46 @@ def test_mass_reason_rides_the_free_mass_record() -> None:
         calibrate(frame, targets, epochs=4, mass_reason="   ")
 
 
+def _pre_best_iterate_oracle(fixture: dict):
+    """Verify the immutable optimizer and installed dependency closure first."""
+    from microcosm.calibrate import gates
+
+    provenance = fixture["same_runtime_oracle"]
+    path = Path(__file__).parent / "fixtures/pre_best_iterate" / provenance["module"]
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == provenance["module_sha256"]
+    for name, expected in provenance["helper_source_sha256"].items():
+        source = inspect.getsource(getattr(solve_module, name)).rstrip("\n")
+        assert hashlib.sha256(source.encode()).hexdigest() == expected, name
+    # Pin the entire gate module, including the class's stretch constants.
+    assert (
+        hashlib.sha256(Path(gates.__file__).read_bytes()).hexdigest()
+        == (provenance["gates_module_sha256"])
+    )
+    assert solve_module._PRUNE_REL_ATOL == provenance["prune_rel_atol"]
+    spec = importlib.util.spec_from_file_location("pre_best_iterate_oracle", path)
+    oracle = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(oracle)
+    source = inspect.getsource(oracle._optimize).rstrip("\n")
+    assert (
+        hashlib.sha256(source.encode()).hexdigest()
+        == provenance["function_source_sha256"]
+    )
+    return oracle
+
+
 @pytest.mark.parametrize("case_id", ["conserved_mass", "l2_regularized", "l0_gated"])
 def test_best_iterate_preserves_pre_change_excluded_paths(case_id: str) -> None:
-    """Independent pre-change weights, trajectory and gate bytes stay exact.
+    """Old and current solvers return exact bytes in every executing runtime.
 
-    The data-only oracle records the unmodified solver's source revision and
-    hash. It is not regenerated from the implementation under test. The cases
-    exercise the three separate exclusions from best-iterate selection.
+    The immutable optimizer comes from the recorded pre-change source, not
+    the implementation under test. Mac snapshot bytes provide a separate
+    provenance check only on their authoring runtime. No tolerance or platform
+    skip replaces the exact old/new comparison.
     """
     fixture = json.loads(
         (Path(__file__).parent / "fixtures/pre_best_iterate/controls.json").read_text()
     )
+    oracle = _pre_best_iterate_oracle(fixture)
     inputs = fixture["inputs"]
     n = len(inputs["initial_weights"])
     frame = Frame(
@@ -2140,12 +2175,53 @@ def test_best_iterate_preserves_pre_change_excluded_paths(case_id: str) -> None:
     )
     targets = TargetSet(tuple(Target(**item) for item in fixture["targets"]))
     case = next(item for item in fixture["cases"] if item["id"] == case_id)
-    result = calibrate(frame, targets, **case["options"])
-
-    for name, expected in case["expected_float64_le_hex"].items():
+    options = case["options"]
+    # Construct the oracle's inputs from frozen data, independently of the
+    # current solver's compiled problem. These two targets preserve row order.
+    target_values = np.array([item["value"] for item in fixture["targets"]])
+    torch.manual_seed(options["seed"])
+    old_weights, old_trajectory, old_gates = oracle._optimize(
+        torch.tensor([inputs["income"], inputs["eligible"]], dtype=torch.float32),
+        torch.tensor(target_values, dtype=torch.float32),
+        None,
+        torch.tensor(np.maximum(np.abs(target_values), 1.0), dtype=torch.float32),
+        options["target_loss_cap"],
+        np.array(inputs["initial_weights"]),
+        epochs=options["epochs"],
+        learning_rate=options["learning_rate"],
+        conserve_mass=options["mass"] == "conserve",
+        max_weight_ratio=options["max_weight_ratio"],
+        l0_lambda=options.get("l0_lambda", 0.0),
+        l2_lambda=options.get("l2_lambda", 0.0),
+        target_records=None,
+        init_mean=options.get("init_mean", 0.999),
+        temperature=0.25,
+        return_gate_open_probabilities=True,
+    )
+    torch.manual_seed(options["seed"])
+    result = calibrate(frame, targets, **options)
+    expected_arrays = {"weights": old_weights, "loss_trajectory": old_trajectory}
+    if old_gates is not None:
+        expected_arrays["gate_open_probabilities"] = old_gates
+    else:
+        assert result.gate_open_probabilities is None
+    for name, expected in expected_arrays.items():
         actual = np.asarray(getattr(result, name))
-        assert actual.dtype == np.dtype("float64")
-        assert actual.astype("<f8").tobytes() == bytes.fromhex(expected), name
+        assert actual.dtype == expected.dtype == np.dtype("float64")
+        assert actual.tobytes() == expected.tobytes(), name
+
+    runtime = {
+        "system": platform.system(),
+        "machine": platform.machine(),
+        "python_major_minor": ".".join(platform.python_version_tuple()[:2]),
+    }
+    if runtime == fixture["authoring_runtime"] and all(
+        version(name) == expected for name, expected in fixture["dependencies"].items()
+    ):
+        for name, expected in case["expected_float64_le_hex"].items():
+            assert expected_arrays[name].astype("<f8").tobytes() == bytes.fromhex(
+                expected
+            ), name
     assert result.options["iterate_selection"] == "closing_state"
     assert result.n_nonzero == case["n_nonzero"]
     assert not np.array_equal(result.weights, inputs["initial_weights"])

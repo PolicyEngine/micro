@@ -109,5 +109,30 @@
       },
       "n_nonzero": 8
     }
-  ]
+  ],
+  "authoring_runtime": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python_major_minor": "3.13"
+  },
+  "same_runtime_oracle": {
+    "module": "optimizer_1f7d676f.py",
+    "module_sha256": "712d31887697047791b4973502e3c52332bb027244688cc8772f118384c4b34e",
+    "function": "_optimize",
+    "function_source_sha256": "7c6bba4f2d6ad00a137d031b8cc40e3b97f4678026a9c3900b8c281123cee234",
+    "source_commit": "1f7d676f2449894bfd794973eaa507aa79bfbfdb",
+    "source_path": "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py",
+    "source_sha256": "f4b32c40a8675c37b0a4f3c1e48ca7b2078e803dac4413221aeb98c23b9e2066",
+    "helper_source_sha256": {
+      "_apply_constraint": "86281bdf18bdc17acafbbe79e15fb6b4c4102840a1315c3b6bbf52b170d8749c",
+      "_prepare_warm_start_weights": "2e50a07a704ad2ab9d6529a965b7554f7aaba3972ec046a14e5a519e4f0904ed",
+      "_project_to_total": "f220ae141fc9144a4a1eec2c894f49065e88bbc1fd18be837ddec2d96cdd52f0",
+      "_relative_error_loss": "e7bba6d694211827780e2d5a0c60436decbaa1dc9310a7caa62945ac4d50843d",
+      "_validate_target_loss_cap": "7d7a663cc1de3f3667ea713329387a7913063335a47bc693299fd5c2479f8553"
+    },
+    "gates_source_path": "packages/microcosm-calibrate/src/microcosm/calibrate/gates.py",
+    "gates_module_sha256": "379e4adbb3ed7cdd13f7c7c548da45163f2a50330c874ee51095d38243d392e6",
+    "prune_rel_atol": 1e-06,
+    "note": "Compare this frozen function and the current solver in the same runtime with separate seed resets. Recorded Mac bytes remain an additional check only on the authoring runtime and dependency versions."
+  }
 }
