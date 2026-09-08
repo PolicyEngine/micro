@@ -308,3 +308,24 @@ search stop on open-probability mass; then run S2.** Mass basis: `calibrate(...,
 of not-fully-closed weights; the size refit uses it and records `selection_budget_basis`. On a 60-record
 toy problem the mass basis lands Σπ 20.2 for a budget of 20 where the count basis gives count 19 with
 mass 18.5. `solve.py` is an attested module, so the spec-engine identities are re-cut once more.
+Commit 2f7eb945 (mass basis + re-pin: bundle digests am 924bc8c6… / be 08f63f50… / uk 4fd5fc1b…, loader
+golden vector e155a712…, seed protocol 260446f1… and seed map f6834db8… with the regenerated US coverage
+report, the H1 calibrate parity fixture, the US spec digest b9b7068f… in the multispine pool-tool test; 245
+pin and parity tests pass).
+
+Rent fix, commit 0cfe1928 (implemented by Codex from `.codex-work/PLAN-rent.md`, reviewed and verified
+here: ruff clean, 137 tests): `uk_private_rent_mean_to_total` in `uk_runtime/ledger_targets.py`, applied
+in `uk_local_target_surface` after the A15/A17 uprating, composes each `rent/private_rent` value as
+`12 × mean monthly rent × the same authority's bound tenure/private_rent count`, keeps the mean and the
+count in the row's metadata, refuses by area when the count is missing or non-positive, and records every
+cell under `cross_grain.private_rent_mean_to_total`; the metric is unchanged; the census rationale for the
+PIPR source is corrected (the feed carries the 2025 months the reference averages) and its committed
+artifact regenerated. Dry run on spine-p with the composed surface: 314 cells composed (E06000001: £551.83
+× 12 × 7,435.5 renters = £49.2m), 364 national rows, 20,794 × 792,690.
+
+### S2 — the experiment: 55,000 households, `--selection-pi-hi 0.95 --epochs 2000 --skip-holdout`
+
+Launched 2026-09-08 ~17:50Z on spine-p from the clean tree at 1079ef87, chained on smoke4's Logbook row
+363c8c4f…, run `spine-p/f100-k15-h55000-e2000-p95-s42`, `/usr/bin/time -l`. Expected 3 to 8 hours; the
+draw is on the mass basis, so the exact count is feasible by construction at the requested threshold.
+(recorded when it completes)
