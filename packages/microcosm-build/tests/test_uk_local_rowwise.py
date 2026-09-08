@@ -1430,6 +1430,33 @@ def test_size_refit_pi_hi_promotes_learned_certainties_and_is_recorded():
             )
 
 
+def test_size_refit_refuses_unsupported_nonzero_targets_by_name():
+    from microcosm.build.uk_runtime.dataset_size import (
+        refit_uk_dataset_size,
+        unsupported_nonzero_targets,
+    )
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [
+                Target("count", "household", lambda f: np.ones(f.n("household")), 3),
+                Target("nobody", "household", lambda f: np.zeros(f.n("household")), 5),
+            ]
+        ),
+        epochs=2,
+    )
+    assert [
+        name.split("@")[0] for name in unsupported_nonzero_targets(dense.problem)
+    ] == ["nobody"]
+    with pytest.raises(ValueError, match="no supporting household.*nobody"):
+        refit_uk_dataset_size(
+            frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7
+        )
+
+
 def test_size_refusal_at_the_draw_carries_the_feasibility_numbers(monkeypatch):
     import microcosm.build.uk_runtime.dataset_size as sizing
     from microcosm.calibrate import Target, TargetSet, calibrate

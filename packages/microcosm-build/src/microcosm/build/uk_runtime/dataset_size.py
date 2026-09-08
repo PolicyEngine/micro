@@ -2,9 +2,11 @@
 
 import json
 from dataclasses import dataclass, replace
+from typing import Any
 
 import numpy as np
 import pandas as pd
+from scipy import sparse
 
 from microcosm.calibrate import (
     CalibrationResult,
@@ -87,6 +89,17 @@ def refit_uk_dataset_size(
             },
         )
     problem = dense.problem
+    unsupported = unsupported_nonzero_targets(problem)
+    if unsupported:
+        shown = ", ".join(unsupported[:12])
+        more = "" if len(unsupported) <= 12 else f" (+{len(unsupported) - 12} more)"
+        raise ValueError(
+            f"{len(unsupported)} nonzero target(s) have no supporting household in "
+            f"the pool, so no selection can carry them: {shown}{more}. The dense "
+            "solve tolerates such rows as misses; a size selection refuses them "
+            "by name so the binding defect is fixed or the row is excluded with "
+            "a signed reason, never selected around."
+        )
     # Input weights are the pool design, not the concentrated dense weights.
     init = contribution_initialization(
         problem.matrix, dense.initial_weights, problem.target_vector
@@ -196,6 +209,32 @@ def refit_uk_dataset_size(
             "certification": "candidate_only_pending_matched_comparison_and_promotion_scorecard",
         },
     )
+
+
+def unsupported_nonzero_targets(problem: Any) -> list[str]:
+    """Names of nonzero targets whose constraint row has no nonzero entry.
+
+    ``contribution_initialization`` refuses such a row by index; a size run
+    should refuse it by name, because the cure is upstream (a measure that
+    resolves to zero on the cloned pool, or a filter no pool household
+    satisfies), not in the selection.
+    """
+
+    matrix = sparse.csr_array(problem.matrix)
+    targets = np.asarray(problem.target_vector, dtype=np.float64)
+    support = np.diff(matrix.indptr)
+    nonzero_entries = np.asarray(
+        [
+            int(np.count_nonzero(matrix.data[matrix.indptr[i] : matrix.indptr[i + 1]]))
+            for i in range(matrix.shape[0])
+        ]
+    )
+    names = list(getattr(problem, "names", [str(i) for i in range(matrix.shape[0])]))
+    return [
+        str(names[i])
+        for i in range(matrix.shape[0])
+        if targets[i] != 0.0 and (support[i] == 0 or nonzero_entries[i] == 0)
+    ]
 
 
 _FEASIBILITY_PI_HI_GRID = (0.999, 0.99, 0.98, 0.95, 0.9, 0.8, 0.7, 0.5)
