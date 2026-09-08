@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from types import MappingProxyType
 
 from .canonical import canonical_json
 from .decl import (
@@ -15,6 +16,8 @@ from .decl import (
     Owned,
     Ownership,
     Param,
+    Product,
+    ProductKind,
     Slice,
     SourceRef,
     StructuralDelta,
@@ -55,6 +58,11 @@ def graph_to_json(graph: Graph) -> str:
             if graph.mass_partition is None
             else {"mass_partition": list(graph.mass_partition)}
         ),
+        **(
+            {}
+            if not graph.products
+            else {"products": [_product_payload(product) for product in graph.products]}
+        ),
     }
     return canonical_json(payload).decode("utf-8")
 
@@ -72,6 +80,8 @@ def graph_from_json(text: str) -> Graph:
     fields = {"country", "sources", "nodes"}
     if "mass_partition" in root:
         fields.add("mass_partition")
+    if "products" in root:
+        fields.add("products")
     _exact_fields(root, fields, "graph")
     sources_raw = _array(root["sources"], "graph.sources")
     nodes_raw = _array(root["nodes"], "graph.nodes")
@@ -86,6 +96,12 @@ def graph_from_json(text: str) -> Graph:
         ),
         mass_partition=_partition_from_payload(
             root.get("mass_partition"), "graph.mass_partition"
+        ),
+        products=tuple(
+            _product_from_payload(value, index)
+            for index, value in enumerate(
+                _array(root.get("products", []), "graph.products")
+            )
         ),
     )
 
@@ -211,6 +227,7 @@ def _node_payload(node: Node) -> dict[str, object]:
         "population": node.population,
         "structural": node.structural.value,
         "base": node.base,
+        **({"bases": list(node.bases)} if node.bases else {}),
         "sources": list(node.sources),
         "weights": (
             None
@@ -219,6 +236,11 @@ def _node_payload(node: Node) -> dict[str, object]:
                 "entity": node.weights.entity,
                 "to_kind": node.weights.to_kind,
                 "mass": node.weights.mass,
+                **(
+                    {"anchor": node.weights.anchor}
+                    if node.weights.anchor is not None
+                    else {}
+                ),
             }
         ),
         "mass": node.mass,
@@ -262,6 +284,8 @@ def _node_from_payload(value: object, index: int) -> Node:
     )
     if "entrants" in payload:
         fields.add("entrants")
+    if "bases" in payload:
+        fields.add("bases")
     _exact_fields(payload, fields, label)
     entrants = payload.get("entrants", False)
     if not isinstance(entrants, bool):
@@ -272,6 +296,7 @@ def _node_from_payload(value: object, index: int) -> Node:
     params = _mapping(payload["params"], f"{label}.params")
     population = _optional_string(payload["population"], f"{label}.population")
     base = _optional_string(payload["base"], f"{label}.base")
+    bases = _array(payload.get("bases", []), f"{label}.bases")
     return Node(
         artifact_inputs=tuple(
             _artifact_from_payload(value, input_=True)
@@ -306,6 +331,10 @@ def _node_from_payload(value: object, index: int) -> Node:
             _string(payload["structural"], f"{label}.structural")
         ),
         base=base,
+        bases=tuple(
+            _string(name, f"{label}.bases[{base_index}]")
+            for base_index, name in enumerate(bases)
+        ),
         sources=tuple(
             _string(name, f"{label}.sources[{source_index}]")
             for source_index, name in enumerate(sources)
@@ -355,11 +384,15 @@ def _weights_from_payload(value: object, label: str) -> WeightTransition | None:
     if value is None:
         return None
     payload = _mapping(value, label)
-    _exact_fields(payload, {"entity", "to_kind", "mass"}, label)
+    fields = {"entity", "to_kind", "mass"}
+    if "anchor" in payload:
+        fields.add("anchor")
+    _exact_fields(payload, fields, label)
     return WeightTransition(
         entity=_string(payload["entity"], f"{label}.entity"),
         to_kind=_string(payload["to_kind"], f"{label}.to_kind"),
         mass=_string(payload["mass"], f"{label}.mass"),
+        anchor=_optional_string(payload.get("anchor"), f"{label}.anchor"),
     )
 
 
@@ -373,7 +406,66 @@ def _param_from_json(value: object, label: str) -> Param:
             _param_from_json(child, f"{label}[{index}]")
             for index, child in enumerate(value)
         )
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {
+                _string(key, f"{label} key"): _param_from_json(
+                    child, f"{label}[{key!r}]"
+                )
+                for key, child in value.items()
+            }
+        )
     raise TypeError(f"{label} is not a legal graph parameter")
+
+
+def _product_payload(product: Product) -> dict[str, object]:
+    return {
+        "name": product.name,
+        "kind": product.kind.value,
+        **({"node": product.node} if product.node is not None else {}),
+        **({"entity": product.entity} if product.entity is not None else {}),
+        **({"column": product.column} if product.column is not None else {}),
+        **({"artifact": product.artifact} if product.artifact is not None else {}),
+        **({"source": product.source} if product.source is not None else {}),
+        **({"codec": product.codec} if product.codec is not None else {}),
+        **(
+            {"codec_version": product.codec_version}
+            if product.codec_version is not None
+            else {}
+        ),
+    }
+
+
+def _product_from_payload(value: object, index: int) -> Product:
+    label = f"graph.products[{index}]"
+    payload = _mapping(value, label)
+    fields = {"name", "kind"} | (
+        set(payload)
+        & {
+            "node",
+            "entity",
+            "column",
+            "artifact",
+            "source",
+            "codec",
+            "codec_version",
+        }
+    )
+    _exact_fields(payload, fields, label)
+    version = payload.get("codec_version")
+    if version is not None and (type(version) is not int or version < 1):
+        raise TypeError(f"{label}.codec_version must be a positive integer")
+    return Product(
+        name=_string(payload["name"], f"{label}.name"),
+        kind=ProductKind(_string(payload["kind"], f"{label}.kind")),
+        node=_optional_string(payload.get("node"), f"{label}.node"),
+        entity=_optional_string(payload.get("entity"), f"{label}.entity"),
+        column=_optional_string(payload.get("column"), f"{label}.column"),
+        artifact=_optional_string(payload.get("artifact"), f"{label}.artifact"),
+        source=_optional_string(payload.get("source"), f"{label}.source"),
+        codec=_optional_string(payload.get("codec"), f"{label}.codec"),
+        codec_version=version,
+    )
 
 
 def _mapping(value: object, label: str) -> Mapping[str, object]:

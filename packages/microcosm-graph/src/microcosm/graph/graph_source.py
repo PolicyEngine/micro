@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -21,10 +20,13 @@ from .decl import (
     Owned,
     Ownership,
     Param,
+    Product,
+    ProductKind,
     Slice,
     SourceRef,
     StructuralDelta,
     WeightTransition,
+    _freeze_param,
     compile_graph,
 )
 from .graph_schema import validate_graph_document
@@ -55,7 +57,7 @@ class LoadedGraphSource:
     schema_version: int
     parameters: Mapping[str, Param]
     receipts: tuple[GraphSourceReceipt, ...]
-    products: tuple[Mapping[str, object], ...] = ()
+    products: tuple[Product, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -128,20 +130,6 @@ def _read_document(path: Path, root: Path, *, module: bool) -> _Document:
     return _Document(path, path.relative_to(root).as_posix(), raw, parsed)
 
 
-def _freeze_json(value: object) -> Param:
-    if value is None or isinstance(value, bool | int | str):
-        return value
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise GraphSourceValidationError("parameters must be finite")
-        return value
-    if isinstance(value, list | tuple):
-        return tuple(_freeze_json(item) for item in value)
-    raise GraphSourceValidationError(
-        f"node parameter has unsupported type {type(value).__name__}"
-    )
-
-
 def _parameter_value(
     name: str, declaration: Mapping[str, object], supplied: object
 ) -> Param:
@@ -158,8 +146,6 @@ def _parameter_value(
         raise GraphParameterBindingError(
             f"parameter {name!r} requires type {kind}, got {type(supplied).__name__}"
         )
-    if isinstance(supplied, float) and not math.isfinite(supplied):
-        raise GraphParameterBindingError(f"parameter {name!r} must be finite")
     if "allowed" in declaration and supplied not in declaration["allowed"]:
         raise GraphParameterBindingError(
             f"parameter {name!r} is not one of its allowed values"
@@ -168,7 +154,10 @@ def _parameter_value(
         raise GraphParameterBindingError(f"parameter {name!r} is below its minimum")
     if "maximum" in declaration and supplied > declaration["maximum"]:  # type: ignore[operator]
         raise GraphParameterBindingError(f"parameter {name!r} is above its maximum")
-    return _freeze_json(supplied)
+    try:
+        return _freeze_param(name, supplied)
+    except GraphError as error:
+        raise GraphParameterBindingError(str(error)) from error
 
 
 def _bind_parameters(
@@ -211,7 +200,7 @@ def _artifact_type(value: object) -> ArtifactType:
 
 def _lower_node(raw: Mapping[str, object], bindings: Mapping[str, Param]) -> Node:
     params = {
-        str(name): _freeze_json(value)
+        str(name): _freeze_param(str(name), value)
         for name, value in _mapping(raw.get("params", {}), "node params").items()
     }
     for local, global_name in _mapping(
@@ -252,7 +241,10 @@ def _lower_node(raw: Mapping[str, object], bindings: Mapping[str, Param]) -> Nod
     if weight_raw is not None:
         item = _mapping(weight_raw, "weight transition")
         weights = WeightTransition(
-            str(item["entity"]), str(item["to_kind"]), str(item.get("mass", "conserve"))
+            str(item["entity"]),
+            str(item["to_kind"]),
+            str(item.get("mass", "conserve")),
+            None if "anchor" not in item else str(item["anchor"]),
         )
     artifact_inputs = tuple(
         ArtifactInput(
@@ -282,6 +274,7 @@ def _lower_node(raw: Mapping[str, object], bindings: Mapping[str, Param]) -> Nod
         population=None if "population" not in raw else str(raw["population"]),
         structural=StructuralDelta(str(raw.get("structural", "none"))),
         base=None if "base" not in raw else str(raw["base"]),
+        bases=tuple(str(value) for value in raw.get("bases", [])),
         sources=tuple(str(value) for value in raw.get("sources", [])),
         weights=weights,
         mass=str(raw.get("mass", "conserve")),
@@ -293,19 +286,19 @@ def _lower_node(raw: Mapping[str, object], bindings: Mapping[str, Param]) -> Nod
     )
 
 
-def _freeze_product(value: Mapping[str, object]) -> Mapping[str, object]:
-    def freeze(item: object) -> object:
-        if isinstance(item, Mapping):
-            return MappingProxyType(
-                {str(key): freeze(child) for key, child in item.items()}
-            )
-        if isinstance(item, list):
-            return tuple(freeze(child) for child in item)
-        return item
-
-    frozen = freeze(value)
-    assert isinstance(frozen, Mapping)
-    return frozen
+def _lower_product(value: Mapping[str, object]) -> Product:
+    target = _mapping(value["target"], "product target")
+    return Product(
+        name=str(value["name"]),
+        kind=ProductKind(str(value["kind"])),
+        node=None if "node" not in target else str(target["node"]),
+        entity=None if "entity" not in target else str(target["entity"]),
+        column=None if "column" not in target else str(target["column"]),
+        artifact=None if "artifact" not in target else str(target["artifact"]),
+        source=None if "product" not in target else str(target["product"]),
+        codec=None if "codec" not in value else str(value["codec"]),
+        codec_version=value.get("codec_version"),  # type: ignore[arg-type]
+    )
 
 
 def load_graph_source(
@@ -413,6 +406,10 @@ def load_graph_source(
         _lower_node(_mapping(unique["nodes"][name], "node"), bound)
         for name in sorted(unique["nodes"])
     )
+    products = tuple(
+        _lower_product(_mapping(unique["products"][name], "product"))
+        for name in sorted(unique["products"])
+    )
     mass_partition = root.get("mass_partition")
     try:
         graph = Graph(
@@ -422,15 +419,12 @@ def load_graph_source(
             None
             if mass_partition is None
             else tuple(str(value) for value in mass_partition),  # type: ignore[arg-type]
+            products,
         )
     except (GraphError, TypeError, ValueError) as error:
         raise GraphSourceValidationError(
             f"graph declaration is invalid: {error}", source=str(root_path)
         ) from error
-    products = tuple(
-        _freeze_product(_mapping(unique["products"][name], "product"))
-        for name in sorted(unique["products"])
-    )
     receipts = tuple(
         GraphSourceReceipt(
             document.relative,
@@ -443,7 +437,7 @@ def load_graph_source(
         GRAPH_SOURCE_SCHEMA_VERSION,
         bound,
         receipts,
-        products,
+        graph.products,
     )
 
 

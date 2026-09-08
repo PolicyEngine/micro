@@ -60,6 +60,7 @@ from .population import (
     mass_record_receipt,
     patch,
     restore_cached_expand,
+    union_populations,
     weight_cap_receipt,
 )
 from .store import (
@@ -387,6 +388,11 @@ def _context_digest(context: KernelContext) -> bytes:
         digest.update(entity.encode("utf-8") + b"\0")
         digest.update(weights.kind.value.encode("ascii") + b"\0")
         _update_array(digest, weights.values)
+    for name in sorted(context.weight_anchors):
+        weights = context.weight_anchors[name]
+        digest.update(name.encode("utf-8") + b"\0")
+        digest.update(weights.kind.value.encode("ascii") + b"\0")
+        _update_array(digest, weights.values)
     _update_series(digest, context.strata)
     for name, value in sorted(context.artifacts.items()):
         digest.update(
@@ -479,6 +485,7 @@ def _project_context(
     tolerances: Mapping[tuple[str, str], Tolerance | None],
     numerics: Mapping[tuple[str, str], NumericScope],
     artifacts: Mapping[str, ArtifactValue] | None = None,
+    weight_anchors: Mapping[str, Weights] | None = None,
 ) -> KernelContext:
     if population is None:
         return KernelContext(
@@ -492,6 +499,7 @@ def _project_context(
             tolerances=tolerances,
             numerics=numerics,
             artifacts={} if artifacts is None else artifacts,
+            weight_anchors={} if weight_anchors is None else weight_anchors,
         )
 
     frame = population.frame
@@ -584,6 +592,7 @@ def _project_context(
         tolerances=tolerances,
         numerics=numerics,
         artifacts={} if artifacts is None else artifacts,
+        weight_anchors={} if weight_anchors is None else weight_anchors,
     )
 
 
@@ -674,7 +683,7 @@ def _input_writers(
     """Return causal writer lists for explicit, rewrite, and claim reads."""
 
     node = compiled.graph.node(node_id)
-    if node.structural is StructuralDelta.CREATE:
+    if node.structural in {StructuralDelta.CREATE, StructuralDelta.UNION}:
         return MappingProxyType({})
     input_version = (
         compiled.versions[node_id]
@@ -866,6 +875,20 @@ def _writers_of(
 
         if _expand_wrote_rows(holder, coordinate, receipts):
             add(holder.id)
+        if holder.structural is StructuralDelta.UNION:
+            for base in holder.bases:
+                for writer in reversed(
+                    _writers_of(
+                        compiled,
+                        base,
+                        entity,
+                        column,
+                        exclude_node=exclude_node,
+                        receipts=receipts,
+                    )
+                ):
+                    add(writer)
+            break
         if holder.structural is StructuralDelta.CREATE or holder.base is None:
             break
         version = holder.base
@@ -1061,7 +1084,7 @@ def _validate_result(
         raise NodeRejected(
             f"Node {node.id!r} result.columns keys must be (entity, column) strings."
         )
-    if node.structural is StructuralDelta.NONE:
+    if node.structural in {StructuralDelta.NONE, StructuralDelta.REVISION}:
         if got != set(expected):
             raise NodeRejected(
                 f"Node {node.id!r} returned output keys {sorted(got)!r}, not exactly "
@@ -1080,10 +1103,20 @@ def _validate_result(
     elif result.keep is not None:
         raise NodeRejected(f"Non-FILTER node {node.id!r} returned a keep mask.")
 
-    if node.structural not in {StructuralDelta.CREATE, StructuralDelta.EXPAND} and (
-        result.frame is not None
-    ):
+    frame_operations = {StructuralDelta.CREATE, StructuralDelta.EXPAND}
+    if cache_hit:
+        frame_operations.add(StructuralDelta.UNION)
+    if node.structural not in frame_operations and result.frame is not None:
         raise NodeRejected(f"Node {node.id!r} returned a Frame outside CREATE/EXPAND.")
+    if node.structural is StructuralDelta.UNION:
+        if cache_hit and result.frame is None:
+            raise NodeRejected(
+                f"Cached UNION node {node.id!r} has no executor frame artifact."
+            )
+        if not cache_hit and result.frame is not None:
+            raise NodeRejected(
+                f"UNION node {node.id!r} returned a Frame; the executor owns union."
+            )
     if node.structural is StructuralDelta.CREATE and result.frame is None:
         raise NodeRejected(f"CREATE node {node.id!r} did not return a Frame.")
     if node.structural is StructuralDelta.EXPAND:
@@ -1306,10 +1339,11 @@ def _apply_result(
     cache_hit: bool = False,
     mass_partition: tuple[str, str] | None = None,
     rewrite_coordinates: frozenset[tuple[str, str]] = frozenset(),
+    weight_anchor: Weights | None = None,
 ) -> Population:
     if (
         mass_partition is not None
-        and node.structural is StructuralDelta.NONE
+        and node.structural in {StructuralDelta.NONE, StructuralDelta.REVISION}
         and any(
             (owned.entity, owned.column) == mass_partition for owned in node.outputs
         )
@@ -1323,6 +1357,25 @@ def _apply_result(
         assert result.frame is not None
         return _create_population(node, result.frame)
     assert population is not None
+    if node.structural is StructuralDelta.UNION:
+        if cache_hit and result.frame is not None:
+            for entity in population.frame.entities:
+                if not result.frame.table(entity).equals(
+                    population.frame.table(entity)
+                ):
+                    raise NodeRejected(
+                        f"Cached UNION node {node.id!r} frame disagrees with its bases."
+                    )
+            for entity in population.frame.weighted_entities:
+                expected = population.frame.weights_for(entity)
+                actual = result.frame.weights_for(entity)
+                if actual.kind is not expected.kind or not np.array_equal(
+                    actual.values, expected.values
+                ):
+                    raise NodeRejected(
+                        f"Cached UNION node {node.id!r} weights disagree with its bases."
+                    )
+        return population
     if (
         cache_hit
         and node.structural is StructuralDelta.EXPAND
@@ -1374,6 +1427,7 @@ def _apply_result(
             result,
             mass_partition=mass_partition,
             rewrite_coordinates=rewrite_coordinates,
+            weight_anchor=weight_anchor,
         )
     except NodeRejected:
         raise
@@ -1407,7 +1461,7 @@ def _write_node(
     typed_artifacts: Mapping[str, object] | None = None,
 ) -> tuple[dict[tuple[str, str], str], dict[str, object]]:
     columns: dict[tuple[str, str], tuple[pd.Series, str]] = {}
-    if node.structural is StructuralDelta.NONE:
+    if node.structural in {StructuralDelta.NONE, StructuralDelta.REVISION}:
         declared = {(owned.entity, owned.column): owned for owned in node.outputs}
         for coordinate, series in result.columns.items():
             columns[coordinate] = (series, declared[coordinate].dtype)
@@ -1433,7 +1487,7 @@ def _write_node(
         manifest_artifacts[(entity, column)] = output_key
 
     stored_frame_key: str | None = None
-    if node.structural is not StructuralDelta.NONE:
+    if node.structural not in {StructuralDelta.NONE, StructuralDelta.REVISION}:
         stored_frame_key = frame_key(key)
         store.put_frame(
             stored_frame_key,
@@ -1740,7 +1794,7 @@ def _load_cached_result(
         manifest_artifacts[coordinate] = output_key
 
     result_columns: dict[tuple[str, str], pd.Series] = {}
-    if node.structural is StructuralDelta.NONE:
+    if node.structural in {StructuralDelta.NONE, StructuralDelta.REVISION}:
         for owned in node.outputs:
             coordinate = (owned.entity, owned.column)
             try:
@@ -1754,7 +1808,14 @@ def _load_cached_result(
     frame_artifact = record["frame_key"]
     if frame_artifact is not None:
         loaded_frame = store.load_frame(str(frame_artifact))
-    if node.structural is not StructuralDelta.NONE and loaded_frame is None:
+    if (
+        node.structural
+        not in {
+            StructuralDelta.NONE,
+            StructuralDelta.REVISION,
+        }
+        and loaded_frame is None
+    ):
         raise StoreMiss(f"Cached structural node {node.id!r} has no frame artifact.")
 
     loaded_weights: Weights | None = None
@@ -1952,6 +2013,93 @@ def _preflight_expand_declarations(compiled: CompiledGraph) -> None:
             ) from error
 
 
+def _weight_anchors(
+    compiled: CompiledGraph,
+    node: Node,
+    population: Population | None,
+    populations: Mapping[str, Population],
+) -> Mapping[str, Weights]:
+    transition = node.weights
+    if transition is None or transition.anchor is None:
+        return MappingProxyType({})
+    if population is None:
+        raise NodeRejected(f"Node {node.id!r} has no population for its weight anchor.")
+    product_name = transition.anchor
+    producer = compiled.product_nodes[product_name]
+    version = compiled.versions[producer]
+    try:
+        anchor_population = populations[version]
+        anchor = anchor_population.frame.weights_for(transition.entity)
+    except (KeyError, ValueError) as error:
+        raise NodeRejected(
+            f"Node {node.id!r} cannot resolve weight anchor {product_name!r}."
+        ) from error
+    id_column = population.frame.schema.entity_id_column(transition.entity)
+    current_ids = pd.Index(population.frame.table(transition.entity)[id_column])
+    anchor_ids = pd.Index(anchor_population.frame.table(transition.entity)[id_column])
+    if not current_ids.equals(anchor_ids):
+        raise NodeRejected(
+            f"Node {node.id!r} weight anchor {product_name!r} is not exactly "
+            "aligned to the transition population."
+        )
+    return MappingProxyType({product_name: anchor})
+
+
+def _weight_anchor_receipt(
+    compiled: CompiledGraph,
+    node: Node,
+    updated: Population,
+    anchors: Mapping[str, Weights],
+    keys: Mapping[str, str],
+) -> Mapping[str, object]:
+    transition = node.weights
+    if transition is None or transition.anchor is None:
+        return MappingProxyType({})
+    name = transition.anchor
+    anchor = anchors[name]
+    current = updated.frame.weights_for(transition.entity)
+    ratios = np.divide(
+        current.values,
+        anchor.values,
+        out=np.full(len(current.values), np.inf, dtype=np.float64),
+        where=anchor.values > 0,
+    )
+    ratios[(anchor.values == 0) & (current.values == 0)] = 0.0
+    realized = float(ratios.max())
+    cap = node.params.get("max_weight_ratio")
+    if cap is not None:
+        if (
+            isinstance(cap, bool)
+            or not isinstance(cap, int | float)
+            or not np.isfinite(float(cap))
+            or float(cap) <= 0
+        ):
+            raise NodeRejected(
+                f"Node {node.id!r} max_weight_ratio must be finite and positive."
+            )
+        if realized > float(cap) and not np.isclose(
+            realized, float(cap), rtol=1e-12, atol=0.0
+        ):
+            raise NodeRejected(
+                f"Node {node.id!r} realized weight ratio {realized!r} exceeds "
+                f"{float(cap)!r} relative to {name!r}."
+            )
+    producer = compiled.product_nodes[name]
+    return MappingProxyType(
+        {
+            "weight_anchor": {
+                "product": name,
+                "producer": producer,
+                "producer_key": keys[producer],
+                "entity": transition.entity,
+                "kind": anchor.kind.value,
+                "realized_max_weight_ratio": realized,
+                **({"max_weight_ratio": float(cap)} if cap is not None else {}),
+            }
+        }
+    )
+
+
 def run_graph(
     compiled: CompiledGraph,
     *,
@@ -2000,8 +2148,20 @@ def run_graph(
                 "capabilities."
             )
 
+        union_lineage: Mapping[str, tuple[tuple[object, str, object], ...]] | None = (
+            None
+        )
         if node.structural is StructuralDelta.CREATE:
             incumbent: Population | None = None
+        elif node.structural is StructuralDelta.UNION:
+            try:
+                incumbent, union_lineage = union_populations(
+                    {base: populations[base] for base in node.bases}, node
+                )
+            except (TypeError, ValueError) as error:
+                raise NodeRejected(
+                    f"UNION node {node.id!r} rejected its bases: {error}"
+                ) from error
         elif node.structural is StructuralDelta.NONE:
             incumbent = populations[compiled.versions[node_id]]
         else:
@@ -2021,6 +2181,7 @@ def run_graph(
             numerics=input_numerics,
         )
         tolerance_writers = _tolerance_writer_payload(input_writers)
+        weight_anchors = _weight_anchors(compiled, node, incumbent, populations)
 
         typed = contracts[node_id]
         artifact_values = {}
@@ -2076,6 +2237,7 @@ def run_graph(
                 tolerances=input_tolerances,
                 numerics=input_numerics,
                 artifacts=artifact_values,
+                weight_anchors=weight_anchors,
             )
             before = _context_digest(context)
             try:
@@ -2109,6 +2271,11 @@ def run_graph(
         _validate_entrant_materialization_contract(
             compiled, node, incumbent, normalized_receipt
         )
+        if union_lineage is not None:
+            normalized_receipt["union_lineage"] = {
+                entity: [list(entry) for entry in entries]
+                for entity, entries in union_lineage.items()
+            }
         if kernel.capabilities.role is KernelRole.RELEASE:
             derived_tier, gate_ids = _release_tier(compiled, node_id, receipts)
             _validate_release_tier(node, result, derived_tier)
@@ -2144,6 +2311,7 @@ def run_graph(
             cache_hit=hit,
             mass_partition=compiled.graph.mass_partition,
             rewrite_coordinates=expand_rewrites,
+            weight_anchor=next(iter(weight_anchors.values()), None),
         )
         if node.structural is StructuralDelta.EXPAND:
             assert incumbent is not None
@@ -2183,6 +2351,7 @@ def run_graph(
         if node.structural not in {
             StructuralDelta.NONE,
             StructuralDelta.CREATE,
+            StructuralDelta.REVISION,
         }:
             existing_mass = normalized_receipt.get("mass", {})
             if not isinstance(existing_mass, Mapping):  # defended by mass validation
@@ -2197,6 +2366,9 @@ def run_graph(
                 ) from error
             normalized_receipt["mass"] = {**existing_mass, **authored_mass}
         normalized_receipt.update(weight_cap_receipt(updated, node))
+        normalized_receipt.update(
+            _weight_anchor_receipt(compiled, node, updated, weight_anchors, keys)
+        )
         cache_receipt = normalized_receipt
         run_receipt = dict(cache_receipt)
         if kernel.capabilities.role is KernelRole.RELEASE:

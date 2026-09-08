@@ -86,8 +86,9 @@
           "additionalProperties": {"$ref": "#/$defs/name"}
         },
         "population": {"$ref": "#/$defs/name"},
-        "structural": {"enum": ["none", "create", "filter", "expand", "reweight"]},
+        "structural": {"enum": ["none", "create", "filter", "expand", "reweight", "revision", "union"]},
         "base": {"$ref": "#/$defs/name"},
+        "bases": {"type": "array", "items": {"$ref": "#/$defs/name"}, "minItems": 2, "uniqueItems": true},
         "sources": {"type": "array", "items": {"$ref": "#/$defs/name"}, "uniqueItems": true},
         "weights": {"$ref": "#/$defs/weights"},
         "mass": {"enum": ["conserve", "free", "declared"]},
@@ -128,7 +129,8 @@
       "properties": {
         "entity": {"$ref": "#/$defs/name"},
         "to_kind": {"enum": ["design", "importance", "calibrated"]},
-        "mass": {"enum": ["conserve", "free", "declared"]}
+        "mass": {"enum": ["conserve", "free", "declared"]},
+        "anchor": {"$ref": "#/$defs/name"}
       }
     },
     "artifact_type": {
@@ -169,7 +171,17 @@
         "properties": {
           "name": {"$ref": "#/$defs/name"},
           "kind": {"enum": ["population", "coordinate", "weights", "artifact", "validation", "export"]},
-          "target": {"type": "object"},
+          "target": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "node": {"$ref": "#/$defs/name"},
+              "entity": {"$ref": "#/$defs/name"},
+              "column": {"$ref": "#/$defs/name"},
+              "artifact": {"$ref": "#/$defs/name"},
+              "product": {"$ref": "#/$defs/name"}
+            }
+          },
           "codec": {"type": "string"},
           "codec_version": {"type": "integer", "minimum": 1}
         }

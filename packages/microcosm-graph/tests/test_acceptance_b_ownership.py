@@ -119,6 +119,7 @@ def test_b2_executor_enforces_ownership(tmp_path: Path) -> None:
         "tolerances",  # amendment 13: declared tolerances of the inputs' owners
         "numerics",  # amendment 17: per-coordinate numeric class, bound, platform
         "artifacts",  # amendment 19: declared immutable typed bytes
+        "weight_anchors",  # declared earlier weight products, keyed by product name
     }
 
     graph = toy.small_graph(

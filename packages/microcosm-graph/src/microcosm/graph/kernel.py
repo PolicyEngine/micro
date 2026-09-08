@@ -313,6 +313,8 @@ class KernelContext:
             responsible for.
         weights: Entity name to effective typed weights, for entities named
             in the node's inputs or outputs.
+        weight_anchors: Named earlier weight products requested by the node's
+            weight transition, aligned to the transition population.
         strata: Read-only per-person strata of the population version.
         params: The node's parameters.
         rng: The default generator seeded from the node key. KEYED kernels
@@ -343,6 +345,7 @@ class KernelContext:
     tolerances: Mapping[tuple[str, str], Tolerance | None] = field(default_factory=dict)
     numerics: Mapping[tuple[str, str], NumericScope] = field(default_factory=dict)
     artifacts: Mapping[str, ArtifactValue] = field(default_factory=dict)
+    weight_anchors: Mapping[str, Weights] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         values = dict(self.artifacts)
@@ -356,6 +359,13 @@ class KernelContext:
                 "KernelContext.artifacts must map non-empty aliases to ArtifactValue."
             )
         object.__setattr__(self, "artifacts", MappingProxyType(values))
+        anchors = dict(self.weight_anchors)
+        if any(
+            not isinstance(name, str) or not name or not isinstance(value, Weights)
+            for name, value in anchors.items()
+        ):
+            raise TypeError("KernelContext.weight_anchors must map names to Weights.")
+        object.__setattr__(self, "weight_anchors", MappingProxyType(anchors))
 
 
 @dataclass(frozen=True)

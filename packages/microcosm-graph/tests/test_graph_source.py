@@ -23,6 +23,8 @@ from microcosm.graph import (
     Node,
     Owned,
     Ownership,
+    Product,
+    ProductKind,
     Slice,
     SourceRef,
     StructuralDelta,
@@ -169,6 +171,8 @@ def test_every_stack_base_declaration_field_lowers_exactly(tmp_path: Path) -> No
 schema_version: 1
 country: toy
 mass_partition: [person, period]
+products:
+  - {name: final, kind: population, target: {node: weights}}
 sources:
   - {name: fixture, codec: csv-tables, description: exact fixture}
 nodes:
@@ -280,6 +284,7 @@ nodes:
             ),
         ),
         ("person", "period"),
+        products=(Product("final", ProductKind.POPULATION, node="weights"),),
     )
     assert graph_from_yaml_file(path) == expected
 

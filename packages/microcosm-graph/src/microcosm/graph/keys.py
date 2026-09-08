@@ -169,7 +169,17 @@ def node_key(
     elif node.structural is StructuralDelta.NONE:
         input_version = compiled.versions[node_id]
     else:
-        input_version = node.base
+        input_version = None if node.structural is StructuralDelta.UNION else node.base
+
+    def supplier(version: str, entity: str, column: str) -> str:
+        owner = compiled.owners.get((version, entity, column))
+        if owner is not None:
+            return owner
+        holder = compiled.graph.node(version)
+        if holder.structural is StructuralDelta.REVISION:
+            assert holder.base is not None
+            return supplier(holder.base, entity, column)
+        return version
 
     resolved: dict[tuple[str, str], str] = {}
     rewritten = {
@@ -182,9 +192,7 @@ def node_key(
                 producer = (
                     input_version
                     if coordinate in rewritten
-                    else compiled.owners.get(
-                        (input_version, slice_.entity, column), input_version
-                    )
+                    else supplier(input_version, slice_.entity, column)
                 )
                 producer_key = _required_key(input_keys, producer, node_id)
                 resolved[coordinate] = artifact_key(producer_key, slice_.entity, column)
@@ -200,6 +208,21 @@ def node_key(
         }
     elif node.structural is StructuralDelta.CREATE:
         population_input = {}
+    elif node.structural is StructuralDelta.UNION:
+        population_input = {
+            "bases": tuple(
+                (
+                    base,
+                    frame_key(_required_key(input_keys, base, node_id)),
+                    tuple(
+                        (member, _required_key(input_keys, member, node_id))
+                        for member in compiled.predecessors[node_id]
+                        if compiled.versions.get(member) == base and member != base
+                    ),
+                )
+                for base in node.bases
+            )
+        }
     else:
         assert node.base is not None
         population_input = {

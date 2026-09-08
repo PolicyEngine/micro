@@ -44,6 +44,7 @@ __all__ = [
     "restore_cached_expand",
     "storage_equal",
     "token_for_dtype",
+    "union_populations",
     "weight_cap_receipt",
 ]
 
@@ -359,6 +360,240 @@ def population_from_frame(
         owners,
         mass_ledger=mass_ledger,
         design_weights=design_weights,
+    )
+
+
+def _json_id(value: object) -> object:
+    return value.item() if isinstance(value, np.generic) else value
+
+
+def union_populations(
+    populations: Mapping[str, Population], node: Node
+) -> tuple[Population, Mapping[str, tuple[tuple[object, str, object], ...]]]:
+    """Combine compatible bases with deterministic ID remapping and lineage."""
+
+    if node.structural is not StructuralDelta.UNION:
+        raise PopulationError("union_populations requires a UNION node.")
+    if set(populations) != set(node.bases):
+        raise PopulationError(
+            f"UNION node {node.id!r} needs bases {node.bases!r}; got "
+            f"{tuple(sorted(populations))!r}."
+        )
+    ordered = [populations[name] for name in node.bases]
+    first = ordered[0].frame
+    for name, population in zip(node.bases[1:], ordered[1:], strict=True):
+        frame = population.frame
+        if frame.schema != first.schema:
+            raise PopulationError(
+                f"UNION node {node.id!r} base {name!r} has a different schema."
+            )
+        if frame.metadata != first.metadata:
+            raise PopulationError(
+                f"UNION node {node.id!r} base {name!r} has different metadata."
+            )
+        if frame.links != first.links:
+            raise PopulationError(
+                f"UNION node {node.id!r} base {name!r} has different link tables."
+            )
+        if frame.weighted_entities != first.weighted_entities:
+            raise PopulationError(
+                f"UNION node {node.id!r} base {name!r} has different weighted entities."
+            )
+        for entity in first.entities:
+            left = first.table(entity)
+            right = frame.table(entity)
+            if tuple(left.columns) != tuple(right.columns):
+                raise PopulationError(
+                    f"UNION node {node.id!r} base {name!r} has different columns "
+                    f"on {entity!r}."
+                )
+            if tuple(map(str, left.dtypes)) != tuple(map(str, right.dtypes)):
+                raise PopulationError(
+                    f"UNION node {node.id!r} base {name!r} has different dtypes "
+                    f"on {entity!r}."
+                )
+        for entity in first.weighted_entities:
+            if frame.weights_for(entity).kind is not first.weights_for(entity).kind:
+                raise PopulationError(
+                    f"UNION node {node.id!r} base {name!r} has incompatible "
+                    f"{entity!r} weight kind."
+                )
+
+    table_parts: dict[str, list[pd.DataFrame]] = {
+        entity: [] for entity in first.entities
+    }
+    link_parts: dict[str, list[pd.DataFrame]] = {name: [] for name in first.links}
+    weight_parts: dict[str, list[np.ndarray]] = {
+        entity: [] for entity in first.weighted_entities
+    }
+    design_parts: dict[str, list[np.ndarray]] = {
+        entity: []
+        for entity in first.weighted_entities
+        if all(entity in population.design_weights for population in ordered)
+    }
+    used_ids: dict[str, set[object]] = {entity: set() for entity in first.entities}
+    lineage: dict[str, list[tuple[object, str, object]]] = {
+        entity: [] for entity in first.entities
+    }
+    strata_parts: list[pd.Series] = []
+    schema = first.schema
+
+    for base_name, population in zip(node.bases, ordered, strict=True):
+        frame = population.frame
+        copied = {
+            entity: frame.table(entity).copy(deep=True) for entity in frame.entities
+        }
+        id_maps: dict[str, dict[object, object]] = {}
+        for entity in frame.entities:
+            id_column = schema.entity_id_column(entity)
+            original = copied[entity][id_column].to_numpy(copy=True)
+            if len(set(original.tolist())) != len(original):
+                raise PopulationError(
+                    f"UNION node {node.id!r} base {base_name!r} repeats {entity!r} ids."
+                )
+            overlap = used_ids[entity].intersection(original.tolist())
+            remapped = original.copy()
+            if overlap:
+                if not np.issubdtype(original.dtype, np.integer) or any(
+                    not isinstance(value, int | np.integer)
+                    for value in used_ids[entity]
+                ):
+                    raise PopulationError(
+                        f"UNION node {node.id!r} cannot remap colliding non-integer "
+                        f"{entity!r} ids."
+                    )
+                offset = int(max(used_ids[entity])) + 1 - int(original.min())
+                remapped = original + offset
+            mapping = {
+                _json_id(old): _json_id(new)
+                for old, new in zip(original, remapped, strict=True)
+            }
+            id_maps[entity] = mapping
+            copied[entity][id_column] = remapped
+            used_ids[entity].update(map(_json_id, remapped))
+            lineage[entity].extend(
+                (_json_id(new), base_name, _json_id(old))
+                for old, new in zip(original, remapped, strict=True)
+            )
+
+        person = schema.person_entity
+        for group in schema.group_entities:
+            membership = schema.membership_column(group)
+            copied[person][membership] = copied[person][membership].map(id_maps[group])
+        for link in schema.links:
+            table = frame.link(link.name).copy(deep=True)
+            for entity in (link.left_entity, link.right_entity):
+                id_column = schema.entity_id_column(entity)
+                table[id_column] = table[id_column].map(id_maps[entity])
+            link_parts[link.name].append(table)
+        for entity in frame.entities:
+            table_parts[entity].append(copied[entity])
+            if entity in weight_parts:
+                weight_parts[entity].append(frame.weights_for(entity).values)
+            if entity in design_parts:
+                design_parts[entity].append(population.design_weights[entity])
+        strata_parts.append(frame.strata.reset_index(drop=True))
+
+    person = schema.person_entity
+    tables: dict[str, pd.DataFrame] = {
+        person: pd.concat(table_parts[person], ignore_index=True)
+    }
+    weights: dict[str, Weights] = {}
+    entity_orders: dict[str, np.ndarray] = {
+        person: np.arange(len(tables[person]), dtype=np.int64)
+    }
+    for group in schema.group_entities:
+        combined = pd.concat(table_parts[group], ignore_index=True)
+        order = np.argsort(
+            combined[schema.entity_id_column(group)].to_numpy(), kind="stable"
+        )
+        entity_orders[group] = order
+        tables[group] = combined.iloc[order].reset_index(drop=True)
+    for entity, parts in weight_parts.items():
+        values = np.concatenate(parts)[entity_orders[entity]]
+        weights[entity] = Weights(values, first.weights_for(entity).kind)
+    for name, parts in link_parts.items():
+        tables[name] = pd.concat(parts, ignore_index=True)
+    frame = Frame(
+        tables,
+        schema,
+        weights,
+        pd.concat(strata_parts, ignore_index=True),
+        mass_log=tuple(
+            record for population in ordered for record in population.frame.mass_log
+        ),
+        metadata=first.metadata,
+    )
+
+    before_total = sum(
+        float(population.frame.stratum_mass().sum()) for population in ordered
+    )
+    after_mass = frame.stratum_mass()
+    after_total = float(after_mass.sum())
+    if node.mass == "conserve" and not np.isclose(
+        before_total, after_total, rtol=_MASS_RTOL, atol=0.0
+    ):
+        raise PopulationError(
+            f"UNION node {node.id!r} did not preserve the sum of source mass."
+        )
+    if node.mass == "declared":
+        target = node.params.get("union_target_mass")
+        if isinstance(target, bool) or not isinstance(target, int | float):
+            raise PopulationError(
+                f"UNION node {node.id!r} mass='declared' requires union_target_mass."
+            )
+        if not np.isclose(after_total, float(target), rtol=_MASS_RTOL, atol=0.0):
+            raise PopulationError(
+                f"UNION node {node.id!r} produced mass {after_total!r}, not "
+                f"declared mass {float(target)!r}."
+            )
+    allocation = node.params.get("source_mass_fractions")
+    if allocation is not None:
+        if not isinstance(allocation, Mapping) or set(allocation) != set(node.bases):
+            raise PopulationError(
+                f"UNION node {node.id!r} source_mass_fractions must name every base."
+            )
+        for base_name, population in zip(node.bases, ordered, strict=True):
+            expected = allocation[base_name]
+            actual = float(population.frame.stratum_mass().sum()) / after_total
+            if (
+                isinstance(expected, bool)
+                or not isinstance(expected, int | float)
+                or not np.isclose(actual, float(expected), rtol=_MASS_RTOL, atol=0.0)
+            ):
+                raise PopulationError(
+                    f"UNION node {node.id!r} source {base_name!r} mass fraction "
+                    f"is {actual!r}, not {expected!r}."
+                )
+
+    before_by: dict[object, float] = {}
+    for population in ordered:
+        for label, value in population.frame.stratum_mass().items():
+            before_by[label] = before_by.get(label, 0.0) + float(value)
+    record = MassRecord(
+        node.id,
+        StructuralDelta.UNION.value,
+        node.mass,
+        before_total,
+        after_total,
+        tuple(before_by.items()),
+        tuple((label, float(value)) for label, value in after_mass.items()),
+    )
+    design = {
+        entity: np.concatenate(parts)[entity_orders[entity]]
+        for entity, parts in design_parts.items()
+    }
+    result = Population.from_frame(
+        frame,
+        node.id,
+        mass_ledger=tuple(
+            record for population in ordered for record in population.mass_ledger
+        )
+        + (record,),
+        design_weights=design,
+    )
+    return result, MappingProxyType(
+        {entity: tuple(entries) for entity, entries in lineage.items()}
     )
 
 
@@ -1056,6 +1291,7 @@ def patch(
     *,
     mass_partition: tuple[str, str] | None = None,
     rewrite_coordinates: frozenset[tuple[str, str]] = frozenset(),
+    weight_anchor: Weights | None = None,
 ) -> Population:
     """Validate and apply one node result without mutating ``population``.
 
@@ -1093,9 +1329,19 @@ def patch(
         )
 
     before = population.frame
-    if node.structural is StructuralDelta.NONE:
+    if node.weights is None or node.weights.anchor is None:
+        if weight_anchor is not None:
+            raise PopulationError(
+                f"Node {node.id!r} received an undeclared weight-state anchor."
+            )
+    elif weight_anchor is None:
+        raise PopulationError(
+            f"Node {node.id!r} did not receive declared weight-state anchor "
+            f"{node.weights.anchor!r}."
+        )
+    if node.structural in {StructuralDelta.NONE, StructuralDelta.REVISION}:
         if result.frame is not None:
-            raise PopulationError(f"Non-structural node {node.id!r} returned a Frame.")
+            raise PopulationError(f"Value-producing node {node.id!r} returned a Frame.")
         frame, owners = _patch_columns(population, node, result)
     elif lineage_expand:
         frame, owners = _patch_expand(
@@ -1134,10 +1380,29 @@ def patch(
     _assert_design_weight_cap(frame, design_weights, node)
 
     ledger = population.mass_ledger
-    if node.structural is not StructuralDelta.NONE or node.weights is not None:
+    if (
+        node.structural
+        not in {
+            StructuralDelta.NONE,
+            StructuralDelta.REVISION,
+        }
+        or node.weights is not None
+    ):
         policy = _mass_policy(node)
+        mass_before = before
+        if weight_anchor is not None:
+            assert node.weights is not None
+            try:
+                mass_before = _replace_weights(
+                    before, node.weights.entity, weight_anchor
+                )
+            except (TypeError, ValueError) as error:
+                raise PopulationError(
+                    f"Node {node.id!r} weight-state anchor is not aligned to "
+                    f"{node.weights.entity!r}."
+                ) from error
         record = _mass_record(
-            before,
+            mass_before,
             frame,
             node,
             result,
@@ -2199,6 +2464,8 @@ def _append_frame_mass_log(
 def _design_cap(node: Node) -> tuple[str, float] | None:
     transition = node.weights
     if transition is None or transition.to_kind != WeightKind.CALIBRATED.value:
+        return None
+    if transition.anchor is not None:
         return None
     raw_cap = node.params.get("max_weight_ratio")
     if raw_cap is None:

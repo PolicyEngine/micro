@@ -76,6 +76,9 @@ def _declaration_value(value: object) -> object:
     if isinstance(value, Enum):
         return _declaration_value(value.value)
     if is_dataclass(value) and not isinstance(value, type):
+        project = getattr(value, "normative", None)
+        if callable(project):
+            return _declaration_value(project())
         return {
             item.name: _declaration_value(getattr(value, item.name))
             for item in fields(value)

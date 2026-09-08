@@ -105,9 +105,9 @@ def test_graph_from_json_rejects_shape_enum_and_parameter_drift() -> None:
         graph_from_json(json.dumps(payload))
 
     payload = json.loads(graph_to_json(_graph()))
-    payload["nodes"][0]["params"]["revision"] = {"not": "a Param"}
-    with pytest.raises(TypeError, match="legal graph parameter"):
-        graph_from_json(json.dumps(payload))
+    payload["nodes"][0]["params"]["revision"] = {"nested": [1, {"ok": True}]}
+    restored = graph_from_json(json.dumps(payload))
+    assert restored.nodes[0].params["revision"]["nested"] == (1, {"ok": True})
 
     with pytest.raises(ValueError, match="non-finite"):
         graph_from_json(graph_to_json(_graph()).replace("2.5", "NaN"))

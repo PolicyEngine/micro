@@ -66,6 +66,8 @@ __all__ = [
     "Owned",
     "Ownership",
     "Param",
+    "Product",
+    "ProductKind",
     "Slice",
     "SourceRef",
     "StructuralDelta",
@@ -73,7 +75,9 @@ __all__ = [
     "compile_graph",
 ]
 
-type Param = bool | int | float | str | None | tuple["Param", ...]
+type Param = (
+    bool | int | float | str | None | tuple["Param", ...] | Mapping[str, "Param"]
+)
 
 #: Fields that never enter a node key. Everything else on a declaration is
 #: normative.
@@ -124,22 +128,44 @@ class StructuralDelta(StrEnum):
     FILTER = "filter"
     EXPAND = "expand"
     REWEIGHT = "reweight"
+    REVISION = "revision"
+    UNION = "union"
 
 
-def _check_param(name: str, value: object) -> None:
+class ProductKind(StrEnum):
+    """Kinds of stable outputs that a graph can expose by name."""
+
+    POPULATION = "population"
+    COORDINATE = "coordinate"
+    WEIGHTS = "weights"
+    ARTIFACT = "artifact"
+    VALIDATION = "validation"
+    EXPORT = "export"
+
+
+def _freeze_param(name: str, value: object) -> Param:
     if value is None or isinstance(value, bool | int | str):
-        return
+        return value
     if isinstance(value, float):
         if not math.isfinite(value):
             raise GraphError(f"Parameter {name!r} is not finite: {value!r}.")
-        return
-    if isinstance(value, tuple):
-        for index, item in enumerate(value):
-            _check_param(f"{name}[{index}]", item)
-        return
+        return value
+    if isinstance(value, list | tuple):
+        return tuple(
+            _freeze_param(f"{name}[{index}]", item) for index, item in enumerate(value)
+        )
+    if isinstance(value, Mapping):
+        frozen: dict[str, Param] = {}
+        if any(not isinstance(key, str) or not key for key in value):
+            raise GraphError(
+                f"Parameter mapping {name!r} requires non-empty string keys."
+            )
+        for key in sorted(value):
+            frozen[key] = _freeze_param(f"{name}.{key}", value[key])
+        return MappingProxyType(frozen)
     raise GraphError(
         f"Parameter {name!r} has type {type(value).__name__}; parameters are "
-        "bool, int, float, str, None, or tuples of those."
+        "finite recursively immutable JSON values."
     )
 
 
@@ -302,6 +328,7 @@ class WeightTransition:
     entity: str
     to_kind: str
     mass: str = "conserve"
+    anchor: str | None = None
 
     def __post_init__(self) -> None:
         _name("WeightTransition.entity", self.entity)
@@ -315,6 +342,72 @@ class WeightTransition:
                 f"WeightTransition.mass {self.mass!r} is not one of "
                 f"{sorted(MASS_POLICIES)}."
             )
+        if self.anchor is not None:
+            _nonempty("WeightTransition.anchor", self.anchor)
+
+    def normative(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "entity": self.entity,
+            "to_kind": self.to_kind,
+            "mass": self.mass,
+        }
+        if self.anchor is not None:
+            payload["anchor"] = self.anchor
+        return payload
+
+
+@dataclass(frozen=True)
+class Product:
+    """One stable name for a population, value, artifact, outcome, or export."""
+
+    name: str
+    kind: ProductKind
+    node: str | None = None
+    entity: str | None = None
+    column: str | None = None
+    artifact: str | None = None
+    source: str | None = None
+    codec: str | None = None
+    codec_version: int | None = None
+
+    def __post_init__(self) -> None:
+        _nonempty("Product.name", self.name)
+        if not isinstance(self.kind, ProductKind):
+            raise GraphError("Product.kind must be a ProductKind.")
+        for field_name in ("node", "entity", "column", "artifact", "source", "codec"):
+            value = getattr(self, field_name)
+            if value is not None:
+                _nonempty(f"Product.{field_name}", value)
+        expected: dict[ProductKind, set[str]] = {
+            ProductKind.POPULATION: {"node"},
+            ProductKind.COORDINATE: {"node", "entity", "column"},
+            ProductKind.WEIGHTS: {"node", "entity"},
+            ProductKind.ARTIFACT: {"node", "artifact"},
+            ProductKind.VALIDATION: {"node"},
+            ProductKind.EXPORT: {"source", "codec", "codec_version"},
+        }
+        supplied = {
+            name
+            for name in (
+                "node",
+                "entity",
+                "column",
+                "artifact",
+                "source",
+                "codec",
+                "codec_version",
+            )
+            if getattr(self, name) is not None
+        }
+        if supplied != expected[self.kind]:
+            raise GraphError(
+                f"Product {self.name!r} kind {self.kind.value!r} requires exactly "
+                f"{sorted(expected[self.kind])}; got {sorted(supplied)}."
+            )
+        if self.codec_version is not None and (
+            type(self.codec_version) is not int or self.codec_version < 1
+        ):
+            raise GraphError("Product.codec_version must be a positive integer.")
 
 
 @dataclass(frozen=True)
@@ -362,6 +455,7 @@ class Node:
     population: str | None = None
     structural: StructuralDelta = StructuralDelta.NONE
     base: str | None = None
+    bases: tuple[str, ...] = ()
     sources: tuple[str, ...] = ()
     weights: WeightTransition | None = None
     mass: str = "conserve"
@@ -391,16 +485,29 @@ class Node:
             raise GraphError(f"Node {self.id!r}: structural must be a StructuralDelta.")
         if self.mass not in MASS_POLICIES:
             raise GraphError(f"Node {self.id!r}: mass {self.mass!r} is not legal.")
+        frozen_params: dict[str, Param] = {}
         for name in sorted(self.params):
             _nonempty("Node.params key", name)
-            _check_param(name, self.params[name])
-        object.__setattr__(self, "params", MappingProxyType(dict(self.params)))
+            frozen_params[name] = _freeze_param(name, self.params[name])
+        object.__setattr__(self, "params", MappingProxyType(frozen_params))
+        if not isinstance(self.bases, tuple):
+            raise GraphError(f"Node {self.id!r}: bases must be a tuple.")
+        for base in self.bases:
+            _nonempty("Node.bases[]", base)
+        if len(set(self.bases)) != len(self.bases):
+            raise GraphError(f"Node {self.id!r}: bases contains duplicates.")
+        if self.structural is StructuralDelta.UNION:
+            if len(self.bases) < 2:
+                raise GraphError(f"Node {self.id!r}: UNION needs at least two bases.")
+            object.__setattr__(self, "bases", tuple(sorted(self.bases)))
+        elif self.bases:
+            raise GraphError(f"Node {self.id!r}: only UNION declares bases.")
         if len({(o.entity, o.column) for o in self.outputs}) != len(self.outputs):
             raise GraphError(f"Node {self.id!r} declares the same owned cell twice.")
         if len(set(self.sources)) != len(self.sources):
             raise GraphError(f"Node {self.id!r} repeats a source.")
         if self.structural is StructuralDelta.CREATE:
-            if self.base is not None or self.population is not None:
+            if self.base is not None or self.bases or self.population is not None:
                 raise GraphError(
                     f"Node {self.id!r}: a CREATE node has no base or population."
                 )
@@ -412,6 +519,28 @@ class Node:
                 raise GraphError(
                     f"Node {self.id!r}: a CREATE node must declare every column "
                     "it loads, so ownership is total from the first node."
+                )
+        elif self.structural is StructuralDelta.UNION:
+            if self.base is not None or self.population is not None:
+                raise GraphError(
+                    f"Node {self.id!r}: UNION declares bases, not base or population."
+                )
+            if self.inputs or self.outputs or self.sources or self.weights is not None:
+                raise GraphError(
+                    f"Node {self.id!r}: UNION is executor-owned and declares only bases."
+                )
+        elif self.structural is StructuralDelta.REVISION:
+            if self.base is None or self.population is not None:
+                raise GraphError(
+                    f"Node {self.id!r}: REVISION declares exactly one base."
+                )
+            if not self.outputs or any(not output.rewrite for output in self.outputs):
+                raise GraphError(
+                    f"Node {self.id!r}: REVISION outputs must be non-empty rewrites."
+                )
+            if self.mass != "conserve" or self.weights is not None:
+                raise GraphError(
+                    f"Node {self.id!r}: REVISION cannot change mass or weights."
                 )
         elif self.structural is not StructuralDelta.NONE:
             if self.base is None:
@@ -483,7 +612,7 @@ class Node:
             for f in fields(self)
             if f.name not in DESCRIPTIVE_FIELDS
             and not (
-                f.name in {"artifact_inputs", "artifact_outputs"}
+                f.name in {"artifact_inputs", "artifact_outputs", "bases"}
                 and not getattr(self, f.name)
             )
         }
@@ -510,6 +639,7 @@ class Graph:
     sources: tuple[SourceRef, ...]
     nodes: tuple[Node, ...]
     mass_partition: tuple[str, str] | None = None
+    products: tuple[Product, ...] = ()
 
     def __post_init__(self) -> None:
         _nonempty("Graph.country", self.country)
@@ -517,6 +647,12 @@ class Graph:
             raise GraphError("Graph repeats a source name.")
         if len({n.id for n in self.nodes}) != len(self.nodes):
             raise GraphError("Graph repeats a node id.")
+        if not isinstance(self.products, tuple) or any(
+            not isinstance(product, Product) for product in self.products
+        ):
+            raise GraphError("Graph.products must be a tuple of Product values.")
+        if len({product.name for product in self.products}) != len(self.products):
+            raise GraphError("Graph repeats a product name.")
         if self.mass_partition is not None:
             if (
                 not isinstance(self.mass_partition, tuple)
@@ -561,6 +697,7 @@ class CompiledGraph:
     owners: Mapping[tuple[str, str, str], str]
     predecessors: Mapping[str, tuple[str, ...]]
     versions: Mapping[str, str]
+    product_nodes: Mapping[str, str]
 
 
 def compile_graph(graph: Graph) -> CompiledGraph:
@@ -588,7 +725,15 @@ def compile_graph(graph: Graph) -> CompiledGraph:
             if name not in source_names:
                 raise GraphError(f"Node {node.id!r} reads unknown source {name!r}.")
         if node.structural is not StructuralDelta.NONE:
-            if node.base is not None:
+            if node.structural is StructuralDelta.UNION:
+                for base_id in node.bases:
+                    base = by_id.get(base_id)
+                    if base is None or base.structural is StructuralDelta.NONE:
+                        raise GraphError(
+                            f"Node {node.id!r}: union base {base_id!r} is not a "
+                            "structural node."
+                        )
+            elif node.base is not None:
                 base = by_id.get(node.base)
                 if base is None or base.structural is StructuralDelta.NONE:
                     raise GraphError(
@@ -669,6 +814,16 @@ def compile_graph(graph: Graph) -> CompiledGraph:
             holder = by_id[version]
             if holder.structural is StructuralDelta.CREATE:
                 return None
+            if holder.structural is StructuralDelta.UNION:
+                candidates = {
+                    declared_dtype(base, entity, column) for base in holder.bases
+                }
+                if len(candidates) > 1:
+                    raise GraphError(
+                        f"UNION node {holder.id!r} has incompatible declarations "
+                        f"for {entity}.{column}: {sorted(candidates, key=str)!r}."
+                    )
+                return next(iter(candidates))
             version = holder.base  # type: ignore[assignment]
 
     def reader_of(node_id: str, version: str, entity: str, column: str) -> str:
@@ -679,7 +834,13 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                 f"version {version!r} or its bases."
             )
         owner = owners.get((version, entity, column))
-        return owner if owner is not None else version
+        if owner is not None:
+            return owner
+        holder = by_id[version]
+        if holder.structural is StructuralDelta.REVISION:
+            assert holder.base is not None
+            return reader_of(node_id, holder.base, entity, column)
+        return version
 
     def check_mask(node_id: str, version: str, entity: str, mask: str) -> None:
         if mask == ROWS_ALL:
@@ -701,6 +862,11 @@ def compile_graph(graph: Graph) -> CompiledGraph:
         if node.structural is StructuralDelta.CREATE:
             continue
         if node.structural is not StructuralDelta.NONE:
+            if node.structural is StructuralDelta.UNION:
+                for base in node.bases:
+                    predecessors[node.id].add(base)
+                    predecessors[node.id].update(members.get(base, ()))
+                continue
             base = node.base
             assert base is not None
             predecessors[node.id].add(base)
@@ -711,6 +877,22 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                         reader_of(node.id, base, s.entity, column)
                     )
                 check_mask(node.id, base, s.entity, s.rows)
+            if node.structural is StructuralDelta.REVISION:
+                for output in node.outputs:
+                    check_mask(node.id, base, output.entity, output.rows)
+                    base_dtype = declared_dtype(base, output.entity, output.column)
+                    if base_dtype is None:
+                        raise GraphError(
+                            f"REVISION node {node.id!r} rewrites "
+                            f"{output.entity}.{output.column}, which its base does "
+                            "not define."
+                        )
+                    if base_dtype != output.dtype:
+                        raise GraphError(
+                            f"REVISION node {node.id!r} declares "
+                            f"{output.entity}.{output.column} as {output.dtype!r}; "
+                            f"its base declares {base_dtype!r}."
+                        )
             continue
         version = versions[node.id]
         predecessors[node.id].add(version)
@@ -771,6 +953,66 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                 )
             predecessors[node.id].add(producer.id)
 
+    product_nodes: dict[str, str] = {}
+    products = {product.name: product for product in graph.products}
+    for product in graph.products:
+        if product.kind is ProductKind.EXPORT:
+            assert product.source is not None
+            source_product = products.get(product.source)
+            if source_product is None or source_product.kind is ProductKind.EXPORT:
+                raise GraphError(
+                    f"Export product {product.name!r} references missing or "
+                    f"incompatible product {product.source!r}."
+                )
+            product_nodes[product.name] = product_nodes.get(
+                product.source, source_product.node or ""
+            )
+            continue
+        assert product.node is not None
+        target = by_id.get(product.node)
+        if target is None:
+            raise GraphError(
+                f"Product {product.name!r} references unknown node {product.node!r}."
+            )
+        if product.kind is ProductKind.COORDINATE:
+            assert product.entity is not None and product.column is not None
+            version = versions[target.id]
+            if declared_dtype(version, product.entity, product.column) is None:
+                raise GraphError(
+                    f"Product {product.name!r} references unknown coordinate "
+                    f"{product.entity}.{product.column} at {target.id!r}."
+                )
+        elif product.kind is ProductKind.WEIGHTS:
+            assert product.entity is not None
+        elif product.kind is ProductKind.ARTIFACT:
+            assert product.artifact is not None
+            outputs = {output.name for output in target.artifact_outputs}
+            if product.artifact not in outputs:
+                raise GraphError(
+                    f"Product {product.name!r} references undeclared artifact "
+                    f"{product.artifact!r} on {target.id!r}."
+                )
+        product_nodes[product.name] = target.id
+
+    for node in graph.nodes:
+        if node.weights is None or node.weights.anchor is None:
+            continue
+        anchor = products.get(node.weights.anchor)
+        if anchor is None or anchor.kind is not ProductKind.WEIGHTS:
+            raise GraphError(
+                f"Node {node.id!r} weight anchor {node.weights.anchor!r} is not "
+                "a declared weights product."
+            )
+        if anchor.entity != node.weights.entity:
+            raise GraphError(
+                f"Node {node.id!r} weight anchor entity {anchor.entity!r} does not "
+                f"match transition entity {node.weights.entity!r}."
+            )
+        anchor_node = product_nodes[anchor.name]
+        if anchor_node == node.id:
+            raise GraphError(f"Node {node.id!r} cannot anchor weights to itself.")
+        predecessors[node.id].add(anchor_node)
+
     depth: dict[str, int] = {}
 
     def depth_of(node_id: str, trail: tuple[str, ...]) -> int:
@@ -797,4 +1039,5 @@ def compile_graph(graph: Graph) -> CompiledGraph:
             {i: tuple(sorted(p)) for i, p in predecessors.items()}
         ),
         versions=MappingProxyType(versions),
+        product_nodes=MappingProxyType(product_nodes),
     )
