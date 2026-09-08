@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "graph-source-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "country"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "country": {"$ref": "#/$defs/name"},
+    "modules": {"$ref": "#/$defs/modules"},
+    "parameters": {"$ref": "#/$defs/parameters"},
+    "sources": {"$ref": "#/$defs/sources"},
+    "nodes": {"$ref": "#/$defs/nodes"},
+    "products": {"$ref": "#/$defs/products"},
+    "mass_partition": {
+      "type": "array",
+      "prefixItems": [{"$ref": "#/$defs/name"}, {"$ref": "#/$defs/name"}],
+      "minItems": 2,
+      "maxItems": 2
+    }
+  },
+  "$defs": {
+    "name": {"type": "string", "minLength": 1},
+    "modules": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true,
+      "default": []
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/parameter"},
+      "default": {}
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "required"],
+      "properties": {
+        "type": {"enum": ["boolean", "integer", "number", "string"]},
+        "required": {"type": "boolean"},
+        "default": {"type": ["boolean", "integer", "number", "string", "null"]},
+        "allowed": {
+          "type": "array",
+          "items": {"type": ["boolean", "integer", "number", "string", "null"]},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "minimum": {"type": "number"},
+        "maximum": {"type": "number"},
+        "description": {"type": "string"}
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/source"},
+      "default": []
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "codec"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "codec": {"$ref": "#/$defs/name"},
+        "description": {"type": "string"}
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/node"},
+      "default": []
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kernel"],
+      "properties": {
+        "id": {"$ref": "#/$defs/name"},
+        "kernel": {"$ref": "#/$defs/name"},
+        "inputs": {"type": "array", "items": {"$ref": "#/$defs/slice"}},
+        "outputs": {"type": "array", "items": {"$ref": "#/$defs/owned"}},
+        "params": {"type": "object"},
+        "param_bindings": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/name"}
+        },
+        "population": {"$ref": "#/$defs/name"},
+        "structural": {"enum": ["none", "create", "filter", "expand", "reweight"]},
+        "base": {"$ref": "#/$defs/name"},
+        "sources": {"type": "array", "items": {"$ref": "#/$defs/name"}, "uniqueItems": true},
+        "weights": {"$ref": "#/$defs/weights"},
+        "mass": {"enum": ["conserve", "free", "declared"]},
+        "entrants": {"type": "boolean"},
+        "description": {"type": "string"},
+        "citation": {"type": "string"},
+        "artifact_inputs": {"type": "array", "items": {"$ref": "#/$defs/artifact_input"}},
+        "artifact_outputs": {"type": "array", "items": {"$ref": "#/$defs/artifact_output"}}
+      }
+    },
+    "slice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity", "columns"],
+      "properties": {
+        "entity": {"$ref": "#/$defs/name"},
+        "columns": {"type": "array", "items": {"$ref": "#/$defs/name"}, "minItems": 1, "uniqueItems": true},
+        "rows": {"$ref": "#/$defs/name"}
+      }
+    },
+    "owned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity", "column", "dtype"],
+      "properties": {
+        "entity": {"$ref": "#/$defs/name"},
+        "column": {"$ref": "#/$defs/name"},
+        "dtype": {"enum": ["bool", "boolean", "int32", "int64", "Int64", "float32", "float64", "string"]},
+        "rows": {"$ref": "#/$defs/name"},
+        "ownership": {"enum": ["produced", "absent"]},
+        "rewrite": {"type": "boolean"}
+      }
+    },
+    "weights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity", "to_kind"],
+      "properties": {
+        "entity": {"$ref": "#/$defs/name"},
+        "to_kind": {"enum": ["design", "importance", "calibrated"]},
+        "mass": {"enum": ["conserve", "free", "declared"]}
+      }
+    },
+    "artifact_type": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "schema_version"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "schema_version": {"type": "integer", "minimum": 1}
+      }
+    },
+    "artifact_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "producer", "artifact", "type"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "producer": {"$ref": "#/$defs/name"},
+        "artifact": {"$ref": "#/$defs/name"},
+        "type": {"$ref": "#/$defs/artifact_type"}
+      }
+    },
+    "artifact_output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "type": {"$ref": "#/$defs/artifact_type"}
+      }
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "kind", "target"],
+        "properties": {
+          "name": {"$ref": "#/$defs/name"},
+          "kind": {"enum": ["population", "coordinate", "weights", "artifact", "validation", "export"]},
+          "target": {"type": "object"},
+          "codec": {"type": "string"},
+          "codec_version": {"type": "integer", "minimum": 1}
+        }
+      },
+      "default": []
+    }
+  }
+}

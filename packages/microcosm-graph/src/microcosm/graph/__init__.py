@@ -39,6 +39,15 @@ from .errors import (
     StoreMissError,
     StoreUnavailableError,
 )
+from .graph_source import (
+    GRAPH_SOURCE_SCHEMA_VERSION,
+    GraphSourceReceipt,
+    LoadedGraphSource,
+    compiled_graph_from_yaml_file,
+    graph_from_yaml_file,
+    load_graph_source,
+    validate_kernel_registry,
+)
 from .kernel import (
     ArtifactValue,
     Capabilities,
@@ -57,12 +66,22 @@ from .kernel import (
 )
 from .keys import platform_fingerprint
 from .randomness import keyed_uniform
+from .source_errors import (
+    GraphParameterBindingError,
+    GraphSourceCompositionError,
+    GraphSourceError,
+    GraphSourceParseError,
+    GraphSourceSchemaError,
+    GraphSourceValidationError,
+)
+from .yaml12 import load_json_strict, load_yaml12, load_yaml12_file, parse_yaml12
 
 __all__ = [
     "ArtifactInput",
     "ArtifactOutput",
     "ArtifactType",
     "ArtifactValue",
+    "GRAPH_SOURCE_SCHEMA_VERSION",
     "keyed_uniform",
     "platform_fingerprint",
     "DESCRIPTIVE_FIELDS",
@@ -79,13 +98,21 @@ __all__ = [
     "Determinism",
     "Graph",
     "GraphError",
+    "GraphParameterBindingError",
     "GraphRuntimeError",
+    "GraphSourceCompositionError",
+    "GraphSourceError",
+    "GraphSourceParseError",
+    "GraphSourceReceipt",
+    "GraphSourceSchemaError",
+    "GraphSourceValidationError",
     "Kernel",
     "KernelBase",
     "KernelContext",
     "KernelRegistry",
     "KernelResult",
     "KernelRole",
+    "LoadedGraphSource",
     "MassRecord",
     "Node",
     "NodeReceipt",
@@ -118,13 +145,23 @@ __all__ = [
     "StructuralDelta",
     "WeightTransition",
     "compile_graph",
+    "compiled_graph_from_yaml_file",
     "describe",
     "explain_html",
     "graph_from_json",
+    "graph_from_yaml_file",
+    "graph_document_from_json",
+    "graph_document_to_json",
     "graph_to_json",
+    "load_graph_source",
+    "load_json_strict",
+    "load_yaml12",
+    "load_yaml12_file",
     "load_source",
     "run_graph",
+    "parse_yaml12",
     "source_hash",
+    "validate_kernel_registry",
 ]
 
 _FRAME_SERIES = "0.1"
@@ -154,7 +191,12 @@ from .executor import NodeRejected, run_graph  # noqa: E402
 from .explain import explain_html  # noqa: E402
 from .manifest import Decision, NodeReceipt, PopulationView, RunManifest  # noqa: E402
 from .population import MassRecord, Population, PopulationError  # noqa: E402
-from .serialize import graph_from_json, graph_to_json  # noqa: E402
+from .serialize import (  # noqa: E402
+    graph_document_from_json,
+    graph_document_to_json,
+    graph_from_json,
+    graph_to_json,
+)
 from .store import (  # noqa: E402
     ContentStore,
     ResumePolicy,

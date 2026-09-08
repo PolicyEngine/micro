@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "graph-module-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "modules": {"$ref": "graph-source-v1.schema.json#/$defs/modules"},
+    "parameters": {"$ref": "graph-source-v1.schema.json#/$defs/parameters"},
+    "sources": {"$ref": "graph-source-v1.schema.json#/$defs/sources"},
+    "nodes": {"$ref": "graph-source-v1.schema.json#/$defs/nodes"},
+    "products": {"$ref": "graph-source-v1.schema.json#/$defs/products"}
+  }
+}

@@ -949,9 +949,12 @@ name = "microcosm-graph"
 version = "0.1.0"
 source = { editable = "packages/microcosm-graph" }
 dependencies = [
+    { name = "jsonschema" },
     { name = "microcosm-frame" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pyyaml" },
+    { name = "referencing" },
 ]
 
 [package.dev-dependencies]
@@ -962,9 +965,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "microcosm-frame", editable = "packages/microcosm-frame" },
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
+    { name = "pyyaml", specifier = ">=6" },
+    { name = "referencing", specifier = ">=0.35,<1" },
 ]
 
 [package.metadata.requires-dev]

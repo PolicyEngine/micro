@@ -21,7 +21,15 @@ from .decl import (
     WeightTransition,
 )
 
-__all__ = ["graph_from_json", "graph_to_json"]
+__all__ = [
+    "GRAPH_DOCUMENT_SERIALIZATION_VERSION",
+    "graph_document_from_json",
+    "graph_document_to_json",
+    "graph_from_json",
+    "graph_to_json",
+]
+
+GRAPH_DOCUMENT_SERIALIZATION_VERSION = 1
 
 
 def graph_to_json(graph: Graph) -> str:
@@ -79,6 +87,57 @@ def graph_from_json(text: str) -> Graph:
         mass_partition=_partition_from_payload(
             root.get("mass_partition"), "graph.mass_partition"
         ),
+    )
+
+
+def graph_document_to_json(graph: Graph) -> str:
+    """Return a versioned generated document without changing legacy bytes."""
+
+    payload = {
+        "derived": True,
+        "document_type": "microcosm.graph",
+        "graph": json.loads(graph_to_json(graph)),
+        "serialization_version": GRAPH_DOCUMENT_SERIALIZATION_VERSION,
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def graph_document_from_json(text: str) -> Graph:
+    """Read the closed envelope emitted by :func:`graph_document_to_json`."""
+
+    def unique(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON field {key!r}")
+            result[key] = value
+        return result
+
+    try:
+        payload = json.loads(
+            text, object_pairs_hook=unique, parse_constant=_reject_json_constant
+        )
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Invalid generated Graph JSON: {error.msg}.") from error
+    mapping = _mapping(payload, "generated graph document")
+    _exact_fields(
+        mapping,
+        {"derived", "document_type", "graph", "serialization_version"},
+        "generated graph document",
+    )
+    if mapping["serialization_version"] != GRAPH_DOCUMENT_SERIALIZATION_VERSION:
+        raise ValueError(
+            "Unsupported generated Graph JSON serialization version "
+            f"{mapping['serialization_version']!r}."
+        )
+    if mapping["derived"] is not True or mapping["document_type"] != "microcosm.graph":
+        raise ValueError(
+            "Generated Graph JSON is not a derived microcosm.graph document."
+        )
+    return graph_from_json(
+        json.dumps(
+            mapping["graph"], sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
     )
 
 

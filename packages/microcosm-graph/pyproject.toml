@@ -7,6 +7,9 @@ requires-python = ">=3.13"
 dependencies = [
     "numpy>=2",
     "pandas>=2.3",
+    "pyyaml>=6",
+    "jsonschema>=4.23,<5",
+    "referencing>=0.35,<1",
     "microcosm-frame>=0.1,<0.2",
 ]
 
