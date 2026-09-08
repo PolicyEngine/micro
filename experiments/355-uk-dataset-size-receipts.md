@@ -261,3 +261,29 @@ feasibility on the same gates at a lower certainty threshold. Smoke4 therefore r
 smoke3's row bd9ebb9b…; it is the first run to pass the draw. Risk carried forward to S2: at 100 epochs
 `pi_hi = 0.95` is infeasible by 18 %; whether 2,000 epochs polarise the gates enough is unknown, and
 the count-versus-mass mismatch in the stopping rule does not depend on epochs.
+
+### Smoke4 — 45,800 at `pi_hi 0.7` on spine-p: the first run through the whole size pipeline
+
+Exit 1 = gates failed with the evidence bundle written (the candidate outcome). 1,344 s (22.4 min),
+10.6 GB, code 27eb74a1 with a clean tree, engine 2.94.0 in one block. Draw: 27,858 certainties at
+`pi_hi 0.7` over a boundary pool of 764,832, Sampford, `feasible_at_requested_pi_hi` true; refit on
+the frozen surface; compact export 45,800 households (H5 187 MB against R17's 2.36 GB); the six-gate
+battery on the compact frame; both sidecars (`dense_reference_diagnostics.csv` 20,794 rows,
+`dataset_size_selection.csv` 45,800 rows) listed in `outputs` with digests; Logbook row 363c8c4f….
+Plumbing numbers, not evidence (100 epochs): dense reference loss 0.409 → 0.138, compact 0.613 →
+0.172; realised stretch 10.0 against the Horvitz–Thompson baseline; mass 29,247,433 → 27,974,030
+(−4.4 %); Kish ESS 9,034 (fraction 0.197); max/median positive weight 244; area support 960 of 1,011
+areas below floor (constituency ESS minimum 2.3); target fit 1,321 rows past 25 %.
+
+**Defect found in the surface, not the smoke: `ons.rent.private_rent` (314 local-authority rows, family
+`private_rent`, source ONS PIPR).** Every row sits at a relative error of 10^5 to 10^6 on both the dense
+reference and the compact fit: the target is a mean monthly rent (£552 to £3,633 per authority) while
+the metric `rent/private_rent` is `household_rent × is_private_renter` summed with weights, an annual
+rent total (10^8 to 10^9). R17's surface had no `private_rent` rows (19,105 local rows; this tree binds
+19,419). The rows became active with #874's re-pin of the local references to Chronicle 6fb700e; the
+census entry for the source is signed-deferred (`private_rent_pipr_partial_coverage_2025`: the feed's
+only PIPR period is 2026-06, after the 2025 target period) yet 314 of 673 candidates are active. At the
+loss cap these rows distort the dense solve as much as the selection, so they block S2 regardless of
+`pi_hi`. Ruling requested: extend the signed deferral to the whole target (the surface returns to R17's
+ten local families, making the comparison like for like) and fix the metric's semantics (a weighted
+mean among private renters, on the PIPR period policy) as its own change; or fix the metric first.
