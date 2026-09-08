@@ -1892,6 +1892,11 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
     assert manifest["parameters"]["seed"] == 7
     assert manifest["parameters"]["selection_seed"] == 11
     assert size["seed"] == 11
+    assert manifest["parameters"]["selection_pi_hi"] == 1.0
+    assert size["selection_pi_hi"] == 1.0
+    assert size["selection_receipt"]["pi_hi"] == 1.0
+    assert size["selection_feasibility"]["requested_pi_hi"] == 1.0
+    assert size["selection_feasibility"]["feasible_at_requested_pi_hi"] is True
 
     # The dense solve the selection was cut from ships as evidence.
     dense = size["dense_reference"]
@@ -1954,6 +1959,31 @@ def test_selection_seed_requires_a_dataset_size(tmp_path):
         ]
     )
     with pytest.raises(ValueError, match="requires --dataset-households"):
+        builder._validate_cli_args(args)
+
+
+@pytest.mark.parametrize(
+    ("argv_tail", "message"),
+    [
+        (["--selection-pi-hi", "0.95"], "requires --dataset-households"),
+        (["--dataset-households", "10", "--selection-pi-hi", "0"], r"in \(0, 1\]"),
+        (["--dataset-households", "10", "--selection-pi-hi", "1.5"], r"in \(0, 1\]"),
+    ],
+)
+def test_selection_pi_hi_is_candidate_only_and_bounded(tmp_path, argv_tail, message):
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+            *argv_tail,
+        ]
+    )
+    with pytest.raises(ValueError, match=message):
         builder._validate_cli_args(args)
 
 

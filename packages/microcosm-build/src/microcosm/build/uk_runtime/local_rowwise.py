@@ -1051,6 +1051,7 @@ def solve_uk_rowwise_weights_under_doctrine(
     budget_iters: int = 10,
     seed: int = 0,
     selection_seed: int | None = None,
+    selection_pi_hi: float = 1.0,
 ) -> UKRowwiseDoctrineSolve:
     """Solve rowwise household weights under the reviewed doctrine.
 
@@ -1203,6 +1204,7 @@ def solve_uk_rowwise_weights_under_doctrine(
             epochs=epochs,
             learning_rate=learning_rate,
             seed=seed if selection_seed is None else selection_seed,
+            pi_hi=selection_pi_hi,
         )
         dense_result = result
         result = sized.result
@@ -1542,6 +1544,7 @@ def rotated_uk_local_holdout(
     budget_iters: int = 10,
     solve_seed: int = 0,
     selection_seed: int | None = None,
+    selection_pi_hi: float = 1.0,
 ) -> dict[str, object]:
     """Run five local-row rotations with national rows fixed in training."""
 
@@ -1588,6 +1591,7 @@ def rotated_uk_local_holdout(
             budget_iters=budget_iters,
             seed=solve_seed,
             selection_seed=selection_seed,
+            selection_pi_hi=selection_pi_hi,
         )
         held_targets = problem.targets[holdout_indices]
         held_estimates = np.asarray(

@@ -35,6 +35,7 @@ def refit_uk_dataset_size(
     epochs: int,
     learning_rate: float,
     seed: int,
+    pi_hi: float = 1.0,
 ) -> UKDatasetSize:
     """Run informed L0, a fixed-size draw, and refit under the dense doctrine.
 
@@ -42,6 +43,13 @@ def refit_uk_dataset_size(
     measures that depend on the full population. Re-evaluating those formulas
     on a subset would change the target system. Target values, order, loss
     weights, cap and stretch bound remain those of the dense solve.
+
+    ``pi_hi`` is the exact-count draw's certainty threshold: gates whose
+    learned open probability reaches it are taken with certainty and only the
+    rest are drawn. The default ``1.0`` keeps exactly the protected carriers
+    as certainties; a lower threshold (the US exact-k ladder runs 0.95)
+    promotes learned near-certain gates and is a reviewed candidate-run
+    setting recorded in the size receipt, never a release default.
     """
     n = frame.n("household")
     if (
@@ -109,24 +117,31 @@ def refit_uk_dataset_size(
     probabilities = selection.gate_open_probabilities
     if probabilities is None:
         raise RuntimeError("informed L0 returned no selection probabilities.")
-    # Exact-one certainties are protected by the gates themselves; no top-k
-    # ranking or post-hoc promotion of learned boundary scores is performed.
+    if not isinstance(pi_hi, float | int) or isinstance(pi_hi, bool):
+        raise ValueError("pi_hi must be a number in (0, 1].")
+    pi_hi = float(pi_hi)
+    if not (0.0 < pi_hi <= 1.0):
+        raise ValueError("pi_hi must be a number in (0, 1].")
+    # Exact-one certainties are protected by the gates themselves. At the
+    # default pi_hi=1.0 no learned boundary score is promoted; a lower
+    # threshold promotes near-certain gates and is recorded in the receipt.
     feasibility = selection_feasibility(
         probabilities,
         households,
         protected=init.protected,
         n_nonzero=int(selection.n_nonzero),
         l0_lambda=float(selection.l0_lambda),
+        requested_pi_hi=pi_hi,
     )
     try:
         support, sampling, q = select_exact_k(
-            probabilities, households, pi_hi=1.0, seed=seed
+            probabilities, households, pi_hi=pi_hi, seed=seed
         )
     except ValueError as error:
         # The draw refuses rather than clamps; carry the measured gate mass
         # with the refusal so the ruling it needs can be made from the receipt.
         raise ValueError(
-            f"{error} Selection feasibility at pi_hi=1.0: "
+            f"{error} Selection feasibility (requested pi_hi={pi_hi:g}): "
             f"{json.dumps(feasibility, sort_keys=True)}"
         ) from error
     support = assert_exact_k_support(support, households, pool_size=n)
@@ -164,6 +179,7 @@ def refit_uk_dataset_size(
             "seed": seed,
             "protected_carriers": int(init.protected.sum()),
             "selection_receipt": sampling,
+            "selection_pi_hi": pi_hi,
             "selection_feasibility": feasibility,
             "selection_l0_lambda": selection.l0_lambda,
             "selection_epochs": epochs,
@@ -192,6 +208,7 @@ def selection_feasibility(
     protected: np.ndarray,
     n_nonzero: int,
     l0_lambda: float,
+    requested_pi_hi: float = 1.0,
 ) -> dict[str, object]:
     """Measure whether an exact-count draw is feasible on these gate probabilities.
 
@@ -249,15 +266,15 @@ def selection_feasibility(
         if ok and smallest_feasible_pi_hi is None:
             smallest_feasible_pi_hi = threshold
     quantiles = (
-        {
-            f"p{q * 100:g}": float(np.quantile(pi, q))
-            for q in (0.5, 0.9, 0.99, 0.999)
-        }
+        {f"p{q * 100:g}": float(np.quantile(pi, q)) for q in (0.5, 0.9, 0.99, 0.999)}
         if pi.size
         else {}
     )
+    requested = _feasible_at(pi, int(households), float(requested_pi_hi))
     return {
         "requested_households": int(households),
+        "requested_pi_hi": float(requested_pi_hi),
+        "feasible_at_requested_pi_hi": bool(requested),
         "pool_households": int(pi.size),
         "protected_carriers": int(protected_mask.sum()),
         "certainties_at_pi_hi_1": int(certainty.sum()),
@@ -277,6 +294,20 @@ def selection_feasibility(
         "budget_search_n_nonzero": int(n_nonzero),
         "selection_l0_lambda": float(l0_lambda),
     }
+
+
+def _feasible_at(pi: np.ndarray, households: int, threshold: float) -> bool:
+    certain = pi >= threshold
+    draw = households - int(certain.sum())
+    if draw < 0:
+        return False
+    if draw == 0:
+        return True
+    boundary = pi[~certain]
+    positive = boundary[boundary > 0.0]
+    if positive.size < draw:
+        return False
+    return bool(float(positive.max()) * draw <= float(positive.sum()) * (1.0 + 1e-12))
 
 
 def _frozen_targets(

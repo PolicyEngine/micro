@@ -1373,6 +1373,13 @@ def test_selection_feasibility_measures_boundary_mass_and_the_ways_out():
     assert report["gates_above"]["0.5"] == 3
     assert report["budget_search_n_nonzero"] == 7
     assert report["selection_l0_lambda"] == 0.5
+    assert report["requested_pi_hi"] == 1.0
+    assert report["feasible_at_requested_pi_hi"] is False
+    at_half = selection_feasibility(
+        pi, 7, protected=protected, n_nonzero=7, l0_lambda=0.5, requested_pi_hi=0.9
+    )
+    assert at_half["requested_pi_hi"] == 0.9
+    assert at_half["feasible_at_requested_pi_hi"] is True
 
     feasible = selection_feasibility(
         np.array([1.0, 0.5, 0.5, 0.5, 0.5]),
@@ -1383,6 +1390,44 @@ def test_selection_feasibility_measures_boundary_mass_and_the_ways_out():
     )
     assert feasible["feasible_at_pi_hi_1"] is True
     assert feasible["smallest_feasible_pi_hi_on_grid"] == 1.0
+
+
+def test_size_refit_pi_hi_promotes_learned_certainties_and_is_recorded():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=2,
+    )
+    sized = refit_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7, pi_hi=0.5
+    )
+    receipt = sized.receipt
+    assert receipt["selection_pi_hi"] == 0.5
+    assert receipt["selection_receipt"]["pi_hi"] == 0.5
+    assert receipt["selection_feasibility"]["requested_pi_hi"] == 0.5
+    assert receipt["selection_feasibility"]["feasible_at_requested_pi_hi"] is True
+    # Certainties at 0.5 can only grow relative to the exact-one set.
+    assert (
+        receipt["selection_receipt"]["certainty_count"] >= receipt["protected_carriers"]
+    )
+    assert sized.result.frame.n("household") == 2
+    for bad in (0.0, 1.5, -0.1, True):
+        with pytest.raises(ValueError, match="pi_hi"):
+            refit_uk_dataset_size(
+                frame,
+                dense,
+                households=2,
+                epochs=2,
+                learning_rate=0.02,
+                seed=7,
+                pi_hi=bad,
+            )
 
 
 def test_size_refusal_at_the_draw_carries_the_feasibility_numbers(monkeypatch):
@@ -1408,8 +1453,11 @@ def test_size_refusal_at_the_draw_carries_the_feasibility_numbers(monkeypatch):
         )
     message = str(caught.value)
     assert message.startswith("degenerate boundary mass: synthetic refusal.")
-    assert "Selection feasibility at pi_hi=1.0:" in message
-    payload = json.loads(message.split("Selection feasibility at pi_hi=1.0: ", 1)[1])
+    assert "Selection feasibility (requested pi_hi=1): " in message
+    payload = json.loads(
+        message.split("Selection feasibility (requested pi_hi=1): ", 1)[1]
+    )
+    assert payload["requested_pi_hi"] == 1.0
     assert payload["requested_households"] == 2
     assert payload["pool_households"] == 3
     assert "pi_hi_scan" in payload

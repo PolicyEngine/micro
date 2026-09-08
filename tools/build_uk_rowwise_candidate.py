@@ -621,6 +621,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--selection-pi-hi",
+        type=float,
+        default=1.0,
+        help=(
+            "Certainty threshold of the exact-count draw: gates whose learned open "
+            "probability reaches it are taken with certainty. 1.0 (default) keeps "
+            "only the protected carriers certain; a lower value promotes learned "
+            "near-certain gates (the US exact-k ladder runs 0.95). Candidate-only; "
+            "recorded in the size receipt. Requires --dataset-households."
+        ),
+    )
+    parser.add_argument(
         "--sample-fraction",
         type=float,
         default=1.0,
@@ -1011,6 +1023,7 @@ def _run_candidate(
             budget_iters=_BUDGET_ITERS,
             seed=args.seed,
             selection_seed=args.selection_seed,
+            selection_pi_hi=args.selection_pi_hi,
         )
         _validate_solve_result(solve, problem=problem)
         append_phase(state, "solved")
@@ -1119,6 +1132,7 @@ def _run_candidate(
                 budget_iters=_BUDGET_ITERS,
                 solve_seed=args.seed,
                 selection_seed=args.selection_seed,
+                selection_pi_hi=args.selection_pi_hi,
             )
         args._rotated_holdout = rotated_holdout
 
@@ -2495,6 +2509,9 @@ def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]
         "selection_seed": None
         if args.dataset_households is None
         else int(args.seed if args.selection_seed is None else args.selection_seed),
+        "selection_pi_hi": None
+        if args.dataset_households is None
+        else float(args.selection_pi_hi),
         "source_year": source_year,
         "source_lineage_modulus": args.source_lineage_modulus,
         "sample_fraction": float(args.sample_fraction),
@@ -2727,6 +2744,10 @@ def _validate_cli_args(args: argparse.Namespace) -> None:
         )
     if args.selection_seed is not None and args.dataset_households is None:
         raise ValueError("--selection-seed requires --dataset-households.")
+    if not (0.0 < args.selection_pi_hi <= 1.0):
+        raise ValueError("--selection-pi-hi must be in (0, 1].")
+    if args.selection_pi_hi != 1.0 and args.dataset_households is None:
+        raise ValueError("--selection-pi-hi requires --dataset-households.")
     if args.dataset_households is not None:
         if args.dataset_households <= 0:
             raise ValueError("--dataset-households must be positive.")

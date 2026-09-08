@@ -37,6 +37,17 @@ on [#870](https://github.com/PolicyEngine/microcosm/pull/870)'s branch. The PR i
 3. Use the existing exact-count Sampford sampler on learned probabilities.
    Probability-one gates are certainties (`pi_hi=1`), including every protected
    carrier. Refuse impossible budgets or sampling designs rather than clamp.
+   The certainty threshold is a candidate-run knob (`--selection-pi-hi`,
+   default 1). The first licensed rehearsal (2026-09-08, 55,000 of 792,690 at
+   100 epochs) was refused at the draw: the budget search meets its target on
+   the count of not-fully-closed gates while the exact-count design can only
+   draw from the open-probability mass, which fell a fifth short. The refusal
+   and the size receipt now carry a feasibility measurement (boundary mass and
+   largest gate, the largest feasible count at `pi_hi=1`, the smallest feasible
+   threshold on a grid). Ruling (María, 2026-09-08): the smoke accepts the
+   measured feasible count; the 55,000 candidate runs at `pi_hi=0.95` (the US
+   exact-k ladder's setting) and 2,000 epochs. A threshold below one promotes
+   learned near-certain gates and is recorded, never a release default.
 4. Refit on the selected support through `microcosm.calibrate`, with no L0
    penalty. Reuse the existing normalized Horvitz–Thompson `w/q` baseline.
    The stretch multiplier remains 10 **relative to that inclusion-adjusted
