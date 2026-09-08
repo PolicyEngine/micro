@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     uk_ladder_household_uprating,
     uk_ledger_households_total,
     uk_local_target_surface,
+    uk_private_rent_mean_to_total,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
@@ -1671,6 +1672,205 @@ def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
             period=2025,
             ladder_household_uprating={"applied": True, "factor": 0.0},
         )
+
+
+def _private_rent_target_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "area_type": "la",
+                "area_code": "E06000001",
+                "metric": "rent/private_rent",
+                "family": "private_rent",
+                "value": 1_000.0,
+                "target_name": "ons.rent.private_rent@E06000001@2025",
+            },
+            {
+                "area_type": "la",
+                "area_code": "E06000001",
+                "metric": "tenure/private_rent",
+                "family": "tenure",
+                "value": 20.0,
+                "target_name": "ons.tenure.private_rent@E06000001@2025",
+            },
+            {
+                "area_type": "la",
+                "area_code": "E06000002",
+                "metric": "rent/private_rent",
+                "family": "private_rent",
+                "value": 750.0,
+                "target_name": "ons.rent.private_rent@E06000002@2025",
+            },
+            {
+                "area_type": "la",
+                "area_code": "E06000002",
+                "metric": "tenure/private_rent",
+                "family": "tenure",
+                "value": 30.0,
+                "target_name": "ons.tenure.private_rent@E06000002@2025",
+            },
+            {
+                "area_type": "la",
+                "area_code": "E06000003",
+                "metric": "tenure/private_rent",
+                "family": "tenure",
+                "value": 40.0,
+                "target_name": "ons.tenure.private_rent@E06000003@2025",
+            },
+        ]
+    )
+
+
+def test_uk_private_rent_mean_to_total_composes_and_receipts_cells() -> None:
+    composed, receipt = uk_private_rent_mean_to_total(_private_rent_target_frame())
+
+    rent_rows = composed.loc[composed["metric"] == "rent/private_rent"]
+    assert rent_rows["value"].tolist() == [12 * 1_000.0 * 20.0, 12 * 750.0 * 30.0]
+    assert rent_rows["metadata"].tolist() == [
+        {
+            "price_level_mean_monthly": 1_000.0,
+            "renter_households": 20.0,
+            "renter_households_target_name": ("ons.tenure.private_rent@E06000001@2025"),
+        },
+        {
+            "price_level_mean_monthly": 750.0,
+            "renter_households": 30.0,
+            "renter_households_target_name": ("ons.tenure.private_rent@E06000002@2025"),
+        },
+    ]
+    assert receipt == {
+        "applied": True,
+        "months": 12,
+        "cells": 2,
+        "adjudication": "microcosm#355 (ruling 2026-09-08)",
+        "reason": (
+            "PIPR supplies monthly private-rent price levels while the bound "
+            "metric is an annual weighted total; compose each mean with the "
+            "same authority's A17-uprated private-renter household count."
+        ),
+        "price_level_source": "ons_pipr_private_rents calendar_year_average 2025",
+        "renter_count_source": "ons.tenure.private_rent (A17-uprated)",
+        "cells_detail": [
+            {
+                "area_code": "E06000001",
+                "mean_monthly_rent": 1_000.0,
+                "renter_households": 20.0,
+                "total": 240_000.0,
+            },
+            {
+                "area_code": "E06000002",
+                "mean_monthly_rent": 750.0,
+                "renter_households": 30.0,
+                "total": 270_000.0,
+            },
+        ],
+    }
+
+
+def test_uk_private_rent_mean_to_total_refuses_missing_tenure_by_area() -> None:
+    frame = _private_rent_target_frame().loc[
+        lambda rows: (
+            ~(
+                (rows["area_code"] == "E06000002")
+                & (rows["metric"] == "tenure/private_rent")
+            )
+        )
+    ]
+
+    with pytest.raises(ValueError, match="E06000002"):
+        uk_private_rent_mean_to_total(frame)
+
+
+@pytest.mark.parametrize(
+    ("metric", "value"),
+    [("tenure/private_rent", 0.0), ("rent/private_rent", float("nan"))],
+)
+def test_uk_private_rent_mean_to_total_refuses_invalid_inputs_by_area(
+    metric, value
+) -> None:
+    frame = _private_rent_target_frame()
+    frame.loc[
+        (frame["area_code"] == "E06000001") & (frame["metric"] == metric), "value"
+    ] = value
+
+    with pytest.raises(ValueError, match="E06000001"):
+        uk_private_rent_mean_to_total(frame)
+
+
+def test_uk_private_rent_mean_to_total_reports_no_rent_rows() -> None:
+    frame = _private_rent_target_frame().loc[
+        lambda rows: rows["metric"] != "rent/private_rent"
+    ]
+
+    unchanged, receipt = uk_private_rent_mean_to_total(frame)
+
+    pd.testing.assert_frame_equal(unchanged, frame)
+    assert receipt == {
+        "applied": False,
+        "reason": "no private_rent rows on the surface",
+    }
+
+
+def test_uk_local_target_surface_composes_rent_after_a17_uprating() -> None:
+    def spec(name, metric, value):
+        return TargetSpec(
+            name=name,
+            entity="household",
+            value=value,
+            measure=metric,
+            period=2025,
+            source="ONS",
+            family="ons_housing",
+            metadata={
+                "contract_target_id": name.split("@", 1)[0],
+                "geography_level": "local_authority",
+                "geography_id": "E06000001",
+                "uprating_from_period": 2021,
+                "uprating_to_period": 2025,
+            },
+        )
+
+    registry = TargetRegistry(
+        [
+            spec(
+                "ons.rent.private_rent@E06000001@2025",
+                "rent/private_rent",
+                1_000.0,
+            ),
+            spec(
+                "ons.tenure.private_rent@E06000001@2025",
+                "tenure/private_rent",
+                20.0,
+            ),
+        ],
+        country="uk",
+    )
+    ladder = SimpleNamespace(
+        households=np.asarray([10.0]),
+        constituency_code=np.asarray(["E14000001"]),
+        local_authority_code=np.asarray(["E06000001"]),
+        metadata={"oa_vintage": "ew:2021_census"},
+    )
+    reference = uk_ledger_households_total(
+        (_households_total_fact(2025, 11.0),), period=2025
+    )
+    uprating = uk_ladder_household_uprating(ladder, reference, period=2025)
+
+    surface, cross_grain = uk_local_target_surface(
+        registry,
+        ladder,
+        bound_national_target_ids=(),
+        period=2025,
+        ladder_household_uprating=uprating,
+    )
+
+    rent = surface.loc[surface["metric"] == "rent/private_rent"].iloc[0]
+    assert rent["value"] == pytest.approx(12 * 1_000.0 * 22.0)
+    assert rent["metadata"]["price_level_mean_monthly"] == 1_000.0
+    assert rent["metadata"]["renter_households"] == pytest.approx(22.0)
+    receipt = cross_grain["private_rent_mean_to_total"]
+    assert receipt["applied"] is True
+    assert receipt["cells_detail"][0]["renter_households"] == pytest.approx(22.0)
 
 
 def test_census_vintage_hold_follows_the_ladder_vintage_not_a_constant() -> None:

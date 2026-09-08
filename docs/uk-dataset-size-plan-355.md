@@ -48,6 +48,12 @@ on [#870](https://github.com/PolicyEngine/microcosm/pull/870)'s branch. The PR i
    measured feasible count; the 55,000 candidate runs at `pi_hi=0.95` (the US
    exact-k ladder's setting) and 2,000 epochs. A threshold below one promotes
    learned near-certain gates and is recorded, never a release default.
+
+   The same 2026-09-08 ruling fixes the local private-rent binding: each 2025
+   PIPR calendar-year mean monthly rent is composed into the linear annual
+   total `12 × mean × renter households`, using the matching authority's
+   A17-uprated `ons.tenure.private_rent` count. The composed total remains the
+   bound `rent/private_rent` target, and its inputs ride the cross-grain receipt.
 4. Refit on the selected support through `microcosm.calibrate`, with no L0
    penalty. Reuse the existing normalized Horvitz–Thompson `w/q` baseline.
    The stretch multiplier remains 10 **relative to that inclusion-adjusted

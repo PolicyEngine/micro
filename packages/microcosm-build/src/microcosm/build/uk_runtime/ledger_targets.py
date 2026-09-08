@@ -1028,6 +1028,126 @@ def uk_ladder_household_uprating(
     }
 
 
+def uk_private_rent_mean_to_total(
+    target_frame: pd.DataFrame,
+    *,
+    months: int | float = 12,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Compose PIPR monthly price levels into annual private-rent totals.
+
+    The rowwise calibration surface is linear in household weights, so each
+    ``rent/private_rent`` price level is multiplied by the matching authority's
+    bound ``tenure/private_rent`` household count and the months in a year.
+    """
+
+    rent_positions = np.flatnonzero(
+        target_frame["metric"].astype(str).to_numpy() == "rent/private_rent"
+    )
+    if not len(rent_positions):
+        return target_frame.copy(deep=True), {
+            "applied": False,
+            "reason": "no private_rent rows on the surface",
+        }
+
+    tenure_positions_by_area = {
+        str(target_frame.iloc[position]["area_code"]): position
+        for position in np.flatnonzero(
+            target_frame["metric"].astype(str).to_numpy() == "tenure/private_rent"
+        )
+    }
+    rent_areas = [
+        str(target_frame.iloc[position]["area_code"]) for position in rent_positions
+    ]
+    missing_areas = sorted(set(rent_areas) - set(tenure_positions_by_area))
+    if missing_areas:
+        raise ValueError(
+            "private-rent price levels have no tenure/private_rent row for "
+            f"area(s) {missing_areas}."
+        )
+
+    def _positive_finite(value: Any) -> float | None:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        return numeric if np.isfinite(numeric) and numeric > 0 else None
+
+    invalid_mean_areas = sorted(
+        {
+            str(target_frame.iloc[position]["area_code"])
+            for position in rent_positions
+            if _positive_finite(target_frame.iloc[position]["value"]) is None
+        }
+    )
+    if invalid_mean_areas:
+        raise ValueError(
+            "private-rent monthly mean must be positive and finite for area(s) "
+            f"{invalid_mean_areas}."
+        )
+    invalid_tenure_areas = sorted(
+        {
+            area_code
+            for area_code in rent_areas
+            if _positive_finite(
+                target_frame.iloc[tenure_positions_by_area[area_code]]["value"]
+            )
+            is None
+        }
+    )
+    if invalid_tenure_areas:
+        raise ValueError(
+            "tenure/private_rent value must be positive and finite for area(s) "
+            f"{invalid_tenure_areas}."
+        )
+
+    composed = target_frame.copy(deep=True)
+    if "metadata" not in composed.columns:
+        composed["metadata"] = None
+    cells_detail: list[dict[str, Any]] = []
+    for position, area_code in zip(rent_positions, rent_areas, strict=True):
+        tenure_position = tenure_positions_by_area[area_code]
+        mean = float(target_frame.iloc[position]["value"])
+        renter_households = float(target_frame.iloc[tenure_position]["value"])
+        total = float(months) * mean * renter_households
+        existing_metadata = target_frame.iloc[position].get("metadata")
+        metadata = (
+            dict(existing_metadata) if isinstance(existing_metadata, Mapping) else {}
+        )
+        metadata.update(
+            {
+                "price_level_mean_monthly": mean,
+                "renter_households": renter_households,
+                "renter_households_target_name": str(
+                    target_frame.iloc[tenure_position]["target_name"]
+                ),
+            }
+        )
+        composed.iat[int(position), composed.columns.get_loc("value")] = total
+        composed.iat[int(position), composed.columns.get_loc("metadata")] = metadata
+        cells_detail.append(
+            {
+                "area_code": area_code,
+                "mean_monthly_rent": mean,
+                "renter_households": renter_households,
+                "total": total,
+            }
+        )
+    return composed, {
+        "applied": True,
+        "months": months,
+        "cells": len(cells_detail),
+        "adjudication": "microcosm#355 (ruling 2026-09-08)",
+        "reason": (
+            "PIPR supplies monthly private-rent price levels while the bound "
+            "metric is an annual weighted total; compose each mean with the "
+            "same authority's A17-uprated private-renter household count."
+        ),
+        "price_level_source": ("ons_pipr_private_rents calendar_year_average 2025"),
+        "renter_count_source": "ons.tenure.private_rent (A17-uprated)",
+        "cells_detail": cells_detail,
+    }
+
+
 def _census_vintage_years(oa_vintage: Any) -> frozenset[int]:
     """The census years named by the ladder's ``oa_vintage`` metadata.
 
@@ -1373,7 +1493,11 @@ def uk_local_target_surface(
         output_position = reconciliation.iloc[position]["_output_position"]
         if pd.notna(output_position):
             output_rows[int(output_position)]["value"] = float(value)
-    return pd.DataFrame(output_rows), receipt
+    surface, private_rent_receipt = uk_private_rent_mean_to_total(
+        pd.DataFrame(output_rows)
+    )
+    receipt["private_rent_mean_to_total"] = private_rent_receipt
+    return surface, receipt
 
 
 def _validate_uk_cross_grain_declarations() -> None:

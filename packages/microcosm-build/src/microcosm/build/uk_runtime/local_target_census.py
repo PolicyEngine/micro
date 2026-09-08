@@ -437,12 +437,13 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "signed_reason_id": "private_rent_pipr_partial_coverage_2025",
         "signed_rationale": (
-            "The pinned Ledger fact feed carries one PIPR period, 2026-06, "
-            "with 348 facts: 314 crosswalk England/Wales LA rows, two English "
-            "LA ids outside the crosswalk, 18 Scottish BRMA rows, nine region "
-            "rows, and five country rows. None is at or before the 2025 target "
-            "period; four English crosswalk authorities are absent, Scotland "
-            "has no LA rows, and Northern Ireland has no rows at any grain."
+            "The pinned Ledger fact feed carries 2025 PIPR months; compiled "
+            "rows resolve at 2025-12 with 36 facts at or before the target "
+            "period. Four English crosswalk authorities are absent, Scotland "
+            "has no LA rows, and Northern Ireland has no rows at any grain. "
+            "The bound price level is composed as 12 months times the mean "
+            "times A17-uprated private-renter households under microcosm#355 "
+            "(ruling 2026-09-08)."
         ),
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
