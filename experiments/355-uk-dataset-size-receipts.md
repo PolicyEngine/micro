@@ -228,3 +228,10 @@ exclusion register. **Proposed (unsigned) handling**: two entries in
 `calibration_measure_exclusions.json` on the zero-support-channel precedent
 (`slc.repayments.england_postgraduate`), approved by María if she rules so; until then no size run
 can start on the rebased tree. Logbook row for smoke2 chained on smoke's.
+
+**Ruling (María, 2026-09-08): sign the two exclusions; run the next round; rebase #877 later.** Signed as
+commit 2959e177 into `calibration_measure_exclusions.json` on the zero-support-channel precedent
+(approved_by juaristi22, approved_on 2026-09-08, expires_on 2026-12-08, tracking microcosm#736,
+adjudication microcosm#355); the register's census pins move with it (51 entries; 18 payment-band
+exclusions; 82 active payment bands). Smoke re-launched as `f100-k15-h45800-e100-smoke3`, chained on
+smoke2's row. No push until the later rebase.
