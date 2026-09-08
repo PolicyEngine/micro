@@ -25,6 +25,13 @@ CI run 34216367053 on 56aa4e25 (the spec-engine re-pin) was red in four jobs wit
 Commit 1b0583b7. Local: graph 336 passed, multispine pool tool 187 passed, spec-engine pin files 50
 passed. Pushed with C1/C2 below as d4043ec7; CI run 34223080395.
 
+The run on d4043ec7 then failed in the `wheels` lane only (both Python versions): the size CLI test read
+the exported H5 through `pd.HDFStore`, and the wheels venv has no pytables (7,963 passed, 587 skipped, that
+one failure). The file's convention is `pytest.importorskip("tables")` + `importorskip("h5py")` at the top of
+every CLI test; the size test lacked them, and the two new evaluation test files write PyTables-format H5
+the same way. All three now skip without pytables (verified by blocking the import locally); the workspace
+and engine lanes, which have pytables, run them in full.
+
 ## Code landed on the branch before the runs
 
 - **C1 (d4043ec7)** — a size run keeps the dense joint solve it was cut from: `UKRowwiseDoctrineSolve.dense_reference` (weights, initial weights, local and national diagnostics, losses, past-cap censuses; the evidence labelling moved into `_doctrine_solve_evidence` and runs for both results), written as `dense_reference_diagnostics.csv` (every target's dense estimate with a `grain` column) and summarised under `solve.dataset_size.dense_reference`; and the selection itself as `dataset_size_selection.csv` (`pool_row_index, household_id, clone_index, design_weight, inclusion_probability, certainty, ht_baseline_weight, refit_weight`). Both are listed under `outputs` with digests; dense runs are unchanged. The dense reference is byte-identical to a standalone dense run on the same inputs, seed and epochs, so the size-only delta needs no second full-pool solve.

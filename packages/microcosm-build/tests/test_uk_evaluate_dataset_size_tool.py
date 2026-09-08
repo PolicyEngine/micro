@@ -124,6 +124,11 @@ def _write_downstream_stubs(eval_home: Path) -> None:
 import json
 import sys
 from pathlib import Path
+import pytest
+
+# The evaluation reads and writes PyTables-format H5 through pandas; the wheels
+# lane's venv has no pytables, so these tests skip there like the other H5 tests.
+pytest.importorskip("tables", exc_type=ModuleNotFoundError)
 
 for flag in ("--out-json", "--out-md", "--out"):
     if flag not in sys.argv:

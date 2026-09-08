@@ -1827,6 +1827,8 @@ def test_candidate_multi_block_engine_run_is_never_releasable(
 def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
     monkeypatch, tmp_path
 ):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
     builder = _load_builder_module()
     input_h5 = tmp_path / "spine.h5"
     ladder_path = tmp_path / "ladder.npz"

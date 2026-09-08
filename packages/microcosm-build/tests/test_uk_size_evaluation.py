@@ -23,6 +23,11 @@ from microcosm.build.uk_runtime.size_evaluation import (
     summarize,
     weight_tables,
 )
+
+# The evaluation reads and writes PyTables-format H5 through pandas; the wheels
+# lane's venv has no pytables, so these tests skip there like the other H5 tests.
+pytest.importorskip("tables", exc_type=ModuleNotFoundError)
+
 from microcosm.calibrate.solve import effective_sample_size
 
 
