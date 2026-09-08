@@ -5596,6 +5596,13 @@
       },
       "fillna": {
        "type": "number"
+      },
+      "year_rule": {
+       "type": "string",
+       "enum": [
+        "survey_year",
+        "calibration_year"
+       ]
       }
      },
      "anyOf": [
@@ -5647,6 +5654,13 @@
       },
       "consumed_only": {
        "type": "boolean"
+      },
+      "year_rule": {
+       "type": "string",
+       "enum": [
+        "survey_year",
+        "calibration_year"
+       ]
       }
      }
     },
@@ -7410,7 +7424,11 @@
        "const": "assign_student_loan_plan_cohorts"
       },
       "year_rule": {
-       "type": "string"
+       "type": "string",
+       "enum": [
+        "survey_year",
+        "calibration_year"
+       ]
       },
       "start_year_formula": {
        "type": "string"
@@ -7476,7 +7494,11 @@
        "type": "string"
       },
       "year_rule": {
-       "type": "string"
+       "type": "string",
+       "enum": [
+        "survey_year",
+        "calibration_year"
+       ]
       },
       "age_min": {
        "type": "integer"

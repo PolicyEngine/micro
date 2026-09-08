@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.uk_runtime import spi_income
+from microcosm.build.uk_runtime import frs_disability, spi_income
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
     FRS_HMRC_RETAINED_LEAF_COLUMNS,
@@ -226,6 +226,64 @@ def _bypass_reviewed_donor_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the synthetic donor's non-production identity explicit in tests."""
 
     monkeypatch.setattr(spi_income, "_verify_spi_donor_identity", lambda _: None)
+
+
+def test_spi_disability_refresh_reuses_frs_derivation_for_spi_people() -> None:
+    weeks = 365.25 / 7
+    person = pd.DataFrame(
+        {
+            "attendance_allowance_reported": [0.0, 19 * weeks, 0.0],
+            "afcs_reported": [0.0, 0.0, 1.0],
+        },
+        index=[10, 20, 30],
+    )
+    for column in frs_disability.FRS_DISABILITY_OUTPUT_COLUMNS:
+        if column.endswith("_category"):
+            person[column] = ["BASE", "STALE", "STALE"]
+        else:
+            person[column] = [True, False, False]
+    spi_people = pd.Series([False, True, True], index=person.index)
+    category_rates = frs_disability.UKDWPDisabilityCategoryRates(
+        aa_lower=10,
+        aa_higher=20,
+        dla_sc_lower=10,
+        dla_sc_middle=20,
+        dla_sc_higher=30,
+        dla_m_lower=10,
+        dla_m_higher=20,
+        pip_m_standard=10,
+        pip_m_enhanced=20,
+        pip_dl_standard=10,
+        pip_dl_enhanced=20,
+        instant="2024-01-01",
+        source="fixture",
+    )
+    flag_rates = frs_disability.UKDWPDisabilityFlagRates(
+        aa_higher=20,
+        dla_sc_higher=30,
+        pip_dl_enhanced=20,
+        instant="2024-01-01",
+        source="fixture",
+    )
+    output_columns = list(frs_disability.FRS_DISABILITY_OUTPUT_COLUMNS)
+    non_spi_before = person.loc[~spi_people, output_columns].copy()
+    expected = frs_disability.derive_frs_disability(
+        person.loc[spi_people],
+        category_rates=category_rates,
+        flag_rates=flag_rates,
+    )
+
+    result = spi_income._refresh_disability_derived_inputs(
+        person,
+        spi_people=spi_people,
+        category_rates=category_rates,
+        flag_rates=flag_rates,
+    )
+
+    pd.testing.assert_frame_equal(result.loc[spi_people, output_columns], expected)
+    pd.testing.assert_frame_equal(
+        result.loc[~spi_people, output_columns], non_spi_before
+    )
 
 
 @pytest.mark.requires_uk
