@@ -99,6 +99,7 @@ from microcosm.build.uk_runtime import (
     uk_local_target_surface,
     uk_support_limited_misses,
     uk_time_period,
+    uk_weight_summary,
     write_uk_calibration_diagnostics,
     write_uk_rowwise_dataset,
 )
@@ -135,6 +136,11 @@ CALIBRATION_DIAGNOSTICS_FILENAME = "calibration_diagnostics.json"
 AREA_SUPPORT_FILENAME = "area_support_summary.csv"
 PAST_CAP_FILENAME = "past_cap_census.json"
 LOCAL_REGISTRY_FILENAME = "local_target_registry.json"
+DENSE_REFERENCE_DIAGNOSTICS_FILENAME = "dense_reference_diagnostics.csv"
+DATASET_SIZE_SELECTION_FILENAME = "dataset_size_selection.csv"
+
+#: Outputs a run writes only when ``--dataset-households`` is set.
+_SIZE_RUN_ONLY_OUTPUTS = frozenset({"dense_reference", "selection"})
 
 _CONSERVE_MASS = False
 _TARGET_RECORDS: int | None = None
@@ -604,6 +610,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
+        "--selection-seed",
+        type=int,
+        help=(
+            "Seed for the size selection only (informed L0 search, exact-count "
+            "draw, refit); defaults to --seed. The pool, ladder assignment and "
+            "dense reference stay on --seed, so two selections compare on one "
+            "pool. Requires --dataset-households."
+        ),
+    )
+    parser.add_argument(
         "--sample-fraction",
         type=float,
         default=1.0,
@@ -993,6 +1009,7 @@ def _run_candidate(
             l0_lambda=_L0_LAMBDA,
             budget_iters=_BUDGET_ITERS,
             seed=args.seed,
+            selection_seed=args.selection_seed,
         )
         _validate_solve_result(solve, problem=problem)
         append_phase(state, "solved")
@@ -1100,6 +1117,7 @@ def _run_candidate(
                 l0_lambda=_L0_LAMBDA,
                 budget_iters=_BUDGET_ITERS,
                 solve_seed=args.seed,
+                selection_seed=args.selection_seed,
             )
         args._rotated_holdout = rotated_holdout
 
@@ -2064,6 +2082,13 @@ def _write_output_bundle(
         )
         write_uk_rowwise_dataset(candidate, staged["dataset"])
         solve.diagnostics.to_csv(staged["diagnostics"], index=False)
+        if solve.dense_reference is not None:
+            _dense_reference_diagnostics_frame(solve).to_csv(
+                staged["dense_reference"], index=False
+            )
+            _dataset_size_selection_frame(solve, problem=problem, clone=clone).to_csv(
+                staged["selection"], index=False
+            )
         support = support.copy()
         support["support_below_floor"] = (
             (support["assigned_households"] < 50)
@@ -2128,6 +2153,15 @@ def _write_output_bundle(
                 reported_path=output_paths["local_registry"],
             ),
         }
+        if solve.dense_reference is not None:
+            outputs["dense_reference_diagnostics"] = _artifact_info(
+                staged["dense_reference"],
+                reported_path=output_paths["dense_reference"],
+            )
+            outputs["dataset_size_selection"] = _artifact_info(
+                staged["selection"],
+                reported_path=output_paths["selection"],
+            )
         manifest = _manifest(
             args,
             candidate=candidate,
@@ -2329,7 +2363,10 @@ def _manifest(
             "pool_households": int(problem.n_households),
             "dataset_size": None
             if solve.size_receipt is None
-            else dict(solve.size_receipt),
+            else {
+                **dict(solve.size_receipt),
+                "dense_reference": _dense_reference_summary(solve),
+            },
             "initial_loss": float(solve.initial_loss),
             "final_loss": float(solve.final_loss),
             "max_abs_relative_error": float(abs_errors.max()),
@@ -2454,6 +2491,9 @@ def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]
         "n_clones": int(args.n_clones),
         "dataset_households": args.dataset_households,
         "seed": int(args.seed),
+        "selection_seed": None
+        if args.dataset_households is None
+        else int(args.seed if args.selection_seed is None else args.selection_seed),
         "source_year": source_year,
         "source_lineage_modulus": args.source_lineage_modulus,
         "sample_fraction": float(args.sample_fraction),
@@ -2496,6 +2536,91 @@ def _fit_by_family(diagnostics: pd.DataFrame) -> list[dict[str, object]]:
             }
         )
     return rows
+
+
+def _dense_reference_summary(solve: UKRowwiseDoctrineSolve) -> dict[str, Any] | None:
+    """Manifest-sized evidence of the dense solve a size run was cut from."""
+
+    dense = solve.dense_reference
+    if dense is None:
+        return None
+    local_errors = dense.diagnostics["abs_relative_error"].to_numpy(dtype=np.float64)
+    national_errors = dense.national_diagnostics["abs_relative_error"].to_numpy(
+        dtype=np.float64
+    )
+    past_cap = dict(dense.past_cap_census or {})
+    return {
+        "initial_loss": float(dense.initial_loss),
+        "final_loss": float(dense.final_loss),
+        "n_nonzero": int(dense.n_nonzero),
+        "n_households": int(dense.weights.size),
+        "max_abs_relative_error": float(local_errors.max())
+        if local_errors.size
+        else None,
+        "median_abs_relative_error": float(np.median(local_errors))
+        if local_errors.size
+        else None,
+        "national_max_abs_relative_error": float(national_errors.max())
+        if national_errors.size
+        else None,
+        "past_cap": {key: int(past_cap[key]) for key in _PAST_CAP_COUNT_KEYS},
+        "weights": uk_weight_summary(dense.weights),
+        "local_by_family": _fit_by_family(dense.diagnostics),
+        "national_by_family": _fit_by_family(dense.national_diagnostics),
+        "diagnostics_file": DENSE_REFERENCE_DIAGNOSTICS_FILENAME,
+    }
+
+
+def _dense_reference_diagnostics_frame(solve: UKRowwiseDoctrineSolve) -> pd.DataFrame:
+    """Every target's dense-reference estimate, local rows then national rows."""
+
+    dense = solve.dense_reference
+    assert dense is not None
+    local = dense.diagnostics.copy()
+    local.insert(0, "grain", local["area_type"].astype(str))
+    national = dense.national_diagnostics.copy()
+    national.insert(0, "grain", "national")
+    return pd.concat([local, national], ignore_index=True, sort=False)
+
+
+def _dataset_size_selection_frame(
+    solve: UKRowwiseDoctrineSolve,
+    *,
+    problem: UKRowwiseLocalMatrix,
+    clone: UKLadderRowwiseDatasetResult,
+) -> pd.DataFrame:
+    """One row per selected pool household: identity, design, draw and refit."""
+
+    dense = solve.dense_reference
+    receipt = solve.size_receipt
+    assert dense is not None and receipt is not None
+    support = np.asarray(solve.selected_support, dtype=np.int64)
+    household = clone.frame.table("household")
+    clone_column = ladder_clone_index_column("household")
+    ids = household["household_id"].to_numpy()[support]
+    expected = np.asarray([problem.household_ids[i] for i in support])
+    if not np.array_equal(ids, expected):
+        raise RuntimeError(
+            "the cloned pool's household order does not match the solve's "
+            "matrix columns; the selection sidecar would misattribute rows."
+        )
+    inclusion = np.asarray(receipt["inclusion_probabilities"], dtype=np.float64)
+    if inclusion.shape != support.shape:
+        raise RuntimeError("selection receipt inclusion probabilities are misaligned.")
+    return pd.DataFrame(
+        {
+            "pool_row_index": support,
+            "household_id": ids,
+            "clone_index": household[clone_column].to_numpy()[support]
+            if clone_column in household.columns
+            else np.zeros(support.size, dtype=np.int64),
+            "design_weight": dense.initial_weights[support],
+            "inclusion_probability": inclusion,
+            "certainty": inclusion >= 1.0,
+            "ht_baseline_weight": np.asarray(solve.initial_weights, dtype=np.float64),
+            "refit_weight": np.asarray(solve.weights, dtype=np.float64),
+        }
+    )
 
 
 def _local_output_registry(
@@ -2622,6 +2747,8 @@ def _validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError(
             "the joint registry path requires --input-sha256 and --ladder-sha256."
         )
+    if args.selection_seed is not None and args.dataset_households is None:
+        raise ValueError("--selection-seed requires --dataset-households.")
     if args.dataset_households is not None:
         if args.dataset_households <= 0:
             raise ValueError("--dataset-households must be positive.")
@@ -2709,6 +2836,8 @@ def _output_paths(
         "local_gates": out_dir
         / LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(calibration_year=calibration_year),
         "local_registry": out_dir / LOCAL_REGISTRY_FILENAME,
+        "dense_reference": out_dir / DENSE_REFERENCE_DIAGNOSTICS_FILENAME,
+        "selection": out_dir / DATASET_SIZE_SELECTION_FILENAME,
     }
 
 
@@ -2749,12 +2878,16 @@ def _publish_staged_files(
         "past_cap",
         "calibration_diagnostics",
         "local_registry",
+        "dense_reference",
+        "selection",
         "manifest",
     )
     published: list[Path] = []
     succeeded = False
     try:
         for key in publish_order:
+            if key in _SIZE_RUN_ONLY_OUTPUTS and not staged[key].exists():
+                continue
             destination = output_paths[key]
             if destination.exists():
                 raise FileExistsError(

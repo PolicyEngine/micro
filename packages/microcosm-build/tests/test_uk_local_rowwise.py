@@ -1301,6 +1301,52 @@ def test_size_solve_restores_full_prepared_tables_before_subsetting():
     assert result.selected_support.tolist() == [0, 2]
 
 
+def test_size_solve_keeps_its_dense_reference_and_selection_seed_moves_only_the_draw():
+    frame = _clone_frame()
+    metrics = pd.DataFrame({"households": [1.0, 1.0, 1.0]}, index=[101, 102, 103])
+    problem = build_uk_rowwise_local_matrix(
+        metrics,
+        _assigned(),
+        pd.DataFrame({"code": ["E001", "S001"], "households": [2.0, 1.0]}),
+    )
+    common = dict(
+        bound_families=["census_households/constituency"],
+        epochs=2,
+        seed=7,
+    )
+    dense = solve_uk_rowwise_weights_under_doctrine(frame, problem, **common)
+    sized = solve_uk_rowwise_weights_under_doctrine(
+        frame, problem, dataset_households=2, **common
+    )
+    assert dense.dense_reference is None
+    reference = sized.dense_reference
+    assert reference is not None
+    # The reference is the standalone dense solve, byte for byte.
+    np.testing.assert_array_equal(reference.weights, dense.weights)
+    np.testing.assert_array_equal(reference.initial_weights, dense.initial_weights)
+    assert reference.final_loss == dense.final_loss
+    assert reference.final_loss == sized.size_receipt["dense_loss"]
+    assert reference.initial_loss == dense.initial_loss
+    assert reference.n_nonzero == dense.n_nonzero
+    pd.testing.assert_frame_equal(reference.diagnostics, dense.diagnostics)
+    pd.testing.assert_frame_equal(
+        reference.national_diagnostics, dense.national_diagnostics
+    )
+    assert dict(reference.past_cap_census) == dict(dense.past_cap_census)
+    assert dict(reference.all_past_cap_census) == dict(dense.all_past_cap_census)
+    # The shipped product is the compact refit, not the reference.
+    assert sized.weights.size == 2
+    assert reference.weights.size == 3
+    # A selection seed moves the draw only: same pool, same dense reference.
+    other = solve_uk_rowwise_weights_under_doctrine(
+        frame, problem, dataset_households=2, selection_seed=11, **common
+    )
+    np.testing.assert_array_equal(other.dense_reference.weights, reference.weights)
+    assert other.size_receipt["seed"] == 11
+    assert sized.size_receipt["seed"] == 7
+    assert other.size_receipt["dense_loss"] == sized.size_receipt["dense_loss"]
+
+
 def test_size_holdout_uses_compact_support_and_reselects_each_fold(monkeypatch):
     import microcosm.build.uk_runtime.local_rowwise as runtime
 

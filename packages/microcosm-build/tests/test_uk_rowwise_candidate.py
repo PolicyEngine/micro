@@ -1855,6 +1855,8 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
             "2",
             "--dataset-households",
             "300",
+            "--selection-seed",
+            "11",
             "--epochs",
             "2",
             "--skip-holdout",
@@ -1883,6 +1885,82 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
     assert set(persons.person_household_id) == set(households.household_id)
     assert set(persons.person_benunit_id) == set(benunits.benunit_id)
     assert len(_spool_rows(out)) == 1
+
+    # The selection seed moves the draw only; the manifest records both seeds.
+    assert manifest["parameters"]["seed"] == 7
+    assert manifest["parameters"]["selection_seed"] == 11
+    assert size["seed"] == 11
+
+    # The dense solve the selection was cut from ships as evidence.
+    dense = size["dense_reference"]
+    assert dense["final_loss"] == size["dense_loss"]
+    assert dense["n_households"] == 416
+    assert dense["weights"]["n_records"] == 416
+    assert {"effective_sample_size", "max_to_median_positive_weight"} <= set(
+        dense["weights"]
+    )
+    assert dense["diagnostics_file"] == builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
+    outputs = manifest["outputs"]
+    dense_csv = out / builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
+    selection_csv = out / builder.DATASET_SIZE_SELECTION_FILENAME
+    assert Path(outputs["dense_reference_diagnostics"]["path"]) == dense_csv.resolve()
+    assert Path(outputs["dataset_size_selection"]["path"]) == selection_csv.resolve()
+    assert (
+        outputs["dataset_size_selection"]["sha256"]
+        == hashlib.sha256(selection_csv.read_bytes()).hexdigest()
+    )
+    dense_rows = pd.read_csv(dense_csv)
+    assert len(dense_rows) == manifest["solve"]["n_targets"]
+    assert dense_rows.columns[0] == "grain"
+    assert {"target", "final_estimate", "abs_relative_error"} <= set(dense_rows.columns)
+    selection = pd.read_csv(selection_csv)
+    assert list(selection.columns) == [
+        "pool_row_index",
+        "household_id",
+        "clone_index",
+        "design_weight",
+        "inclusion_probability",
+        "certainty",
+        "ht_baseline_weight",
+        "refit_weight",
+    ]
+    assert len(selection) == 300
+    assert selection["pool_row_index"].is_unique
+    assert selection["pool_row_index"].max() < 416
+    assert set(selection["household_id"]) == set(households.household_id)
+    assert (selection["refit_weight"] > 0).all()
+    assert (selection["design_weight"] > 0).all()
+    assert (
+        int(selection["certainty"].sum())
+        == size["selection_receipt"]["certainty_count"]
+    )
+    assert int(selection["certainty"].sum()) == size["protected_carriers"]
+
+
+def test_selection_seed_requires_a_dataset_size(tmp_path):
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+            "--selection-seed",
+            "11",
+        ]
+    )
+    with pytest.raises(ValueError, match="requires --dataset-households"):
+        builder._validate_cli_args(args)
+
+
+def test_dense_candidate_manifest_has_no_size_sidecars(tmp_path):
+    builder = _load_builder_module()
+    paths = builder._output_paths(tmp_path, source_year=2024, calibration_year=2025)
+    assert paths["dense_reference"].name == builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
+    assert paths["selection"].name == builder.DATASET_SIZE_SELECTION_FILENAME
+    assert builder._SIZE_RUN_ONLY_OUTPUTS == {"dense_reference", "selection"}
 
 
 def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
