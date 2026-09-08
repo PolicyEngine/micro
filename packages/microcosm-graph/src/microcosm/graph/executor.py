@@ -1480,21 +1480,6 @@ def _write_node(
                 series = _series_for_column(population.frame, entity, column)
                 columns[(entity, column)] = (series, _dtype_token(series))
 
-    column_entries: list[dict[str, str]] = []
-    manifest_artifacts: dict[tuple[str, str], str] = {}
-    for (entity, column), (series, token) in sorted(columns.items()):
-        output_key = artifact_key(key, entity, column)
-        store.put_column(
-            output_key,
-            series,
-            declared_dtype=token,
-            entity_ids=series.index,
-            node_key=key,
-            verify_existing=verify_existing,
-        )
-        column_entries.append({"entity": entity, "column": column, "key": output_key})
-        manifest_artifacts[(entity, column)] = output_key
-
     stored_frame_key: str | None = None
     if node.structural not in {StructuralDelta.NONE, StructuralDelta.REVISION}:
         stored_frame_key = frame_key(key)
@@ -1504,6 +1489,33 @@ def _write_node(
             node_key=key,
             verify_existing=verify_existing,
         )
+
+    column_entries: list[dict[str, str]] = []
+    manifest_artifacts: dict[tuple[str, str], str] = {}
+    for (entity, column), (series, token) in sorted(columns.items()):
+        output_key = artifact_key(key, entity, column)
+        if stored_frame_key is None:
+            store.put_column(
+                output_key,
+                series,
+                declared_dtype=token,
+                entity_ids=series.index,
+                node_key=key,
+                verify_existing=verify_existing,
+            )
+        else:
+            store.put_frame_column_ref(
+                output_key,
+                frame_key=stored_frame_key,
+                entity=entity,
+                column=column,
+                series=series,
+                declared_dtype=token,
+                node_key=key,
+                verify_existing=verify_existing,
+            )
+        column_entries.append({"entity": entity, "column": column, "key": output_key})
+        manifest_artifacts[(entity, column)] = output_key
 
     weight_entry: dict[str, str] | None = None
     if result.weights is not None:
@@ -2365,7 +2377,12 @@ def _graph_product_receipts(
                 version = base
                 state_receipt = receipts[version]
             record["state"] = version
-            record["key"] = state_receipt.weight_key or state_receipt.frame_key
+            if state_receipt.weight_key is not None:
+                record["key"] = state_receipt.weight_key
+                record["storage"] = "column"
+            else:
+                record["key"] = state_receipt.frame_key
+                record["storage"] = "frame"
         elif product.kind is ProductKind.ARTIFACT:
             assert product.artifact is not None
             record["artifact"] = product.artifact

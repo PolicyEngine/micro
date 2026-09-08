@@ -46,6 +46,8 @@ from .errors import (
     StoreMissError,
     StoreUnavailableError,
 )
+from .keys import artifact_key
+from .keys import frame_key as node_frame_key
 
 __all__ = [
     "ContentStore",
@@ -70,6 +72,7 @@ _ENCODING_NULLABLE_BOOLEAN = "nullable-boolean-v1"
 _ENCODING_NULLABLE_INTEGER = "nullable-integer-v1"
 _ENCODING_UTF8 = "utf8-offsets-v1"
 _ENCODING_OBJECT = "object-scalars-v1"
+_ENCODING_FRAME_COLUMN_REF = "frame-column-ref-v1"
 
 _TAG_NONE = 0
 _TAG_PD_NA = 1
@@ -829,6 +832,47 @@ class ContentStore:
 
     write_column = put_column
 
+    def put_frame_column_ref(
+        self,
+        key: str,
+        *,
+        frame_key: str,
+        entity: str,
+        column: str,
+        series: pd.Series,
+        declared_dtype: str,
+        node_key: str,
+        verify_existing: bool = True,
+    ) -> Path:
+        """Store a small coordinate reference instead of duplicating frame values."""
+
+        if verify_existing:
+            frame_metadata = self.metadata(frame_key, kind="frame")
+            if frame_metadata.get("node_key") != node_key:
+                raise ValueError(f"Stored frame {frame_key} belongs to another node.")
+        if not isinstance(series, pd.Series):
+            raise TypeError("Frame column references require a pandas Series.")
+        if not _dtype_matches_declared(series.dtype, declared_dtype):
+            raise TypeError(
+                f"Frame coordinate {entity}.{column} has dtype {series.dtype!s}, "
+                f"not {declared_dtype!r}."
+            )
+
+        def build(root: Path) -> Mapping[str, object]:
+            del root
+            return {
+                "encoding": _ENCODING_FRAME_COLUMN_REF,
+                "frame_key": frame_key,
+                "entity": entity,
+                "column": column,
+                "declared_dtype": declared_dtype,
+                "pandas_dtype": str(series.dtype),
+                "length": len(series),
+                "node_key": node_key,
+            }
+
+        return self._put(key, "column", build, verify_existing=verify_existing)
+
     def load_column(
         self,
         key: str,
@@ -850,6 +894,55 @@ class ContentStore:
             )
         if node_key is not None and metadata.get("node_key") != node_key:
             raise StoreCorrupt(f"Stored column {key} belongs to a different node.")
+        if metadata.get("encoding") == _ENCODING_FRAME_COLUMN_REF:
+            frame_key = metadata.get("frame_key")
+            entity = metadata.get("entity")
+            column = metadata.get("column")
+            if not all(
+                isinstance(value, str) and value
+                for value in (frame_key, entity, column)
+            ):
+                raise StoreCorrupt(f"Stored column reference {key} is malformed.")
+            if frame_key == key:
+                raise StoreCorrupt(f"Stored column reference {key} refers to itself.")
+            reference_node_key = metadata.get("node_key")
+            if (
+                not isinstance(reference_node_key, str)
+                or artifact_key(reference_node_key, entity, column) != key
+                or node_frame_key(reference_node_key) != frame_key
+            ):
+                raise StoreCorrupt(
+                    f"Stored column reference {key} disagrees with its node identity."
+                )
+            frame = self.load_frame(frame_key, node_key=reference_node_key)
+            if entity not in frame.entities or column not in frame.table(entity):
+                raise StoreCorrupt(
+                    f"Stored column reference {key} names absent {entity}.{column}."
+                )
+            table = frame.table(entity)
+            id_column = frame.schema.entity_id_column(entity)
+            values = pd.Series(
+                table[column].array.copy(),
+                index=pd.Index(table[id_column].array.copy(), name=id_column),
+                name=column,
+                dtype=table[column].dtype,
+            )
+            if (
+                str(values.dtype) != metadata.get("pandas_dtype")
+                or metadata.get("length") != len(values)
+                or not _dtype_matches_declared(values.dtype, stored_dtype)
+            ):
+                raise StoreCorrupt(
+                    f"Stored column reference {key} disagrees with its frame."
+                )
+            if entity_ids is not None:
+                if isinstance(entity_ids, pd.Series):
+                    expected_ids = pd.Index(entity_ids.array, name=entity_ids.name)
+                else:
+                    expected_ids = pd.Index(entity_ids)
+                if not values.index.identical(expected_ids):
+                    raise StoreCorrupt(f"Stored column {key} has different entity ids.")
+            return values
         value_spec = metadata.get("values")
         ids_spec = metadata.get("ids")
         if not isinstance(value_spec, dict) or not isinstance(ids_spec, dict):

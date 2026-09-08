@@ -15,6 +15,7 @@ fixture it is waiting for.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -345,10 +346,11 @@ def test_h3_us_post_transfer_parity(tmp_path: Path) -> None:
         == graph
     )
     compiled = compile_graph(graph)
+    graph_store = ContentStore(tmp_path / "store")
     manifest = run_graph(
         compiled,
         sources={"stacked": US_POST_TRANSFER_PARITY / "sources"},
-        store=ContentStore(tmp_path / "store"),
+        store=graph_store,
         kernels=us_registry(),
         resume="forbid",
         decisions=(),
@@ -367,6 +369,49 @@ def test_h3_us_post_transfer_parity(tmp_path: Path) -> None:
         assert actual.to_numpy().tobytes() == expected[column].to_numpy().tobytes(), (
             column
         )
+
+    # Storage benchmark on the representative synthetic US population. A
+    # structural frame holds the values once; its coordinate objects are
+    # metadata-only references. Ordinary value patches retain their exact
+    # standalone payloads for reconstruction and investigation.
+    structural_frame_payload = 0
+    structural_reference_payload = 0
+    duplicated_coordinate_payload = 0
+    ordinary_patch_payload = 0
+    comparison_store = ContentStore(tmp_path / "duplicated-coordinate-store")
+    for node_id in compiled.order:
+        declaration = graph.node(node_id)
+        receipt = manifest.nodes[node_id]
+        if receipt.frame_key is not None:
+            frame_metadata = graph_store.metadata(receipt.frame_key, kind="frame")
+            structural_frame_payload += sum(
+                int(entry["size"]) for entry in frame_metadata["payloads"].values()
+            )
+        for key in receipt.artifacts.values():
+            metadata = graph_store.metadata(key, kind="column")
+            payload = sum(int(entry["size"]) for entry in metadata["payloads"].values())
+            if declaration.structural.value not in {"none", "revision"}:
+                assert metadata["encoding"] == "frame-column-ref-v1"
+                structural_reference_payload += payload
+                series = graph_store.load_column(key, node_key=receipt.key)
+                comparison_key = hashlib.sha256(f"{node_id}:{key}".encode()).hexdigest()
+                comparison_store.put_column(
+                    comparison_key,
+                    series,
+                    declared_dtype=str(metadata["declared_dtype"]),
+                    entity_ids=series.index,
+                    node_key=receipt.key,
+                )
+                copied = comparison_store.metadata(comparison_key, kind="column")
+                duplicated_coordinate_payload += sum(
+                    int(entry["size"]) for entry in copied["payloads"].values()
+                )
+            else:
+                ordinary_patch_payload += payload
+    assert structural_frame_payload > 0
+    assert structural_reference_payload == 0
+    assert duplicated_coordinate_payload > structural_reference_payload
+    assert ordinary_patch_payload > 0
 
 
 def test_the_parity_fixtures_are_declared_but_not_faked() -> None:

@@ -118,7 +118,10 @@ __all__ = [
     "KernelResult",
     "KernelRole",
     "LoadedGraphSource",
+    "GraphRunResult",
     "MassRecord",
+    "MaterializedProduct",
+    "MaterializerRegistry",
     "Node",
     "NodeReceipt",
     "NodeRejected",
@@ -134,6 +137,7 @@ __all__ = [
     "PopulationError",
     "ResumePolicy",
     "RunManifest",
+    "CandidateIndex",
     "SOURCE_CODECS",
     "SeedSource",
     "NumericScope",
@@ -165,8 +169,11 @@ __all__ = [
     "load_yaml12",
     "load_yaml12_file",
     "load_source",
+    "materialize_products",
     "run_graph",
+    "run_graph_source",
     "parse_yaml12",
+    "reconstruct_population",
     "source_hash",
     "validate_kernel_registry",
 ]
@@ -198,7 +205,15 @@ from .codecs import (  # noqa: E402 - check dependency series before runtime imp
 from .executor import NodeRejected, run_graph  # noqa: E402
 from .explain import explain_html  # noqa: E402
 from .manifest import Decision, NodeReceipt, PopulationView, RunManifest  # noqa: E402
+from .materialize import (  # noqa: E402
+    CandidateIndex,
+    MaterializedProduct,
+    MaterializerRegistry,
+    materialize_products,
+)
 from .population import MassRecord, Population, PopulationError  # noqa: E402
+from .reconstruct import reconstruct_population  # noqa: E402
+from .runner import GraphRunResult, run_graph_source  # noqa: E402
 from .serialize import (  # noqa: E402
     graph_document_from_json,
     graph_document_to_json,

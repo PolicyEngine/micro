@@ -20,6 +20,7 @@ microcosm-frame = { workspace = true }
 dev = [
     "pytest>=8",
     "hypothesis>=6",
+    "h5py>=3",
 ]
 
 [build-system]

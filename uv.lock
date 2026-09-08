@@ -959,6 +959,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "h5py" },
     { name = "hypothesis" },
     { name = "pytest" },
 ]
@@ -975,6 +976,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "h5py", specifier = ">=3" },
     { name = "hypothesis", specifier = ">=6" },
     { name = "pytest", specifier = ">=8" },
 ]
