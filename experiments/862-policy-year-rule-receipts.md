@@ -19,9 +19,9 @@ calibration run remains available as a follow-up.
 | release | `frs_2024_25` (`uk/frs_release.json`: survey 2024, base 2024, calibration 2025) |
 | tabs | UKDS SN 9563 tab zip sha256 `05dd0069587dbd25e5719d355ce05fc0827d5edd58c24ece9ab85acd954a9aeb`, hash-checked per tab by `frs_spine._read_pinned_tab` |
 | frame | 34,966 persons, 68,251,110 weighted, `time_period` `2024` on both sides |
-| engine | policyengine-uk 2.92.1 (first run) and 2.94.0 (run repeated after rebasing on `main` 5ab1b056), policyengine-core 3.31.0; every figure identical on both |
+| engine | policyengine-uk 2.92.1 (first run) and 2.94.0 (runs repeated after each rebase on `main`), policyengine-core 3.31.0; every figure identical on both |
 | before | `main` `c1b83241` |
-| after | this branch (`uk-policy-year-rule-862`, implementation commit 7119f220 after the rebase on `main` 5ab1b056); the run was repeated at 2b70714c (the rebased tree) and reproduced every figure below. Later commits on the branch touch the SPI refresh, tests, locks and the student-loan stage, none of the seven stages measured here |
+| after | this branch (`uk-policy-year-rule-862`, implementation commit 47d778c8 after the rebase on `main` e07a4735, which carries #874, #879 and #870); the run was repeated at 8ff697cb and reproduced every figure below. Later commits on the branch touch the SPI refresh seam, tests and locks, none of the seven stages measured here |
 | runtime | about 24 s per side, 2026-09-07 |
 
 ## Disability categories (records, weighted persons): identical before and after

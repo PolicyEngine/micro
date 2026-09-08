@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -369,6 +370,7 @@ def impute_uk_spi_income_support(
     seed: int = 42,
     n_estimators: int = 100,
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE,
+    build_period: int | str = 2023,
     verified_donor: VerifiedSPIDonorIdentity | None = None,
     donor_table: pd.DataFrame | None = None,
     initialize_frs_channel_columns: Mapping[str, float] | None = None,
