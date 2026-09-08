@@ -98,6 +98,105 @@ def hierarchy_seed_from_catalog(
     )
 
 
+def target_spec_from_materialized_declaration(
+    target: Mapping[str, object],
+    hierarchy_catalog: Mapping[str, object],
+    *,
+    name: str,
+    value: float,
+    period: int | str,
+    source: str,
+    geography_level: str,
+    geography_id: str,
+    geography_label: str | None = None,
+    dimensions: Iterable[HierarchyDimension] = (),
+    backend: str = "policyengine",
+) -> TargetSpec:
+    """Compile a non-Chronicle target declaration and value into a target spec."""
+
+    target_id = str(target.get("target_id") or "").strip()
+    if not target_id:
+        raise ValueError("A materialized target declaration must have a target_id.")
+    materialization = target.get("materialization")
+    materialization_kind = (
+        str(materialization.get("kind") or "").strip()
+        if isinstance(materialization, Mapping)
+        else ""
+    )
+    if not materialization_kind:
+        raise ValueError(
+            f"Materialized target {target_id!r} must declare a non-empty "
+            "materialization.kind."
+        )
+    declared_levels = {
+        str(level).strip()
+        for level in (target.get("geography_levels") or ())
+        if str(level).strip()
+    }
+    if geography_level not in declared_levels:
+        raise ValueError(
+            f"Materialized target {target_id!r} does not declare geography "
+            f"level {geography_level!r}."
+        )
+    target_label = str(target.get("label") or "").strip()
+    if not target_label:
+        raise ValueError(f"Materialized target {target_id!r} must declare a label.")
+    bindings = target.get("bindings")
+    if not isinstance(bindings, Mapping):
+        raise ValueError(f"Materialized target {target_id!r} has no bindings mapping.")
+    binding = bindings.get(backend)
+    if not isinstance(binding, Mapping):
+        raise ValueError(
+            f"Materialized target {target_id!r} has no {backend!r} binding."
+        )
+    measure = str(binding.get("metric_name") or "").strip()
+    if not measure:
+        raise ValueError(
+            f"Materialized target {target_id!r} has no {backend!r} metric_name."
+        )
+    measurement = target.get("measurement")
+    measurement_entity = (
+        str(measurement.get("entity") or "").strip()
+        if isinstance(measurement, Mapping)
+        else ""
+    )
+    entity = str(
+        binding.get("from_entity")
+        or binding.get("map_to")
+        or measurement_entity
+        or "household"
+    )
+    category_id = str(target.get("category_id") or "").strip()
+    seed = hierarchy_seed_from_catalog(hierarchy_catalog, category_id)
+    hierarchy = _complete_calibration_hierarchy(
+        seed,
+        name=name,
+        target_label=target_label,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        geography_label=geography_label or geography_id,
+        dimensions=tuple(dimensions),
+    )
+    return TargetSpec(
+        name=name,
+        entity=entity,
+        value=value,
+        measure=measure,
+        period=period,
+        source=source,
+        family=str(target.get("family") or "unspecified"),
+        signed=bool(target.get("signed", False)),
+        metadata={
+            "contract_target_id": target_id,
+            "geography_level": geography_level,
+            "geography_id": geography_id,
+            "measure_kind": "prepared_column",
+            "materialization_kind": materialization_kind,
+        },
+        hierarchy=hierarchy,
+    )
+
+
 @dataclass(frozen=True)
 class LedgerTargetMapping:
     """How Microcosm maps Ledger facts to model-ready target rows.
@@ -901,6 +1000,29 @@ def _calibration_hierarchy(
         else _geography_fallback_label(geography_id)
     )
     fact_label = _chronicle_target_label(facts, target_period=target_period)
+    return _complete_calibration_hierarchy(
+        seed,
+        name=reference.name,
+        target_label=fact_label or _humanize_identifier(reference.name),
+        geography_level=geography_level,
+        geography_id=geography_id,
+        geography_label=geography_label,
+        dimensions=_inherited_dimensions(facts),
+    )
+
+
+def _complete_calibration_hierarchy(
+    seed: CalibrationHierarchySeed,
+    *,
+    name: str,
+    target_label: str,
+    geography_level: str,
+    geography_id: str,
+    geography_label: str,
+    dimensions: tuple[HierarchyDimension, ...],
+) -> CalibrationHierarchy:
+    """Complete a normalized category seed with per-target hierarchy fields."""
+
     return CalibrationHierarchy(
         provider=seed.provider,
         category=seed.category,
@@ -909,10 +1031,10 @@ def _calibration_hierarchy(
             label=geography_label,
             level=geography_level,
         ),
-        dimensions=_inherited_dimensions(facts),
+        dimensions=dimensions,
         target=HierarchyNode(
-            id=reference.name,
-            label=fact_label or _humanize_identifier(reference.name),
+            id=name,
+            label=target_label,
         ),
     )
 

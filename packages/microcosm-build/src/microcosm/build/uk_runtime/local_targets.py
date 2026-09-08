@@ -22,6 +22,7 @@ AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL = {
     "constituency": "constituency",
     "la": "local_authority",
 }
+UK_LADDER_HOUSEHOLD_TARGET_ID = "external:census_households/households"
 INCOME_VARIABLES = ("self_employment_income", "employment_income")
 AGE_BANDS = tuple((lower, lower + 10) for lower in range(0, 80, 10))
 CONSTITUENCY_UC_CHILDREN_METRICS = (

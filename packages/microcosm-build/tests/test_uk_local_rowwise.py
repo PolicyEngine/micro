@@ -138,6 +138,13 @@ def test_matrix_builder_places_support_only_in_assigned_area() -> None:
             "target_index"
         ].iloc[0]
     )
+    household_hierarchy = frame.loc[e_pop, "hierarchy"]
+    assert household_hierarchy.provider.label == "Office for National Statistics"
+    assert household_hierarchy.category.label == "Household composition"
+    assert household_hierarchy.target.label == "Occupied households"
+    assert frame.loc[e_pop, "contract_target_id"] == (
+        "external:census_households/households"
+    )
     assert dense[e_pop].tolist() == [2.0, 1.0, 0.0]
     s_pop = int(
         frame[(frame["area_code"] == "S001") & (frame["metric"] == "households")][

@@ -1,10 +1,11 @@
 """Guarantees for the merged UK population calibration contract resource.
 
-``uk/uk_population_targets.json`` is the consumer-side selection contract over
-Chronicle facts (chronicle#166 ruling: contracts live in Microcosm; Chronicle
-is facts-only). It carries the national and local-geography target rows in one
-value-free resource, with separate scoped provenance blocks for the retired
-national registry and local profile surfaces.
+``uk/uk_population_targets.json`` is the consumer-side selection contract for
+Chronicle facts and explicitly declared Microcosm-derived targets
+(chronicle#166 ruling: contracts live in Microcosm; Chronicle is facts-only).
+It carries the national and local-geography target rows in one value-free
+resource, with separate scoped provenance blocks for the retired national
+registry and local profile surfaces.
 """
 
 from __future__ import annotations
@@ -176,13 +177,13 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "operation": "sum",
         "assertion_policy": "observed_only",
     }
-    assert len(resource["targets"]) == 235
+    assert len(resource["targets"]) == 236
 
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
     assert len(registry_scope) == 202
-    assert len(profile_scope) == 33
+    assert len(profile_scope) == 34
     assert target_ids[:202] == registry_scope
     assert target_ids[202:] == profile_scope
 
@@ -217,9 +218,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 33
+    assert parity["contract_target_count"] == 34
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 8
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 9
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -317,7 +318,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 235
+    assert len(target_ids) == 236
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -342,19 +343,22 @@ def test_uk_population_targets_declare_selector_vocabularies_and_bindings() -> N
     metric_names_seen: list[str] = []
     for target in resource["targets"]:
         target_id = target["target_id"]
-        selector = target["ledger_selector"]
-        assert selector, target_id
+        selector = target.get("ledger_selector")
+        materialization = target.get("materialization")
+        assert bool(selector) != bool(materialization), target_id
         binding = target["bindings"]["policyengine"]
         metric_names_seen.append(binding["metric_name"])
 
         if target_id in registry_scope:
+            assert selector is not None
             assert set(selector) <= NATIONAL_SELECTOR_KEYS, target_id
             assert "assertion" not in selector, target_id
             assert set(binding) <= POLICYENGINE_BINDING_KEYS, target_id
             kind = binding.get("kind")
             assert kind is None or kind in BINDING_KINDS, target_id
         elif target_id in profile_scope:
-            assert set(selector) <= LOCAL_SELECTOR_KEYS, target_id
+            if selector is not None:
+                assert set(selector) <= LOCAL_SELECTOR_KEYS, target_id
             assert "chronicle_selector" not in target
             assert set(target["bindings"]) == {"policyengine", "axiom"}
             assert set(binding) <= LOCAL_POLICYENGINE_BINDING_KEYS, target_id
@@ -544,15 +548,29 @@ def test_uk_population_targets_use_corrected_local_selector_vocabulary() -> None
 def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None:
     resource = load_uk_local_geography_contract()
 
-    assert (
-        metric_names_from_target_profile(resource, "constituency")
-        == metric_names("constituency")[:-1]
+    assert metric_names_from_target_profile(resource, "constituency") == metric_names(
+        "constituency"
     )
-    assert metric_names_from_target_profile(resource, "la") == tuple(
-        name for name in metric_names("la") if name != "households"
-    )
-    assert len(metric_names_from_target_profile(resource, "constituency")) == 17
-    assert len(metric_names_from_target_profile(resource, "la")) == 29
+    assert metric_names_from_target_profile(resource, "la") == metric_names("la")
+    assert len(metric_names_from_target_profile(resource, "constituency")) == 18
+    assert len(metric_names_from_target_profile(resource, "la")) == 30
+
+
+def test_uk_population_targets_declare_ladder_household_target_metadata() -> None:
+    target = _target_by_id(_load(), "external:census_households/households")
+
+    assert target["label"] == "Occupied households"
+    assert target["category_id"] == "ons.household_composition"
+    assert target["geography_levels"] == ["constituency", "local_authority"]
+    assert target["bindings"]["policyengine"] == {
+        "metric_name": "households",
+        "value_variable": "household_count",
+    }
+    assert target["materialization"] == {
+        "kind": "uk_oa_geography_ladder",
+        "field": "households",
+    }
+    assert "ledger_selector" not in target
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:

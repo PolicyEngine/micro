@@ -17,6 +17,7 @@ from microcosm.build.ledger_targets import (
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
     target_spec_from_ledger_reference,
+    target_spec_from_materialized_declaration,
 )
 from microcosm.calibrate import (
     CalibrationHierarchySeed,
@@ -345,6 +346,48 @@ def _ledger_fact(**overrides):
     }
     fact.update(overrides)
     return fact
+
+
+def test_materialized_declaration_compiles_the_normalized_hierarchy() -> None:
+    target = {
+        "target_id": "census.households",
+        "label": "Occupied households",
+        "family": "census_households",
+        "geography_levels": ["local_authority"],
+        "measurement": {"entity": "household"},
+        "bindings": {"policyengine": {"metric_name": "households"}},
+        "category_id": "ons.household_composition",
+        "materialization": {"kind": "geography_ladder"},
+    }
+    hierarchy_catalog = {
+        "providers": {"ons": {"label": "Office for National Statistics"}},
+        "categories": {
+            "ons.household_composition": {
+                "provider_id": "ons",
+                "label": "Household composition",
+            }
+        },
+    }
+
+    spec = target_spec_from_materialized_declaration(
+        target,
+        hierarchy_catalog,
+        name="census.households@E06000001",
+        value=100.0,
+        period=2025,
+        source="Test geography ladder",
+        geography_level="local_authority",
+        geography_id="E06000001",
+        geography_label="Hartlepool",
+    )
+
+    assert spec.measure == "households"
+    assert spec.metadata["contract_target_id"] == "census.households"
+    assert spec.hierarchy is not None
+    assert spec.hierarchy.provider.label == "Office for National Statistics"
+    assert spec.hierarchy.category.label == "Household composition"
+    assert spec.hierarchy.geography.label == "Hartlepool"
+    assert spec.hierarchy.target.label == "Occupied households"
 
 
 def _consumer_fact_row(**overrides):

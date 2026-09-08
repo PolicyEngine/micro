@@ -128,6 +128,42 @@ class AreaTargetReferenceAuthoringConfig:
         return rosters
 
 
+def _chronicle_reference_targets(
+    contract: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], ...]:
+    """Select declarations whose values are resolved from Chronicle facts."""
+
+    selected: list[Mapping[str, Any]] = []
+    for target in contract.get("targets", ()):
+        if not isinstance(target, Mapping):
+            raise ValueError("Every target declaration must be a mapping.")
+        target_id = str(target.get("target_id") or "").strip()
+        selector = target.get("ledger_selector")
+        materialization = target.get("materialization")
+        if selector is not None and materialization is not None:
+            raise ValueError(
+                f"Contract target {target_id!r} cannot declare both "
+                "ledger_selector and materialization."
+            )
+        if materialization is not None:
+            if (
+                not isinstance(materialization, Mapping)
+                or not str(materialization.get("kind") or "").strip()
+            ):
+                raise ValueError(
+                    f"Contract target {target_id!r} materialization must be a "
+                    "mapping with a non-empty kind."
+                )
+            continue
+        if not isinstance(selector, Mapping) or not selector:
+            raise ValueError(
+                f"Contract target {target_id!r} must declare a non-empty "
+                "ledger_selector or materialization."
+            )
+        selected.append(target)
+    return tuple(selected)
+
+
 def author_target_references(
     contract: Mapping[str, Any],
     facts: Iterable[Mapping[str, Any]],
@@ -136,6 +172,7 @@ def author_target_references(
     """Build active target references and a membership report."""
 
     fact_rows = tuple(facts)
+    reference_targets = _chronicle_reference_targets(contract)
     _validate_hierarchy_contract(contract)
     facts_by_source = _facts_by_source(fact_rows)
     _validate_contract_bindings(contract, config.binding_vocabulary)
@@ -145,7 +182,7 @@ def author_target_references(
     genuine_sum_residue: list[str] = []
     uprating_holds: list[dict[str, str]] = []
 
-    for target in contract.get("targets", ()):
+    for target in reference_targets:
         target_id = str(target["target_id"])
         pin = config.geography_pins.get(target_id, {})
         geography_pin_report[target_id] = dict(pin)
@@ -257,7 +294,7 @@ def author_target_references(
         "candidate_count": sum(
             len(target["candidates"]) for target in target_entries.values()
         ),
-        "contract_target_count": len(tuple(contract.get("targets", ()))),
+        "contract_target_count": len(reference_targets),
         "active_reference_count": len(active_rows),
         "status_counts": dict(sorted(status_counts.items())),
         "geography_pins": geography_pin_report,
@@ -276,6 +313,7 @@ def author_area_target_references(
     """Build area-grain target references over a declared geography roster."""
 
     fact_rows = tuple(facts)
+    reference_targets = _chronicle_reference_targets(contract)
     _validate_hierarchy_contract(contract)
     areas_by_level = config.normalized_areas()
     signed = _area_deferral_index(config, contract, areas_by_level)
@@ -286,7 +324,7 @@ def author_area_target_references(
     target_entries: dict[str, Any] = {}
     uprating_holds: list[dict[str, str]] = []
 
-    for target in contract.get("targets", ()):
+    for target in reference_targets:
         target_id = str(target["target_id"])
         level_entries: dict[str, Any] = {}
         for geography_level in target.get("geography_levels", ()):
@@ -433,7 +471,7 @@ def author_area_target_references(
             for target in target_entries.values()
             for level in target["geography_levels"].values()
         ),
-        "contract_target_count": len(tuple(contract.get("targets", ()))),
+        "contract_target_count": len(reference_targets),
         "active_reference_count": len(active_rows),
         "status_counts": dict(sorted(status_counts.items())),
         "areas_by_geography_level": {

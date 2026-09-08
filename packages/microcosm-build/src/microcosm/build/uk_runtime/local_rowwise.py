@@ -31,17 +31,19 @@ import pandas as pd
 from scipy import sparse as sp
 
 from microcosm.build.holdout import rotated_folds, summarize_rotations
+from microcosm.build.ledger_targets import target_spec_from_materialized_declaration
 from microcosm.build.uk_runtime import local_target_census
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_SOLVE_DOCTRINE,
     UK_LOCAL_TARGET_LOSS_CAP,
     uk_local_target_loss_weights,
 )
-from microcosm.build.uk_runtime.local_hierarchy import (
-    UK_CENSUS_HOUSEHOLDS_CATEGORY_ID,
-    uk_local_target_hierarchy,
+from microcosm.build.uk_runtime.local_targets import (
+    AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
+    AREA_TYPES,
+    UK_LADDER_HOUSEHOLD_TARGET_ID,
+    load_uk_population_contract,
 )
-from microcosm.build.uk_runtime.local_targets import AREA_TYPES
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
@@ -52,7 +54,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
     load_uk_reviewed_exclusion_register,
 )
-from microcosm.calibrate.registry import TargetRegistry
+from microcosm.calibrate.registry import TargetRegistry, TargetSpec
 from microcosm.calibrate.solve import (
     CONSERVE_MASS,
     FREE_MASS,
@@ -300,6 +302,29 @@ def build_uk_rowwise_local_matrix(
         metric_names=names,
         code_column=code_column,
     )
+    household_specs: dict[str, TargetSpec] = {}
+    if "households" in names:
+        contract = load_uk_population_contract()
+        declarations = {
+            str(target["target_id"]): target for target in contract["targets"]
+        }
+        household_declaration = declarations[UK_LADDER_HOUSEHOLD_TARGET_ID]
+        hierarchy_catalog = contract.get("hierarchy")
+        if not isinstance(hierarchy_catalog, Mapping):
+            raise ValueError("UK target contract must declare a hierarchy catalog.")
+        household_specs = {
+            code: target_spec_from_materialized_declaration(
+                household_declaration,
+                hierarchy_catalog,
+                name=f"{area_type}/{code}/households",
+                value=float(aligned.loc[code, "households"]),
+                period=0,
+                source="UK OA geography ladder",
+                geography_level=AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL[area_type],
+                geography_id=code,
+            )
+            for code in codes
+        }
     surface = pd.DataFrame(
         [
             {
@@ -309,6 +334,12 @@ def build_uk_rowwise_local_matrix(
                 "value": float(aligned.loc[code, metric]),
                 "target_name": f"{area_type}/{code}/{metric}",
                 "family": local_target_census.family_for_metric(metric),
+                "hierarchy": (
+                    household_specs[code].hierarchy if metric == "households" else None
+                ),
+                "contract_target_id": (
+                    UK_LADDER_HOUSEHOLD_TARGET_ID if metric == "households" else None
+                ),
             }
             for code in codes
             for metric in names
@@ -973,18 +1004,8 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
             else f"{row.area_type}/{row.area_code}/{row.metric}"
         )
         hierarchy = (
-            row.hierarchy
-            if "hierarchy" in problem.target_frame.columns
-            else None
+            row.hierarchy if "hierarchy" in problem.target_frame.columns else None
         )
-        if hierarchy is None and str(row.metric) == "households":
-            hierarchy = uk_local_target_hierarchy(
-                name=target_name,
-                label="Occupied households",
-                category_id=UK_CENSUS_HOUSEHOLDS_CATEGORY_ID,
-                area_type=area_type,
-                area_code=str(row.area_code),
-            )
         metadata = {
             "area_type": area_type,
             "area_code": str(row.area_code),

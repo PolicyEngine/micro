@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "country": "uk",
-  "description": "UK population calibration contract: value-free national and local-geography target declarations over Chronicle facts. Selection contracts live in Microcosm per the chronicle#166 ruling (2026-08-13): Chronicle is a facts-only layer; Microcosm owns which facts are targets and how they bind to the model. This resource consolidates the former national and local-geography contracts into one population contract while preserving both target levels and their provenance accounting blocks. Observed values resolve from hash-pinned Chronicle consumer-facts artifacts at build time.",
+  "description": "UK population calibration contract: value-free national and local-geography target declarations over Chronicle facts and explicitly named Microcosm materializations. Selection contracts live in Microcosm per the chronicle#166 ruling (2026-08-13): Chronicle is a facts-only layer; Microcosm owns which facts or derived inputs are targets and how they bind to the model. This resource consolidates the former national and local-geography contracts into one population contract while preserving both target levels and their provenance accounting blocks. Observed values resolve from hash-pinned Chronicle consumer-facts artifacts or the declaration's named Microcosm materializer at build time.",
   "allowed_value_operations": [
     "identity",
     "sum",
@@ -939,7 +939,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 33,
+    "contract_target_count": 34,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1288,7 +1288,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 8,
+    "activation_added_rows": 9,
     "activation_additions": [
       {
         "target_id": "voa.council_tax_stock.by_area.band_a",
@@ -1321,6 +1321,10 @@
       {
         "target_id": "voa.council_tax_stock.by_area.band_h",
         "basis": "microcosm#147 I5; pinned wave-3 VOA LA council-tax stock"
+      },
+      {
+        "target_id": "external:census_households/households",
+        "basis": "Household totals are derived from the pinned UK OA geography ladder rather than Chronicle facts."
       }
     ],
     "scope_target_ids": [
@@ -1349,6 +1353,7 @@
       "ons.tenure.private_rent",
       "ons.tenure.social_rent",
       "ons.rent.private_rent",
+      "external:census_households/households",
       "voa.council_tax_stock.by_area.band_a",
       "voa.council_tax_stock.by_area.band_b",
       "voa.council_tax_stock.by_area.band_c",
@@ -13992,6 +13997,35 @@
       },
       "selector_note": "Private rent is a price-level target; non-English and masked rows are signed deferrals in the local reference compiler.",
       "category_id": "ons.housing"
+    },
+    {
+      "target_id": "external:census_households/households",
+      "label": "Occupied households",
+      "family": "census_households",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "households",
+          "value_variable": "household_count"
+        },
+        "axiom": {
+          "metric_name": "households",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "materialization": {
+        "kind": "uk_oa_geography_ladder",
+        "field": "households"
+      },
+      "category_id": "ons.household_composition"
     },
     {
       "target_id": "voa.council_tax_stock.by_area.band_a",

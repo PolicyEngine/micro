@@ -81,16 +81,49 @@ Dimensions are therefore automatic for new Chronicle facts. Authors define a
 provider/category once and select a category for a new target; they do not
 maintain a separate visualization path.
 
+## Microcosm-derived targets
+
+A target whose values come from a Microcosm input rather than Chronicle remains
+a normal row in the country target contract. It declares the same
+`category_id`, measurement, model binding, and geography levels as a
+Chronicle-backed target. It also declares:
+
+- `label`, because there is no Chronicle fact label to inherit;
+- `materialization.kind`, which identifies the code path that supplies its
+  values; and
+- any materialization-specific input field needed by that code path.
+
+For example, the UK output-area geography ladder supplies occupied-household
+counts. Its `external:census_households/households` declaration owns the
+`Occupied households` label and the `ons.household_composition` category. The
+shared materialized-declaration compiler resolves that category through the
+same normalized provider/category catalogs and hierarchy-completion function
+used by Chronicle-backed targets. It combines the declaration with the
+materialized value, area level, and area code to produce a normal `TargetSpec`,
+including the declared target label.
+
+Offline Chronicle-reference generation excludes rows that declare
+`materialization`, because those rows have no Chronicle selector or fact value.
+Its membership report's `contract_target_count` therefore counts only the
+Chronicle-backed declarations passed to reference authoring. The runtime
+materializer is responsible for supplying derived values. Do not add their
+category or label in runtime code, and do not restore a presentation-only
+fallback when adding another derived target.
+
 ## Propagation stages
 
 The expected data flow is:
 
 1. The country contract validates normalized provider/category ownership.
-2. Reference generation selects one or more Chronicle facts.
+2. Reference generation selects one or more Chronicle facts, or a declared
+   Microcosm materializer supplies a non-Chronicle value.
 3. A scalar reference retains its category relationship.
 4. `LedgerTargetReference` resolves the catalog relationship to a typed seed.
 5. Chronicle geography and dimensions complete `CalibrationHierarchy` while
-   compiling `TargetSpec`.
+   compiling a Chronicle-backed `TargetSpec`. For a Microcosm-derived target,
+   the declared label plus the materialized geography complete the same typed
+   hierarchy; any dimensions must be supplied explicitly by its declaration or
+   materializer.
 6. Registry format 3 serializes and reloads that hierarchy. Format 2 remains
    readable for historical artifacts.
 7. Solver compilation carries the hierarchy unchanged from `TargetSpec` to

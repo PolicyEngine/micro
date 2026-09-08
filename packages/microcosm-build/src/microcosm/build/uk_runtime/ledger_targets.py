@@ -24,6 +24,7 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     _fact_matches_selector,
     compile_ledger_target_references,
+    target_spec_from_materialized_declaration,
 )
 from microcosm.build.target_materialization import (
     TargetMaterializationResult,
@@ -34,13 +35,10 @@ from microcosm.build.uk_runtime.ladder_targets import (
     constituency_household_targets,
     local_authority_household_targets,
 )
-from microcosm.build.uk_runtime.local_hierarchy import (
-    UK_CENSUS_HOUSEHOLDS_CATEGORY_ID,
-    uk_local_target_hierarchy,
-)
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
     AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
+    UK_LADDER_HOUSEHOLD_TARGET_ID,
     area_groups_from_codes,
     load_uk_local_geography_contract,
     metric_names,
@@ -99,7 +97,7 @@ UK_CROSS_GRAIN_BRIDGES = (
             "ons.household_composition.lone_parent_non_dependent_children_households",
             "ons.household_composition.multi_family_households",
         ),
-        lower_side="external:census_households/households",
+        lower_side=UK_LADDER_HOUSEHOLD_TARGET_ID,
     ),
     CrossGrainBridge(
         bridge_id="national_uc_caseload_vs_uc_households_by_area",
@@ -1131,10 +1129,41 @@ def uk_local_target_surface(
     target_id_to_metric = {
         target_id: metric for metric, target_id in _uk_local_metric_target_ids().items()
     }
+    local_contract = load_uk_local_geography_contract()
+    contract_targets = {
+        str(target["target_id"]): target for target in local_contract["targets"]
+    }
+    try:
+        ladder_household_declaration = contract_targets[UK_LADDER_HOUSEHOLD_TARGET_ID]
+    except KeyError as error:
+        raise ValueError(
+            "UK target contract must declare the geography-ladder household "
+            f"target {UK_LADDER_HOUSEHOLD_TARGET_ID!r}."
+        ) from error
+    hierarchy_catalog = local_contract.get("hierarchy")
+    if not isinstance(hierarchy_catalog, Mapping):
+        raise ValueError("UK target contract must declare a hierarchy catalog.")
+    ladder_specs = tuple(
+        target_spec_from_materialized_declaration(
+            ladder_household_declaration,
+            hierarchy_catalog,
+            name=f"{UK_LADDER_HOUSEHOLD_TARGET_ID}@{row.code}",
+            value=float(row.households) * uprating_factor,
+            period=period,
+            source="UK OA geography ladder",
+            geography_level=AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL[area_type],
+            geography_id=str(row.code),
+        )
+        for area_type, targets in (
+            ("constituency", constituency_household_targets(ladder)),
+            ("la", local_authority_household_targets(ladder)),
+        )
+        for row in targets.itertuples(index=False)
+    )
     output_rows: list[dict[str, Any]] = []
     reconciliation_rows: list[dict[str, Any]] = []
     national_control_groups: dict[tuple[str, str], list[tuple[str, str, float]]] = {}
-    for spec in local_registry.specs:
+    for spec in (*local_registry.specs, *ladder_specs):
         geography_level, geography_id = _spec_geography(spec)
         contract_target_id = str(
             spec.metadata.get("contract_target_id", spec.name.split("@", 1)[0])
@@ -1213,7 +1242,11 @@ def uk_local_target_surface(
                 {
                     "grain": area_type,
                     "geography_id": geography_id,
-                    "target_id": f"contract:{contract_target_id}",
+                    "target_id": (
+                        contract_target_id
+                        if spec.metadata.get("materialization_kind")
+                        else f"contract:{contract_target_id}"
+                    ),
                     "value": value,
                     "_output_position": output_position,
                 }
@@ -1316,43 +1349,6 @@ def uk_local_target_surface(
         for target_id in bound_national_target_ids
         if str(target_id) not in fanout_target_ids
     )
-
-    for area_type, targets in (
-        ("constituency", constituency_household_targets(ladder)),
-        ("la", local_authority_household_targets(ladder)),
-    ):
-        for row in targets.itertuples(index=False):
-            output_position = len(output_rows)
-            target_name = f"external:census_households/households@{row.code}"
-            output_rows.append(
-                {
-                    "area_type": area_type,
-                    "area_code": str(row.code),
-                    "metric": "households",
-                    "value": float(row.households) * uprating_factor,
-                    "target_name": target_name,
-                    "family": "census_households",
-                    "source": "UK OA geography ladder",
-                    "period": period,
-                    "contract_target_id": "external:census_households/households",
-                    "hierarchy": uk_local_target_hierarchy(
-                        name=target_name,
-                        label="Occupied households",
-                        category_id=UK_CENSUS_HOUSEHOLDS_CATEGORY_ID,
-                        area_type=area_type,
-                        area_code=str(row.code),
-                    ),
-                }
-            )
-            reconciliation_rows.append(
-                {
-                    "grain": area_type,
-                    "geography_id": str(row.code),
-                    "target_id": "external:census_households/households",
-                    "value": float(row.households) * uprating_factor,
-                    "_output_position": output_position,
-                }
-            )
 
     reconciliation = pd.DataFrame(reconciliation_rows)
     reconciled, receipt = apply_uk_cross_grain_reconciliation(

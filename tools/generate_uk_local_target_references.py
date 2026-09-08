@@ -18,12 +18,14 @@ from microcosm.build.target_reference_authoring import (
 
 DESCRIPTION = (
     "UK local-area Ledger target references for constituency and local-authority "
-    "calibration. Rows are generated from the local rows in uk_population_targets.json and "
-    "local_area_crosswalk.json: name is target_id@geography_id, ledger_selector "
-    "is the contract selector plus geography_level/geography_id pins, entity "
-    "and measure come from the policyengine binding, and observed values stay "
-    "in Ledger facts. Deferred area absences are recorded in the membership "
-    "report."
+    "calibration. Rows are generated from the Chronicle-backed local rows in "
+    "uk_population_targets.json and local_area_crosswalk.json: name is "
+    "target_id@geography_id, ledger_selector is the contract selector plus "
+    "geography_level/geography_id pins, entity and measure come from the "
+    "policyengine binding, and observed values stay in Ledger facts. Targets "
+    "whose values are produced by a declared Microcosm materialization remain "
+    "in the target contract but do not become Ledger references. Deferred area "
+    "absences are recorded in the membership report."
 )
 LOCAL_GEOGRAPHY_LEVELS = frozenset({"constituency", "local_authority"})
 
@@ -126,6 +128,7 @@ def _filter_contract_by_geography_levels(
         target
         for target in contract.get("targets", ())
         if set(target.get("geography_levels") or ()) & allowed_levels
+        and not target.get("materialization")
     ]
     return filtered
 
