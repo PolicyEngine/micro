@@ -58,6 +58,15 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--reference", action="append", default=[])
     parser.add_argument("--spine", action="append", default=[])
     parser.add_argument("--incumbent-dir", type=Path)
+    parser.add_argument(
+        "--scoring-registry",
+        type=Path,
+        help=(
+            "Frozen compiled scoring register (TargetRegistry JSON) for step 30. "
+            "Defaults to <run>/scoring_registry_compiled.json when present, else the "
+            "first reference's; candidate runs do not write one."
+        ),
+    )
     parser.add_argument("--ledger-facts", type=Path)
     parser.add_argument("--ledger-facts-sha256")
     parser.add_argument("--ledger-manifest-sha256")
@@ -602,7 +611,20 @@ def main(argv: list[str] | None = None) -> int:
         folder = out / step
         _prepare(folder)
         started_at, started_clock = _now(), time.perf_counter()
-        registry = run.path / "scoring_registry_compiled.json"
+        registry_candidates = [
+            *([args.scoring_registry] if args.scoring_registry is not None else []),
+            run.path / "scoring_registry_compiled.json",
+            *(
+                reference.path / "scoring_registry_compiled.json"
+                for reference in references.values()
+            ),
+        ]
+        registry = next(
+            (path for path in registry_candidates if path.is_file()),
+            registry_candidates[-1]
+            if registry_candidates
+            else run.path / "scoring_registry_compiled.json",
+        )
         outputs = {}
         command_rows: list[dict[str, Any]] = []
         score_inputs = {
@@ -618,7 +640,8 @@ def main(argv: list[str] | None = None) -> int:
         elif not registry.is_file():
             status, reason, exit_code = (
                 "skipped",
-                "run has no scoring_registry_compiled.json",
+                "no frozen scoring register: pass --scoring-registry (candidate runs "
+                "do not write scoring_registry_compiled.json)",
                 None,
             )
         else:
