@@ -39,6 +39,12 @@ from microcosm.calibrate import (
     write_calibration_diagnostics,
 )
 from microcosm.calibrate._target_loss_attribution import target_loss_basis_hash
+from microcosm.calibrate.geography_constants import (
+    UK_GEOGRAPHY_ID_TO_LABEL,
+    US_STATE_FIPS_TO_POSTAL,
+    US_STATE_NUMERIC_FIPS_TO_POSTAL,
+    US_STATE_POSTAL_TO_NUMERIC_FIPS,
+)
 
 _ATTRIBUTION_ROW_FIELDS = {
     "target_loss_weight",
@@ -50,6 +56,27 @@ _ATTRIBUTION_ROW_FIELDS = {
 _ATTRIBUTION_FIXTURE_DIR = (
     Path(__file__).parent / "fixtures" / "target_loss_attribution"
 )
+
+
+def test_shared_geography_constant_views_are_consistent() -> None:
+    assert dict(UK_GEOGRAPHY_ID_TO_LABEL) == {
+        "K02000001": "United Kingdom",
+        "K03000001": "Great Britain",
+        "E92000001": "England",
+        "W92000004": "Wales",
+        "S92000003": "Scotland",
+        "N92000002": "Northern Ireland",
+    }
+    assert len(US_STATE_FIPS_TO_POSTAL) == 51
+    assert US_STATE_FIPS_TO_POSTAL["01"] == "AL"
+    assert US_STATE_FIPS_TO_POSTAL["11"] == "DC"
+    assert US_STATE_FIPS_TO_POSTAL["56"] == "WY"
+    assert dict(US_STATE_NUMERIC_FIPS_TO_POSTAL) == {
+        int(fips): postal for fips, postal in US_STATE_FIPS_TO_POSTAL.items()
+    }
+    assert dict(US_STATE_POSTAL_TO_NUMERIC_FIPS) == {
+        postal: int(fips) for fips, postal in US_STATE_FIPS_TO_POSTAL.items()
+    }
 
 
 def _hierarchy(

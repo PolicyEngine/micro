@@ -28,6 +28,7 @@ from microcosm.calibrate import (
     TargetRegistry,
     TargetSpec,
 )
+from microcosm.calibrate.geography_constants import UK_GEOGRAPHY_ID_TO_LABEL
 
 SUPPORTED_LEDGER_AGGREGATIONS = frozenset(("sum",))
 ALLOWED_ASSERTION_POLICIES = frozenset(("observed_only", "allow_source_projection"))
@@ -1071,15 +1072,7 @@ def _humanize_identifier(identifier: str) -> str:
 
 
 def _geography_fallback_label(geography_id: str) -> str:
-    known = {
-        "K02000001": "United Kingdom",
-        "K03000001": "Great Britain",
-        "E92000001": "England",
-        "S92000003": "Scotland",
-        "W92000004": "Wales",
-        "N92000002": "Northern Ireland",
-    }
-    return known.get(geography_id, geography_id)
+    return UK_GEOGRAPHY_ID_TO_LABEL.get(geography_id, geography_id)
 
 
 def ledger_target_registry_parity_report(

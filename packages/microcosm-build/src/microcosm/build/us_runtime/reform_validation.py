@@ -34,17 +34,12 @@ from typing import Any
 
 from microcosm.build.us_runtime.engine_lifecycle import release_engine_simulation
 from microcosm.build.us_runtime.fiscal_targets import (
-    STATE_FIPS_TO_POSTAL,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     SimpleTaxExpenditureReform,
 )
-
-# Postal code -> integer FIPS, for slicing person-level rates by state (the
-# numeric household state_fips broadcasts to persons; the string state code
-# does not).
-_STATE_FIPS: dict[str, int] = {
-    postal: int(fips) for fips, postal in STATE_FIPS_TO_POSTAL.items()
-}
+from microcosm.calibrate.geography_constants import (
+    US_STATE_POSTAL_TO_NUMERIC_FIPS,
+)
 
 __all__ = [
     "REFORM_VALIDATION_SCHEMA_VERSION",
@@ -933,7 +928,7 @@ def reform_validation_payload(
             fips = np.asarray(
                 baseline.calculate("state_fips", level.period, map_to="person")
             )
-            mask &= fips == _STATE_FIPS[level.state]
+            mask &= fips == US_STATE_POSTAL_TO_NUMERIC_FIPS[level.state]
         denominator = float(weights[mask].sum())
         if denominator == 0:
             return 0.0

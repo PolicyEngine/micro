@@ -40,6 +40,7 @@ from microcosm.calibrate import (
     calibration_provider_label,
     calibration_variable_label,
 )
+from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
 
 __all__ = [
     "US_FISCAL_MACRO_REALISM_BANDS",
@@ -97,61 +98,6 @@ def _us_hierarchy_seed(
             provider_id,
         ),
     )
-
-
-STATE_FIPS_TO_POSTAL: dict[str, str] = {
-    "01": "AL",
-    "02": "AK",
-    "04": "AZ",
-    "05": "AR",
-    "06": "CA",
-    "08": "CO",
-    "09": "CT",
-    "10": "DE",
-    "11": "DC",
-    "12": "FL",
-    "13": "GA",
-    "15": "HI",
-    "16": "ID",
-    "17": "IL",
-    "18": "IN",
-    "19": "IA",
-    "20": "KS",
-    "21": "KY",
-    "22": "LA",
-    "23": "ME",
-    "24": "MD",
-    "25": "MA",
-    "26": "MI",
-    "27": "MN",
-    "28": "MS",
-    "29": "MO",
-    "30": "MT",
-    "31": "NE",
-    "32": "NV",
-    "33": "NH",
-    "34": "NJ",
-    "35": "NM",
-    "36": "NY",
-    "37": "NC",
-    "38": "ND",
-    "39": "OH",
-    "40": "OK",
-    "41": "OR",
-    "42": "PA",
-    "44": "RI",
-    "45": "SC",
-    "46": "SD",
-    "47": "TN",
-    "48": "TX",
-    "49": "UT",
-    "50": "VT",
-    "51": "VA",
-    "53": "WA",
-    "54": "WV",
-    "55": "WI",
-    "56": "WY",
-}
 
 
 SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
@@ -3279,7 +3225,7 @@ def _state_fips(fact: object) -> str | None:
     if not geoid.startswith("0400000US"):
         return None
     fips = geoid.removeprefix("0400000US")
-    if fips not in STATE_FIPS_TO_POSTAL:
+    if fips not in US_STATE_FIPS_TO_POSTAL:
         return None
     return fips
 
@@ -3297,7 +3243,7 @@ def _congressional_district_geoid(fact: object) -> str | None:
     if not congressional_district_geoid.isdigit():
         return None
     state_fips = congressional_district_geoid[:2]
-    if state_fips not in STATE_FIPS_TO_POSTAL:
+    if state_fips not in US_STATE_FIPS_TO_POSTAL:
         return None
     return congressional_district_geoid
 

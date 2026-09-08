@@ -32,6 +32,10 @@ from microcosm.calibrate._target_loss_attribution import (
     TargetLossAttributionError,
     assemble_target_loss_attribution,
 )
+from microcosm.calibrate.geography_constants import (
+    UK_GEOGRAPHY_ID_TO_LABEL,
+    US_STATE_FIPS_TO_POSTAL,
+)
 from microcosm.calibrate.provider_labels import calibration_provider_label
 from microcosm.calibrate.solve import CalibrationResult
 from microcosm.calibrate.variable_labels import calibration_variable_label
@@ -63,69 +67,6 @@ __all__ = [
 CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
 
 _LOGGER = logging.getLogger(__name__)
-
-_UK_GEOGRAPHY_LABELS = {
-    "K02000001": "United Kingdom",
-    "K03000001": "Great Britain",
-    "E92000001": "England",
-    "W92000004": "Wales",
-    "S92000003": "Scotland",
-    "N92000002": "Northern Ireland",
-}
-
-_US_STATE_POSTAL = {
-    "01": "AL",
-    "02": "AK",
-    "04": "AZ",
-    "05": "AR",
-    "06": "CA",
-    "08": "CO",
-    "09": "CT",
-    "10": "DE",
-    "11": "DC",
-    "12": "FL",
-    "13": "GA",
-    "15": "HI",
-    "16": "ID",
-    "17": "IL",
-    "18": "IN",
-    "19": "IA",
-    "20": "KS",
-    "21": "KY",
-    "22": "LA",
-    "23": "ME",
-    "24": "MD",
-    "25": "MA",
-    "26": "MI",
-    "27": "MN",
-    "28": "MS",
-    "29": "MO",
-    "30": "MT",
-    "31": "NE",
-    "32": "NV",
-    "33": "NH",
-    "34": "NJ",
-    "35": "NM",
-    "36": "NY",
-    "37": "NC",
-    "38": "ND",
-    "39": "OH",
-    "40": "OK",
-    "41": "OR",
-    "42": "PA",
-    "44": "RI",
-    "45": "SC",
-    "46": "SD",
-    "47": "TN",
-    "48": "TX",
-    "49": "UT",
-    "50": "VT",
-    "51": "VA",
-    "53": "WA",
-    "54": "WV",
-    "55": "WI",
-    "56": "WY",
-}
 
 _COUNT_UNITS = frozenset(
     {
@@ -356,18 +297,18 @@ def _geography_label(
     if explicit:
         return explicit
     if country == "uk":
-        return _UK_GEOGRAPHY_LABELS.get(geography_id, geography_id)
+        return UK_GEOGRAPHY_ID_TO_LABEL.get(geography_id, geography_id)
     if country == "us":
         if geography_id == "0100000US" or level in {"country", "national"}:
             return "United States"
         match = re.search(r"US(\d{2})(\d{2})$", geography_id)
         if level == "congressional_district" and match:
-            postal = _US_STATE_POSTAL.get(match.group(1))
+            postal = US_STATE_FIPS_TO_POSTAL.get(match.group(1))
             if postal:
                 return f"{postal}-{match.group(2)}"
         match = re.search(r"US(\d{2})$", geography_id)
         if level == "state" and match:
-            return _US_STATE_POSTAL.get(match.group(1), geography_id)
+            return US_STATE_FIPS_TO_POSTAL.get(match.group(1), geography_id)
     return geography_id
 
 
