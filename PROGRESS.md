@@ -737,3 +737,5 @@ Verified requested clean branch, base HEAD, main ancestry and preservation pins.
 
 ### Next
 Apply thirteen explicit source layers, commit each, then separately review isolated ordinary execution. Existing journal history above is retained.
+
+Layer 1: SAFE-ADDITIVE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
