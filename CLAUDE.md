@@ -80,6 +80,18 @@ build recorded staging telemetry that never reached its repo
 publishes without the flag. Never publish or promote artifacts as a side
 effect of another task.
 
+The US native-SPM-role source-enrichment lane is a separate release type:
+`tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact
+reviewed BuildP parent, preserving original variables and inherited schema-5
+calibration evidence. It does not run calibration or relax schema 6 for ordinary
+releases. `microcosm.data.source_enrichment` validates candidates and records
+actual native-loader compatibility in a separate bundle. The regular publisher
+requires `--parent-h5` and the four tested country/Core/wrapper/calculator wheels; `--preflight-only`
+runs its real contract without publication. See
+[the source-enrichment runbook](docs/us-native-spm-role-source-enrichment.md).
+Root's canonical-model acceptance and publication authorization remain separate
+from this producer-native-input receipt.
+
 A US release or release-gate preflight that receives a multispine pool through
 `--base-h5` must authenticate its sibling terminal manifest. A current stacked
 pool whose terminal battery is red remains fail-closed unless the operator

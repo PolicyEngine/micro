@@ -1,3 +1,29 @@
+# Native SPM role source enrichment — 2026-09-09
+
+Source implementation prepared for a draft PR. The candidate was built locally;
+no new H5, release tag, calibration or production deployment was published.
+This journal records development evidence; check GitHub for current PR state.
+
+The new source-enrichment contract reconstructs the independence role from
+complete pinned ASEC files, verifies all 166,321 BuildP people and 59,900 units,
+and preserves existing native HDF arrays, membership and weights. Calibration
+evidence remains the pinned parent's schema 5; ordinary releases still require
+schema 6. The source and HDF builder passed 393 focused tests; the subsequent
+four-wheel ownership correction passed 337 relevant tests and 17 real runtime
+checks. Full wrapper qualification is pending its native household-weight loader
+correction. No compatibility or external-publication success is fabricated.
+
+The candidate's H5 SHA256 is
+`6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84`.
+See [the runbook](docs/us-native-spm-role-source-enrichment.md) for exact source
+and qualification contracts. Independent code/Fable review, clean-source
+qualification, actual registry evidence and numerical acceptance precede promotion.
+
+---
+
+> Historical journal below, retained on 2026-09-09. Earlier State/Next claims
+> describe prior work and are not current instructions or branch status.
+
 # F1 portable worker identity — CI crawl fix
 
 ## State

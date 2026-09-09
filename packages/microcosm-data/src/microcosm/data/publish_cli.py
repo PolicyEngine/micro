@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+from microcosm.data.contract import validate_evidence_release_dir, validate_release_dir
 from microcosm.data.release import publish_release
 
 
@@ -67,6 +68,23 @@ def main(argv: list[str] | None = None) -> int:
             "Directory holding root artifacts named by release_manifest.json, "
             "for example populace_us_2024.h5."
         ),
+    )
+    parser.add_argument(
+        "--parent-h5",
+        type=Path,
+        help="Exact certified parent H5 required for source-enrichment publication.",
+    )
+    parser.add_argument(
+        "--compatibility-wheel",
+        action="append",
+        type=Path,
+        default=[],
+        help="Exact installed country/Core/wrapper/calculator wheel; repeat for all four packages. Candidate wheels may be tested before publication.",
+    )
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="Run the actual publication contract, including enrichment loader tests, without publishing.",
     )
     parser.add_argument(
         "--create-tag",
@@ -183,10 +201,25 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    if args.preflight_only:
+        if args.evidence:
+            validate_evidence_release_dir(Path(args.release_dir))
+        else:
+            validate_release_dir(
+                Path(args.release_dir),
+                parent_h5=args.parent_h5,
+                artifact_root=args.artifact_root,
+                compatibility_wheels=tuple(args.compatibility_wheel),
+            )
+        print(json.dumps({"valid": True, "published": False}))
+        return 0
+
     pointer = publish_release(
         Path(args.release_dir),
         args.repo_id,
         artifact_root=Path(args.artifact_root) if args.artifact_root else None,
+        parent_h5=args.parent_h5,
+        compatibility_wheels=tuple(args.compatibility_wheel),
         create_tag=args.create_tag,
         tag_name=args.tag_name,
         extra_files=tuple(args.extra_file),

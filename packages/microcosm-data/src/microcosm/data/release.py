@@ -164,6 +164,8 @@ def publish_release(
     *,
     api=None,
     artifact_root: Path | str | None = None,
+    parent_h5: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
     create_tag: bool = True,
     tag_name: str | None = None,
     extra_files: tuple[str, ...] = (),
@@ -195,6 +197,13 @@ def publish_release(
             Contract files are always read from ``release_dir`` and uploaded
             under ``releases/<build_id>/``; artifact paths are uploaded to their
             manifest-declared repo paths.
+        parent_h5: Exact certified parent H5 for source-enrichment releases.
+            The publication gate rereads it and the candidate to prove that
+            every pre-existing logical variable and metadata field is preserved.
+        compatibility_wheels: Exact installed country, Core, wrapper, and calculator wheels
+            used to replay source-enrichment native-loader compatibility checks.
+            External package publication and numerical model acceptance remain
+            the release operator's gates.
         create_tag: Create an immutable Hub tag for the release snapshot before
             updating main. The tag defaults to the release id. This is required
             when artifact revisions in ``release_manifest.json`` are pinned to
@@ -242,6 +251,13 @@ def publish_release(
     release_dir = Path(release_dir)
     if evidence:
         validate_evidence_release_dir(release_dir)
+    elif parent_h5 is not None or compatibility_wheels:
+        validate_release_dir(
+            release_dir,
+            parent_h5=parent_h5,
+            artifact_root=artifact_root,
+            compatibility_wheels=compatibility_wheels,
+        )
     else:
         validate_release_dir(release_dir)
     release_id = release_dir.name

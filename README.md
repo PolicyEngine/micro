@@ -111,6 +111,12 @@ normal `uv run pytest` suite; the real-H5 mode above is a local/runbook step.
 
 ## Releasing & alerts
 
+The [native SPM role source-enrichment lane](docs/us-native-spm-role-source-enrichment.md)
+creates a new US H5 from the exact reviewed BuildP parent, preserves its original
+variables and schema-5 calibration evidence, and requires fresh country/wrapper
+compatibility checks. It has a local candidate builder and uses the regular
+publisher's contract with `--parent-h5` and `--preflight-only`.
+
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
 on the build machine (it needs the freshly built H5), so it isn't a CI step:
