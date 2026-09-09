@@ -33,6 +33,7 @@ def fixture(
     zero_key=None,
     missing_asec_money=None,
     current_predictor_money=None,
+    acs_ssp_values=None,
 ):
     asec_root = tmp_path / "asec-original"
     asec_root.mkdir()
@@ -83,6 +84,14 @@ def fixture(
         _person("2024GQ0000001", 1, 37, AGEP=40, MIL="4", ESR="6", PWGTP=77),
         _person("2024GQ0000002", 1, 38, AGEP=50, MIL="4", ESR="6", PWGTP=78),
     ]
+    if acs_ssp_values is not None:
+        seen = set()
+        for person in people:
+            key = (person["SERIALNO"], person["SPORDER"])
+            if key in acs_ssp_values:
+                person["SSP"] = acs_ssp_values[key]
+                seen.add(key)
+        assert seen == set(acs_ssp_values)
     acs = build_fixture(
         tmp_path / "acs-original",
         monkeypatch,
