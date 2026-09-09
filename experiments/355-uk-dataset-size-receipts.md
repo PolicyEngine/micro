@@ -700,3 +700,33 @@ P50, P95b, R17 and the eFRS:
 All four files' numbers and the per-metric T6 tables are under `efrs-legs/` (JSON + markdown per
 dashboard and run); the evaluation page carries the four-file tables.
 
+### Rebase over #891 and Vahid's review of #877 (2026-09-09, evening)
+
+Rebased onto main cc9c953c (#891 UC paid targets: the register counts 51 / 18 / 82 held; the UK bundle
+digest moved). Vahid's pass at 37f81933: no blocking defects; three should-fix items, three questions,
+nits. Landed:
+
+1. **Doctrine drift on resume.** `_size_checkpoint_identity` carries `_doctrine_bounds()`; the doctrine
+   solve asserts the restored `max_weight_ratio`, `mass` and `target_loss_cap` against today's doctrine
+   after the load and refuses by name; the writing run's `code_pin` and `build_id` ride in the checkpoint's
+   `provenance`, reported on resume, not compared.
+2. **Stale checkpoint in `--out`** refused before the solve (`_refuse_stale_size_checkpoint`, beside the
+   output-path guard), naming the files and the `--resume-size-checkpoint` way out.
+3. **`gates.py` and `initialization.py`** join the seed-protocol implementation digest; the pre-best-iterate
+   oracle runs with a frozen copy of the gate module (`fixtures/pre_best_iterate/gates_14608a5e.py`,
+   loaded as `pre_best_iterate_gates`; the control asserts the oracle's `HardConcrete` is the frozen class).
+   Consequences re-cut: seed protocol fd3e4b06…, seed map 87ba5053…, pointer inventory 2c0423a0…, field
+   counts 42,156 / 9,772 and the `resolved_seed_protocol` claim 826 rows, mode and generation-0 counts,
+   bundles am d983a5e6… / be 2a7d8348… / uk 2269bc28…, loader golden 57026e58…, US spec 35a02b6b…, the
+   coverage report; the H1 calibrate fixture did not move.
+4. **The draw's determinism stated:** `certainty_share` and `boundary_draws` in the size receipt (P50 99.3 %
+   by threshold, 405 drawn; P95b 99.7 %, 156 drawn); manifest keys
+   `realized_max_weight_ratio_vs_stretch_reference` (the refit's reference) and
+   `realized_max_weight_ratio_vs_design` (the pool design weights).
+5. **`zero_target_rows`** in the size receipt (0 on the licensed surface).
+6. The two register changes stay, as their own paragraph in the PR body.
+Nits: the written-checkpoint receipt carries no timestamp and no absolute path; the four `options` keys are
+additive. Green on the rebased tree: calibrate 236 (with the frozen gates control), UK build suites 100,
+local rowwise 52, registers 93, spec pins + parity + coverage tool, multispine 187; ruff and the partition
+verification clean. Reply to Vahid drafted for María's go.
+

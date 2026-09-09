@@ -132,6 +132,32 @@ penalty, open mass, certainties, boundary draw and mass, and its drawability ver
 what it selected (`budget_search_done`). Nothing else changes: the events ride the calibrator's
 existing `progress_callback` seam.
 
+### Review round on #877 (Vahid, 2026-09-09)
+
+Three should-fix items and two questions changed the machinery:
+
+- **A resume cannot drift from the doctrine.** The checkpoint identity now carries the solve doctrine
+  (`_doctrine_bounds()`: the stretch multiplier, the loss cap, the rule) beside the pins, seeds and sizes,
+  and the doctrine solve asserts the restored options (`max_weight_ratio`, `mass`, `target_loss_cap`)
+  against today's doctrine after the load, refusing by name. The writing run's code pin and build id ride
+  in the checkpoint's `provenance` and are reported on resume, not compared, so a receipts commit does
+  not invalidate a checkpoint.
+- **A stale checkpoint in `--out` refuses before the solve.** The driver checks for
+  `size_selection_checkpoint.{npz,json}` beside the other pre-solve output guards; the writer's own
+  refusal stays as the last line of defence.
+- **`gates.py` and `initialization.py` are attested and controlled.** Both join the seed-protocol
+  implementation digest (`seeds.py`), so a change to gate behaviour or the contribution prior moves the
+  attested identity; and the pre-best-iterate oracle now runs with a frozen copy of the gate module
+  (`tests/fixtures/pre_best_iterate/gates_<sha8>.py`) instead of the live one, so a gate-behaviour change
+  surfaces as a numeric mismatch on the gated control path rather than being absorbed on both sides.
+- **The draw's determinism is stated.** The size receipt carries `certainty_share` and `boundary_draws`:
+  on the two 55,000 candidates 99.3 % / 99.7 % of the count was decided by the threshold on learned π and
+  405 / 156 rows were drawn. The manifest's stretch keys are honest: `realized_max_weight_ratio_vs_stretch_reference`
+  is measured against the frame the refit started from (the HT baseline on a size run) and
+  `realized_max_weight_ratio_vs_design` against the pool design weights themselves.
+- **Zero-valued targets are counted.** `zero_target_rows` in the size receipt says how many compiled rows
+  carry a zero target, the case where the contribution prior uses a unit denominator.
+
 ## Certification and publication still required
 
 The implementation produces **candidates**, not a new certified UK default.

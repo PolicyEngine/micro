@@ -120,13 +120,18 @@ def write_uk_size_checkpoint(
     dense: CalibrationResult,
     selection: UKSizeSelection,
     identity: Mapping[str, Any],
+    provenance: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist ``dense`` and ``selection`` under ``directory`` with their identity.
 
     ``identity`` is the caller's pin/parameter mapping (input digests, seeds,
-    epochs, size...); :func:`load_uk_size_checkpoint` refuses a resume whose
-    caller identity differs on any key. Refuses to overwrite an existing
-    checkpoint. Returns a receipt with both file names and digests.
+    epochs, size, the solve doctrine...); :func:`load_uk_size_checkpoint`
+    refuses a resume whose caller identity differs on any key. ``provenance``
+    (the writing run's code pin and build id) is recorded and reported on
+    resume, not compared. Refuses to overwrite an existing checkpoint. Returns
+    a receipt with both file names and digests; the receipt carries nothing
+    that differs between identical runs (no timestamp, no absolute path), so
+    manifests of identical runs still match.
     """
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -163,6 +168,7 @@ def write_uk_size_checkpoint(
         "arrays_file": SIZE_CHECKPOINT_ARRAYS_FILENAME,
         "arrays_sha256": arrays_sha256,
         "identity": _normalised(identity),
+        "provenance": _normalised({} if provenance is None else provenance),
         "pool": {
             "households": int(n),
             "household_ids_sha256": _household_ids_digest(frame),
@@ -195,12 +201,10 @@ def write_uk_size_checkpoint(
         json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return {
-        "directory": str(directory),
         "arrays_file": SIZE_CHECKPOINT_ARRAYS_FILENAME,
         "arrays_sha256": arrays_sha256,
         "manifest_file": SIZE_CHECKPOINT_MANIFEST_FILENAME,
         "manifest_sha256": _sha256_file(manifest_path),
-        "written_at": payload["written_at"],
         "stage": "before_exact_count_draw",
     }
 
@@ -332,8 +336,8 @@ def load_uk_size_checkpoint(
         "arrays_sha256": arrays_sha256,
         "manifest_file": SIZE_CHECKPOINT_MANIFEST_FILENAME,
         "manifest_sha256": _sha256_file(manifest_path),
-        "written_at": payload.get("written_at"),
         "identity": stored_identity,
+        "provenance": payload.get("provenance", {}),
         "dense_closing_loss": float(dense.final_loss),
         "selection_l0_lambda": float(search.l0_lambda),
         "search_pi_hi": float(selection.search_pi_hi),

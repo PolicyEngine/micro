@@ -1056,6 +1056,7 @@ def solve_uk_rowwise_weights_under_doctrine(
     size_checkpoint_dir: Path | None = None,
     resume_size_checkpoint: Path | None = None,
     checkpoint_identity: Mapping[str, Any] | None = None,
+    checkpoint_provenance: Mapping[str, Any] | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> UKRowwiseDoctrineSolve:
     """Solve rowwise household weights under the reviewed doctrine.
@@ -1214,6 +1215,28 @@ def solve_uk_rowwise_weights_under_doctrine(
             identity={} if checkpoint_identity is None else checkpoint_identity,
         )
         result = restored.dense
+        # The checkpoint's identity carries the doctrine it was solved under;
+        # this is the second lock: the restored options must equal today's.
+        expected_options = {
+            "max_weight_ratio": doctrine.max_weight_ratio,
+            "mass": CONSERVE_MASS if conserve_mass else FREE_MASS,
+        }
+        drift = sorted(
+            f"{key}: checkpoint {result.options.get(key)!r} != doctrine {value!r}"
+            for key, value in expected_options.items()
+            if result.options.get(key) != value
+        )
+        if result.target_loss_cap != doctrine.target_loss_cap:
+            drift.append(
+                f"target_loss_cap: checkpoint {result.target_loss_cap!r} != doctrine "
+                f"{doctrine.target_loss_cap!r}"
+            )
+        if drift:
+            raise ValueError(
+                "resumed size checkpoint was solved under a different doctrine: "
+                + "; ".join(drift)
+                + "."
+            )
     else:
         result = calibrate(
             frame,
@@ -1275,6 +1298,7 @@ def solve_uk_rowwise_weights_under_doctrine(
                         identity=(
                             {} if checkpoint_identity is None else checkpoint_identity
                         ),
+                        provenance=checkpoint_provenance,
                     )
                 }
         sized = refit_uk_dataset_size(

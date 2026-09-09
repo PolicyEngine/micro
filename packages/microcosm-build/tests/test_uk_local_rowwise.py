@@ -1738,6 +1738,17 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
     written = first.size_receipt["checkpoint"]["written"]
     assert written["stage"] == "before_exact_count_draw"
     assert written["arrays_sha256"] == manifest["arrays_sha256"]
+    # Nothing in the receipt differs between identical runs (Vahid, #877):
+    # no timestamp, no absolute path.
+    assert "written_at" not in written and "directory" not in written
+    assert first.size_receipt["certainty_share"] == pytest.approx(
+        first.size_receipt["selection_receipt"]["certainty_count"] / 2
+    )
+    assert (
+        first.size_receipt["boundary_draws"]
+        == 2 - (first.size_receipt["selection_receipt"]["certainty_count"])
+    )
+    assert first.size_receipt["zero_target_rows"] == 0
 
     # Resume: no dense solve, no search; the draw and refit reproduce the run.
     resumed = solve_uk_rowwise_weights_under_doctrine(
@@ -1773,6 +1784,38 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
     )
     assert redrawn.size_receipt["selection_pi_hi"] == 1.0
     assert redrawn.size_receipt["selection_search_pi_hi"] == 0.5
+
+    # A resume under a changed doctrine refuses even when the identity was
+    # not asked to carry it (the second lock, Vahid's should-fix 1).
+    import dataclasses
+
+    from microcosm.build.uk_runtime import local_rowwise as lr_module
+
+    drifted_doctrine = dataclasses.replace(
+        lr_module.UK_LOCAL_SOLVE_DOCTRINE,
+        max_weight_ratio=lr_module.UK_LOCAL_SOLVE_DOCTRINE.max_weight_ratio * 2,
+    )
+    original_doctrine = lr_module.UK_LOCAL_SOLVE_DOCTRINE
+    lr_module.UK_LOCAL_SOLVE_DOCTRINE = drifted_doctrine
+    try:
+        with pytest.raises(ValueError, match="different doctrine.*max_weight_ratio"):
+            solve_uk_rowwise_weights_under_doctrine(
+                frame,
+                problem,
+                resume_size_checkpoint=checkpoint_dir,
+                checkpoint_identity=identity,
+                **common,
+            )
+    finally:
+        lr_module.UK_LOCAL_SOLVE_DOCTRINE = original_doctrine
+    provenance_run = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        resume_size_checkpoint=checkpoint_dir,
+        checkpoint_identity=identity,
+        **common,
+    )
+    assert provenance_run.size_receipt["checkpoint"]["resumed_from"]["provenance"] == {}
 
     # Identity, pool and surface drift refuse by name.
     with pytest.raises(ValueError, match="epochs: checkpoint 2 != run 3"):

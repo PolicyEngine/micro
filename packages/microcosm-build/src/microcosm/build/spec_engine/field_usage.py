@@ -27,8 +27,8 @@ from .resolver import (
 from .schemas import load_schema_registry
 
 EXPECTED_AUTHORED_FIELD_COUNT = 32_384
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_770
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_154
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_772
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_156
 
 
 class FieldUsageError(AssertionError):
@@ -249,13 +249,9 @@ def _claim_rows(
         )
 
     if claim.pointer_class == "stacked_geography_source_identity":
-        return [
-            row for row in rows if is_stacked_geography_source_identity(row[0])
-        ]
+        return [row for row in rows if is_stacked_geography_source_identity(row[0])]
     if claim.pointer_class == "source_validation":
-        return [
-            row for row in rows if not is_stacked_geography_source_identity(row[0])
-        ]
+        return [row for row in rows if not is_stacked_geography_source_identity(row[0])]
     raise FieldUsageError(f"{claim.id}: unknown pointer class {claim.pointer_class!r}")
 
 
@@ -457,8 +453,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        824,
-        "7537385c3fd399a2dbb7dcd8ed7cf1ff2481ed336db621eafcbfd741d5792f40",
+        826,
+        "7ff2d5d1c2fd8026d17a57244f969dc0e9625a9e47304b693ad15df329041282",
     ),
     "resolved_seed_site_bindings": (
         277,
@@ -1125,7 +1121,9 @@ def _verify_source_pins(context: _VerificationContext, claim: UsageClaim) -> Non
         if isinstance(row, Mapping) and isinstance(row.get("id"), str)
     ]
     if len(ids) != len(rows) or len(ids) != len(set(ids)):
-        raise FieldUsageError("source_pins: source ids are not an exact unique registry")
+        raise FieldUsageError(
+            "source_pins: source ids are not an exact unique registry"
+        )
 
     expected_refs: set[tuple[str, str, str]] = set()
     for index, value in enumerate(rows):
@@ -1468,9 +1466,7 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
         "legacy": lambda: _verify_legacy(context, claim),
         "source_pins": lambda: _verify_source_pins(context, claim),
         "spine_channels": lambda: _verify_spine_channels(context, claim),
-        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(
-            context, claim
-        ),
+        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(context, claim),
         "spine_assembly_validation": lambda: _verify_spine_assembly_validation(
             context, claim
         ),

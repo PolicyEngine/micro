@@ -343,6 +343,13 @@ def refit_uk_dataset_size(
             "pool_households": n,
             "seed": seed,
             "protected_carriers": int(init_protected.sum()),
+            # How much of the count the threshold decided versus the draw: with
+            # polarised gates the "draw" is mostly a threshold on learned pi.
+            "certainty_share": float(sampling["certainty_count"]) / float(households),
+            "boundary_draws": int(households - sampling["certainty_count"]),
+            # Rows whose target is exactly zero: the contribution prior uses a
+            # unit denominator there, so a survivor would saturate the prior.
+            "zero_target_rows": int(np.count_nonzero(problem.target_vector == 0.0)),
             "selection_receipt": sampling,
             "selection_pi_hi": pi_hi,
             "selection_search_pi_hi": selection.search_pi_hi,

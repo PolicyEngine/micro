@@ -14,6 +14,7 @@ import importlib.util
 import inspect
 import json
 import platform
+import sys
 import warnings
 from importlib.metadata import version
 from pathlib import Path
@@ -2125,15 +2126,31 @@ def _pre_best_iterate_oracle(fixture: dict):
     for name, expected in provenance["helper_source_sha256"].items():
         source = inspect.getsource(getattr(solve_module, name)).rstrip("\n")
         assert hashlib.sha256(source.encode()).hexdigest() == expected, name
-    # Pin the entire gate module, including the class's stretch constants.
-    assert (
-        hashlib.sha256(Path(gates.__file__).read_bytes()).hexdigest()
-        == (provenance["gates_module_sha256"])
+    # The oracle runs with a frozen copy of the gate module (stretch constants
+    # included), not the live one: a gate-behaviour change in
+    # microcosm.calibrate.gates then surfaces as a numeric mismatch on the
+    # gated path instead of being absorbed on both sides.
+    frozen_gates = (
+        Path(__file__).parent
+        / "fixtures/pre_best_iterate"
+        / (provenance["frozen_gates_module"])
     )
+    assert (
+        hashlib.sha256(frozen_gates.read_bytes()).hexdigest()
+        == provenance["frozen_gates_sha256"]
+    )
+    gates_spec = importlib.util.spec_from_file_location(
+        "pre_best_iterate_gates", frozen_gates
+    )
+    frozen_gates_module = importlib.util.module_from_spec(gates_spec)
+    sys.modules["pre_best_iterate_gates"] = frozen_gates_module
+    gates_spec.loader.exec_module(frozen_gates_module)
+    assert frozen_gates_module.HardConcrete is not gates.HardConcrete
     assert solve_module._PRUNE_REL_ATOL == provenance["prune_rel_atol"]
     spec = importlib.util.spec_from_file_location("pre_best_iterate_oracle", path)
     oracle = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(oracle)
+    assert oracle.HardConcrete is frozen_gates_module.HardConcrete
     source = inspect.getsource(oracle._optimize).rstrip("\n")
     assert (
         hashlib.sha256(source.encode()).hexdigest()

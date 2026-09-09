@@ -484,6 +484,35 @@ def _stderr_progress(line: str) -> None:
     print(line, file=sys.stderr, flush=True)
 
 
+def _refuse_stale_size_checkpoint(args: argparse.Namespace, out_dir: Path) -> None:
+    """Refuse an --out holding a checkpoint before the solve, not after it.
+
+    The checkpoint writer refuses to overwrite, but it runs after the dense
+    solve and the search; a stale checkpoint in --out must fail here, before
+    the hours are spent.
+    """
+    if args.dataset_households is None or args.no_size_checkpoint:
+        return
+    if args.resume_size_checkpoint is not None:
+        return
+    from microcosm.build.uk_runtime.size_checkpoint import (
+        SIZE_CHECKPOINT_ARRAYS_FILENAME,
+        SIZE_CHECKPOINT_MANIFEST_FILENAME,
+    )
+
+    existing = sorted(
+        str(out_dir / name)
+        for name in (SIZE_CHECKPOINT_ARRAYS_FILENAME, SIZE_CHECKPOINT_MANIFEST_FILENAME)
+        if (out_dir / name).exists()
+    )
+    if existing:
+        raise FileExistsError(
+            "refusing to run into an --out that already holds a size checkpoint: "
+            f"{existing}. Resume from it with --resume-size-checkpoint, or choose "
+            "another --out."
+        )
+
+
 def _size_checkpoint_identity(
     args: argparse.Namespace,
     *,
@@ -520,6 +549,10 @@ def _size_checkpoint_identity(
         "measure_exclusions": (
             None if args.measure_exclusions is None else str(args.measure_exclusions)
         ),
+        # The solve doctrine the dense solve and the search run under: a
+        # resume after a doctrine change must refuse, not run under the old
+        # bound while the manifest declares the new one.
+        "doctrine": _doctrine_bounds(),
     }
 
 
@@ -879,6 +912,7 @@ def _run_candidate(
             input_h5=input_h5,
             ladder_path=ladder_path,
         )
+        _refuse_stale_size_checkpoint(args, out_dir)
         ladder = load_uk_oa_ladder(ladder_path)
         target_provenance = ladder_target_provenance(ladder)
         joint_inputs = _load_joint_target_inputs(args)
@@ -1112,6 +1146,7 @@ def _run_candidate(
             size_checkpoint_dir=out_dir if write_checkpoint else None,
             resume_size_checkpoint=resume_checkpoint,
             checkpoint_identity=checkpoint_identity,
+            checkpoint_provenance={"code_pin": code_pin, "build_id": state.build_id},
             progress=_stderr_progress,
         )
         _validate_solve_result(solve, problem=problem)
@@ -1120,8 +1155,7 @@ def _run_candidate(
             if "written" in checkpoint:
                 append_phase(state, "size_selection_checkpointed")
                 print(
-                    "size selection checkpoint written to "
-                    f"{checkpoint['written']['directory']}",
+                    f"size selection checkpoint written to {out_dir}",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -2459,11 +2493,22 @@ def _manifest(
             "stretch_reference": "pool_design"
             if solve.size_receipt is None
             else "normalized_horvitz_thompson_w_over_q",
-            "realized_max_weight_ratio_vs_design": float(
+            # Against the frame the refit started from (the pool design on a
+            # dense run, the Horvitz-Thompson baseline on a size run)...
+            "realized_max_weight_ratio_vs_stretch_reference": float(
                 np.max(
                     np.divide(
                         np.asarray(solve.weights, dtype=np.float64),
                         np.asarray(solve.initial_weights),
+                    )
+                )
+            ),
+            # ...and always against the pool design weights themselves.
+            "realized_max_weight_ratio_vs_design": float(
+                np.max(
+                    np.divide(
+                        np.asarray(solve.weights, dtype=np.float64),
+                        np.asarray(_design_weights_for(solve), dtype=np.float64),
                     )
                 )
             ),
@@ -2640,6 +2685,15 @@ def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]
             "budget_iters": _BUDGET_ITERS,
         },
     }
+
+
+def _design_weights_for(solve: UKRowwiseDoctrineSolve) -> np.ndarray:
+    """The pool design weights aligned to the solve's exported rows."""
+    if solve.selected_support is None or solve.dense_reference is None:
+        return np.asarray(solve.initial_weights, dtype=np.float64)
+    return np.asarray(solve.dense_reference.initial_weights, dtype=np.float64)[
+        np.asarray(solve.selected_support, dtype=np.int64)
+    ]
 
 
 def _dense_reference_summary(solve: UKRowwiseDoctrineSolve) -> dict[str, Any] | None:

@@ -2069,7 +2069,24 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
     assert checkpoint["selection"]["search_pi_hi"] == 0.5
     assert checkpoint["identity"]["dataset_households"] == 300
     assert checkpoint["identity"]["epochs"] == 2
+    # The identity carries the solve doctrine; the provenance names the
+    # writing run (reported on resume, not compared).
+    assert checkpoint["identity"]["doctrine"] == builder._doctrine_bounds()
+    assert set(checkpoint["provenance"]) == {"code_pin", "build_id"}
     manifest = json.loads((first / builder.MANIFEST_FILENAME).read_text())
+    written = manifest["solve"]["dataset_size"]["checkpoint"]["written"]
+    assert "written_at" not in written and "directory" not in written
+    size_first = manifest["solve"]["dataset_size"]
+    assert 0 < size_first["certainty_share"] <= 1
+    assert (
+        size_first["boundary_draws"]
+        == 300 - (size_first["selection_receipt"]["certainty_count"])
+    )
+    assert size_first["zero_target_rows"] >= 0
+    weights_block = manifest["weights"]
+    assert weights_block["stretch_reference"] == "normalized_horvitz_thompson_w_over_q"
+    assert weights_block["realized_max_weight_ratio_vs_stretch_reference"] > 0
+    assert weights_block["realized_max_weight_ratio_vs_design"] > 0
     assert manifest["parameters"]["size_checkpoint"] is True
     assert manifest["parameters"]["resume_size_checkpoint"] is None
     written = manifest["solve"]["dataset_size"]["checkpoint"]["written"]
@@ -2158,3 +2175,22 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
                 str(first),
             ]
         )
+    # An --out that already holds a checkpoint refuses before any solve
+    # (Vahid's should-fix 2): the checkpoint writer's own refusal came hours
+    # too late.
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    (stale / SIZE_CHECKPOINT_ARRAYS_FILENAME).write_bytes(b"stale")
+    (stale / SIZE_CHECKPOINT_MANIFEST_FILENAME).write_text("{}")
+    with pytest.raises(FileExistsError, match="already holds a size checkpoint"):
+        builder.main([*common, "--out", str(stale)])
+    assert not (stale / builder.MANIFEST_FILENAME).exists()
+    assert manifest["solve"]["dataset_size"]["checkpoint"]["written"]["stage"] == (
+        "before_exact_count_draw"
+    )
+    resumed_receipt = resumed["solve"]["dataset_size"]["checkpoint"]["resumed_from"]
+    assert (
+        resumed_receipt["provenance"]["build_id"]
+        == checkpoint["provenance"]["build_id"]
+    )
+    assert "written_at" not in resumed_receipt
