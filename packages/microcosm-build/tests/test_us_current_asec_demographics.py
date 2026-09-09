@@ -77,13 +77,13 @@ def test_state_capture_structure_and_exact_bytes_refuse(tmp_path, defect):
         owner._read_state_capture(path, pin)
 
 
-def _demographic_arguments(tmp_path, monkeypatch, *, unknown=False):
+def _demographic_arguments(tmp_path, monkeypatch, *, unknown=False, zero=True):
     """Extend invented source members before actual preparation/issuance.
 
     Rebuild the real person-income attachment after member bytes change. Only
     fixture registry pins are changed; no source issuer or ready() is replaced.
     """
-    arguments = fixture(tmp_path, monkeypatch)
+    arguments = fixture(tmp_path, monkeypatch, zero=zero)
     source = arguments["source_dir"] / "asec"
     members, pins = {}, []
     for year, member, archive, *_ in coverage._MEMBER_PINS:

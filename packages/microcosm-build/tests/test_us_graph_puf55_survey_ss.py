@@ -49,6 +49,27 @@ from microcosm.graph.codecs import load_frame_store
 PROFILE = full.PUF55_SURVEY_SS
 
 
+def _independent_finalized_frame(binding, artifacts):
+    """Use the real finalizer without the attachment's column/result builder."""
+    finalized, _ = full.finalize_full_puf(
+        binding.expected_population.frame,
+        binding.donor,
+        predictor_known=binding.predictor_known,
+        matrix=artifacts["matrix"].payload,
+        matrix_producer_key=artifacts["matrix"].producer_key,
+        raw_draws={
+            target: artifacts[f"raw_{index:03d}"].payload
+            for index, target in enumerate(PROFILE.targets)
+        },
+        apply_state=artifacts["apply_state"].payload,
+        training_state=artifacts["training_state"].payload,
+        last_model=artifacts["last_model"].payload,
+        seed=binding.fit_nodes[0].params["seed"],
+        profile=PROFILE,
+    )
+    return finalized
+
+
 @pytest.fixture(scope="module")
 def attached_puf55(tmp_path_factory):
     root = tmp_path_factory.mktemp("puf55_population_attachment")
@@ -219,6 +240,7 @@ def attached_puf55(tmp_path_factory):
                 artifacts=artifacts,
                 producer_keys=producer_keys,
                 evidence=evidence,
+                finalized=_independent_finalized_frame(binding, artifacts),
             )
         )
     replay.same_replayed_population(results[0].population, results[1].population)
@@ -285,18 +307,37 @@ def test_puf55_cold_and_required_replay_preserve_survey_incumbents(attached_puf5
                 if (entity, column) not in owned_cells:
                     assert population_ops.storage_equal(before[column], after[column])
 
+        has_nonzero_oracle_value = False
         for owned in attach.outputs:
             before, after = upstream.table(owned.entity), frame.table(owned.entity)
             mask = support.puf_tax_detail_clone_mask(before, entity=owned.entity)
             assert owned.rows == placement.MASKS[owned.entity]
             assert after.loc[mask, owned.column].notna().all()
             assert result.population.owners[(owned.entity, owned.column)] == attach.id
+            # Align by entity IDs, independently of the attachment's positional
+            # selection and column construction. Replay alone shares that code.
+            id_column = upstream.schema.entity_id_column(owned.entity)
+            entity_ids = pd.Index(before.loc[mask, id_column], name=id_column)
+            expected = (
+                result.finalized.table(owned.entity)
+                .set_index(id_column, verify_integrity=True)
+                .loc[entity_ids, owned.column]
+                .astype(owned.dtype)
+            )
+            actual = after.set_index(id_column, verify_integrity=True).loc[
+                entity_ids, owned.column
+            ]
+            pd.testing.assert_series_equal(actual, expected, check_exact=True)
+            has_nonzero_oracle_value |= bool(expected.ne(0).any())
             if owned.column in before:
                 assert population_ops.storage_equal(
                     before[owned.column], after[owned.column], ~mask
                 )
             else:
                 assert after.loc[~mask, owned.column].isna().all()
+        # Keep a nontrivial oracle: replacing all selected outputs with zeros
+        # must be detected even when the kernel and replay verifier agree.
+        assert has_nonzero_oracle_value
 
         people = upstream.table("person")
         mask = support.puf_tax_detail_clone_mask(people, entity="person")

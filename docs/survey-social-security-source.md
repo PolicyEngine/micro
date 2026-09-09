@@ -60,6 +60,55 @@ convention, allocation to individual beneficiaries where necessary, explicit
 income periods, design-weighted training, native-to-clone inheritance and
 held-out checks remain separate required work.
 
+## Conditioning measurement judgment, 2026-09-09
+
+The recipient measurement for predictor nine remains undecided. Passing the
+numerical `PUF55_SURVEY_SS` mechanism does not establish donor/recipient
+comparability or authenticate a beneficiary total.
+
+[IRS Publication 915 (2015), pages 3 and 5–6](https://www.irs.gov/pub/irs-prior/p915--2015.pdf#page=3)
+combines spouses' benefits on a joint return and assigns benefits to the person
+legally entitled to receive them. A child's payment remains the child's even
+when the check names the parent. Form 1040 line 20a reports net benefits after
+repayments, including equivalent tier-1 railroad benefits; Form 1040EZ does not
+report benefits. Thus a sum over all modeled tax-unit members is a different
+measurement from the filer/joint-spouse return amount.
+
+Restricting survey records to the filer and joint-return spouse would still
+produce a **report-sum proxy**, not an observed beneficiary total. The
+[ASEC dictionary, PDF pages 48–49](https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf#page=48)
+permits combined family payments and includes reasons for payments on behalf
+of children. The [ACS 2024 questionnaire, question 43, page 18](https://www2.census.gov/programs-surveys/acs/methodology/questionnaires/2024/quest24.pdf#page=18)
+also permits jointly received income to appear entirely on one person's
+record, with no receipt recorded for the other. Its income category includes
+Social Security or Railroad Retirement. A parent may therefore report child
+payments, or another household member may report an included person's income.
+Multiple tax units within one household make reporter membership insufficient
+to establish benefit ownership; household totals must not be duplicated across
+returns or redistributed without a separate supported model.
+
+If adopted, a measurement such as
+`social_security_filer_joint_spouse_report_sum_proxy` would need an explicit
+upstream contract before supplying `puf_conditioning_social_security_total`.
+That contract would bind actual return roles, source reporting records,
+knownness and income periods; the coarsened PUF filing-class predictor alone
+cannot establish joint-return membership. ASEC calendar-year income, ACS's
+rolling window, transported donor money, repayment treatment and railroad
+coverage remain comparability questions. Component completion is separate.
+
+Excluding a dependent from a parent's return feature does not assign that
+dependent zero benefits. Both surveys' under-15 amounts remain unknown. If an
+included filer has no in-universe report, an empty or missing report set cannot
+silently become a known zero. Family-payment ambiguity also survives an
+age-universe restriction.
+
+The exact 2015 `E02400` definition and publisher editing/omission conventions
+remain unauthenticated by this lookup. The [live IRS PUF page](https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files),
+checked on 2026-09-09, says the 2012–2015 files are unavailable. The verified
+Form 1040 rules do not independently establish how every PUF record encodes
+them. This record adopts no proxy, allocates no beneficiaries and grants no
+dataset or release acceptance.
+
 ## Verification scope
 
 The 52-case control run executes 50 numerical/literal tests and two complete

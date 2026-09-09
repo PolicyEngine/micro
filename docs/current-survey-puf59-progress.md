@@ -38,5 +38,35 @@ conversions even when predictor matrices remain identical. The run took 21.03
 seconds at 631.3 MB peak RSS; receipt SHA256:
 `ad8519d867279ebce9ee78bf8f495f3799afb45ec1b3fcda1be649f8a129af30`.
 All 482 source/control, 5,983 model-source and 12 code-resource postchecks agree,
-with no skips or unexpected access refusals. Native recipient qualification,
-measurement comparability and actual survey attachment remain pending.
+with no skips or unexpected access refusals. A subsequent independent review
+required a direct finalizer comparison, because the attachment and its verifier
+share a column-construction helper. The strengthened three-case run also passes:
+all 55 attached outputs agree with the direct finalizer after independent entity
+ID alignment, on cold and required replay. It took 20.73 seconds at 630.5 MB;
+receipt SHA256 is
+`e3a4d548f0209cfacd7d9e3beddb63c1b46204a3168eb9869d2b2eafe9cf2291`.
+All 486 source/control, 5,983 model-source and 12 code-resource postchecks agree.
+Native recipient qualification, measurement comparability and actual survey
+attachment remain pending.
+
+The observed-geography source qualifier passes 11 invented original-source
+controls. It binds current ASEC state and ACS state/PUMA to literal source
+household keys, preserves unknown locations, and keeps draw keys stable across
+sampling fractions. The initial ten-case run correctly refused a smaller sample
+with no positive ASEC support; its corrected fixture supplies positive support
+before issuance. Review also added a receipt-digest check against mutation of
+the detached ASEC projection. The passing run took 182.50 seconds at 430.3 MB;
+receipt SHA256 is
+`1900801b1bbcea89a3747f656410e500b1328519694c3351100562bba61cab08`.
+The 484 source/control, 5,983 model-source and 12 code-resource postchecks agree,
+with no skips or unexpected refusals.
+
+The observed-geography graph node separately passes 14 controls over the same
+kind of invented original sources. Actual three-node execution and required
+replay preserve inputs, weights and unknown geography. Declaration, source
+receipt, typed-artifact and final-mutation cases refuse invalid output. The run
+took 319.44 seconds at 439.1 MB; receipt SHA256 is
+`28a6b5c58a258c7b3129a48054a3360647c788f8b76d781cc3bc8fc35a73f997`.
+All 486 source/control, 5,983 model-source and 12 code-resource postchecks agree.
+Full geography-before-clone composition, native block-source integration and
+complete calibration remain separate work.
