@@ -42,7 +42,7 @@ def add_uk_staging_arguments(parser: argparse.ArgumentParser) -> None:
         default=_environment_default(
             "POPULACE_UK_STAGING_PREFIX", DEFAULT_STAGING_PREFIX
         ),
-        help="Repository-relative prefix for immutable run directories.",
+        help="Repository-relative prefix for run-specific directories.",
     )
     parser.add_argument(
         "--staging-run-id",
@@ -83,9 +83,14 @@ def validate_uk_staging_arguments(
 
     interval = args.staging_upload_interval_seconds
     if not math.isfinite(interval) or interval < 0.0:
-        parser.error("--staging-upload-interval-seconds must be finite and non-negative.")
+        parser.error(
+            "--staging-upload-interval-seconds must be finite and non-negative."
+        )
     if args.staging_read_back and (args.staging_local_only or args.no_staging):
         parser.error("--staging-read-back requires remote staging.")
     if not args.staging_local_only and not args.no_staging:
-        if not isinstance(args.staging_repo_id, str) or not args.staging_repo_id.strip():
+        if (
+            not isinstance(args.staging_repo_id, str)
+            or not args.staging_repo_id.strip()
+        ):
             parser.error("remote staging requires a non-empty --staging-repo-id.")

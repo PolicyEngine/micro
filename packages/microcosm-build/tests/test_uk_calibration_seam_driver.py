@@ -388,11 +388,12 @@ def test_driver_records_local_calibration_stage_coverage(
 ) -> None:
     driver = _load_driver_module()
     registry = _registry()
+    pin = driver.load_uk_national_chronicle_feed()
     artifact = SimpleNamespace(
         path=tmp_path / "ledger",
         facts=({"fact": 1},),
-        facts_sha256=driver._LEDGER_FACT_FEED_PIN["facts_sha256"],
-        manifest_sha256="c" * 64,
+        facts_sha256=pin.facts_sha256,
+        manifest_sha256=pin.manifest_sha256,
     )
     artifact.path.mkdir()
     (artifact.path / "consumer_facts.jsonl").write_text("{}", encoding="utf-8")

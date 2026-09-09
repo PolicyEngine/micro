@@ -2,20 +2,15 @@ import hashlib
 import json
 import subprocess
 import sys
-from collections import Counter
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from microcosm.build.staging_v2 import (
     CALIBRATION_PROGRESS_SCHEMA,
     EVENT_SCHEMA,
-    LATEST_RUN_SCHEMA,
     PROGRESS_SCHEMA,
-    RUN_INDEX_SCHEMA,
     RUN_MANIFEST_SCHEMA,
-    STAGING_CONTRACT_VERSION,
     StagingContentError,
     StagingContractError,
     StagingReadBackError,
@@ -44,34 +39,11 @@ class MemoryApi:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.files: dict[str, bytes] = {}
-        self.revision = 0
 
-    def upload_file(
-        self,
-        *,
-        path_or_fileobj,
-        path_in_repo,
-        repo_id,
-        repo_type,
-        parent_commit=None,
-    ):
+    def upload_file(self, *, path_or_fileobj, path_in_repo, repo_id, repo_type):
         assert repo_id == "policyengine/populace-uk-staging"
         assert repo_type == "dataset"
-        if parent_commit is not None and parent_commit != str(self.revision):
-            raise RuntimeError("repository changed since the requested parent commit")
         self.files[path_in_repo] = Path(path_or_fileobj).read_bytes()
-        self.revision += 1
-
-    def repo_info(self, *, repo_id, repo_type):
-        assert repo_id == "policyengine/populace-uk-staging"
-        assert repo_type == "dataset"
-        return SimpleNamespace(sha=str(self.revision))
-
-    def list_repo_files(self, *, repo_id, repo_type, revision=None):
-        assert repo_id == "policyengine/populace-uk-staging"
-        assert repo_type == "dataset"
-        assert revision is None or revision == str(self.revision)
-        return sorted(self.files)
 
     def hf_hub_download(self, *, filename, repo_id, repo_type, **kwargs):
         if filename not in self.files:
@@ -114,10 +86,9 @@ def test_version_2_local_bundle_has_explicit_schemas_and_ordered_events(tmp_path
 
     bundle = telemetry.validate_local_bundle()
 
+    assert set(bundle) == {"run_manifest", "progress", "events"}
     assert bundle["run_manifest"]["schema_name"] == RUN_MANIFEST_SCHEMA
     assert bundle["progress"]["schema_name"] == PROGRESS_SCHEMA
-    assert bundle["latest"]["schema_name"] == LATEST_RUN_SCHEMA
-    assert bundle["index"]["schema_name"] == RUN_INDEX_SCHEMA
     assert {event["schema_name"] for event in bundle["events"]} == {EVENT_SCHEMA}
     assert [event["sequence"] for event in bundle["events"]] == [1, 2, 3, 4]
     assert bundle["progress"]["status"] == "completed"
@@ -314,41 +285,27 @@ def test_remote_read_back_validates_the_written_run(tmp_path):
     assert telemetry.delivery_summary["read_back"] == "passed"
     assert telemetry.uploads_succeeded > 0
     assert "runs/uk-smoke-5-42/run_manifest.json" in api.files
-    assert "latest_staging.json" in api.files
-    assert "runs.json" in api.files
+    assert all(path.startswith("runs/uk-smoke-5-42/") for path in api.files)
     remote_manifest = json.loads(api.files["runs/uk-smoke-5-42/run_manifest.json"])
     assert remote_manifest["delivery"]["read_back"] == "passed"
 
 
 @pytest.mark.parametrize(
-    ("path", "download_number", "mutate"),
+    ("path", "mutate"),
     [
         (
             "runs/uk-smoke-5-42/run_manifest.json",
-            2,
             lambda document: document.update(candidate_id="altered-candidate"),
         ),
         (
             "runs/uk-smoke-5-42/progress.json",
-            1,
             lambda document: document.update(message="Altered remote progress."),
-        ),
-        (
-            "latest_staging.json",
-            1,
-            lambda document: document.update(candidate_id="altered-candidate"),
-        ),
-        (
-            "runs.json",
-            1,
-            lambda document: document["runs"][0].update(status="running"),
         ),
     ],
 )
 def test_remote_read_back_rejects_schema_valid_content_changes(
     tmp_path,
     path,
-    download_number,
     mutate,
 ):
     api = MemoryApi(tmp_path)
@@ -360,13 +317,11 @@ def test_remote_read_back_rejects_schema_valid_content_changes(
         upload_interval_seconds=0,
     )
     telemetry.complete()
-    download_counts: Counter[str] = Counter()
     download = telemetry._transport.download
 
     def altered_download(path_in_repo, **kwargs):
         data = download(path_in_repo, **kwargs)
-        download_counts[path_in_repo] += 1
-        if path_in_repo == path and download_counts[path_in_repo] == download_number:
+        if path_in_repo == path:
             document = json.loads(data)
             mutate(document)
             return json.dumps(document).encode()
@@ -380,7 +335,7 @@ def test_remote_read_back_rejects_schema_valid_content_changes(
     assert telemetry.delivery_summary["read_back"] == "failed"
 
 
-def test_remote_read_back_allows_an_unrelated_latest_run(tmp_path):
+def test_remote_producers_have_disjoint_run_scoped_upload_paths(tmp_path):
     api = MemoryApi(tmp_path)
     first = _recorder(
         tmp_path / "first",
@@ -400,21 +355,13 @@ def test_remote_read_back_allows_an_unrelated_latest_run(tmp_path):
         api=api,
         upload_interval_seconds=0,
     )
-    first.complete()
-    second.complete()
-    concurrent_latest = api.files["latest_staging.json"]
-    download = first._transport.download
 
-    def concurrent_download(path_in_repo, **kwargs):
-        if path_in_repo == "latest_staging.json":
-            return concurrent_latest
-        return download(path_in_repo, **kwargs)
+    first_paths = {remote for _, remote in first._upload_paths()}
+    second_paths = {remote for _, remote in second._upload_paths()}
 
-    first._transport.download = concurrent_download
-
-    first.verify_remote()
-
-    assert first.delivery_summary["read_back"] == "passed"
+    assert first_paths.isdisjoint(second_paths)
+    assert all(path.startswith("runs/first/") for path in first_paths)
+    assert all(path.startswith("runs/second/") for path in second_paths)
 
 
 def test_remote_delivery_matches_local_delivery_after_completion(tmp_path):
@@ -476,76 +423,6 @@ def test_remote_read_back_failure_is_explicit(tmp_path):
     with pytest.raises(StagingReadBackError, match="read-back failed"):
         telemetry.verify_remote()
     assert telemetry.delivery_summary["read_back"] == "failed"
-
-
-def test_local_run_index_merges_by_run_identifier(tmp_path):
-    first = _recorder(tmp_path, run_id="first", candidate_id="first")
-    first.complete()
-    second = _recorder(tmp_path, run_id="second", candidate_id="second")
-    second.complete()
-
-    index = json.loads((second.local_dir / "runs.json").read_text())
-
-    assert {run["run_id"] for run in index["runs"]} == {"first", "second"}
-    assert index["schema_version"] == STAGING_CONTRACT_VERSION
-
-
-def test_remote_run_index_is_merged_before_upload(tmp_path):
-    api = MemoryApi(tmp_path)
-    first = _recorder(
-        tmp_path / "first",
-        run_id="first",
-        candidate_id="first",
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
-    first.complete()
-    second = _recorder(
-        tmp_path / "second",
-        run_id="second",
-        candidate_id="second",
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
-    second.complete()
-
-    index = json.loads(api.files["runs.json"])
-
-    assert {run["run_id"] for run in index["runs"]} == {"first", "second"}
-
-
-def test_remote_run_index_is_derived_after_preconstructed_runs_complete(tmp_path):
-    api = MemoryApi(tmp_path)
-    first = _recorder(
-        tmp_path / "first",
-        run_id="first",
-        candidate_id="first",
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
-    second = _recorder(
-        tmp_path / "second",
-        run_id="second",
-        candidate_id="second",
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
-
-    first.complete()
-    second.complete()
-
-    index = json.loads(api.files["runs.json"])
-    assert {run["run_id"] for run in index["runs"]} == {"first", "second"}
-    assert "runs/first/run_manifest.json" in api.files
-    assert "runs/second/run_manifest.json" in api.files
 
 
 def test_bundle_validation_checks_reviewed_artifact_digest(tmp_path):

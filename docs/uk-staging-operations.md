@@ -120,7 +120,7 @@ Common options are `--staging-dir`, `--staging-repo-id`,
 repository identifier is invalid in remote mode. Authenticated read-back is
 valid only in remote mode.
 
-Each local or remote bundle contains `runs.json`, `latest_staging.json`, and:
+Each local or remote run contains only files below its own run directory:
 
 ```text
 runs/<run_id>/run_manifest.json
@@ -186,13 +186,13 @@ and still refits the weights. The build record includes the requested count,
 realized count, seed, selection receipt, and refit-baseline diagnostics.
 
 An authenticated staging transport check completed on 2026-09-09 using the
-earlier source-family-count interface. It uploaded only the five version 2 JSON
-run records for `uk-smoke-h0100-s578-20260909T125305Z` to
-`policyengine/populace-uk-staging`; it did not upload the H5 dataset. The
-manifest, progress record, latest-run pointer, run index, and event stream all
-passed authenticated read-back and version-aware parsing. That obsolete option
-has since been removed because it selected source families before construction
-and therefore did not guarantee a requested final household count.
+earlier source-family-count interface and the superseded shared-file layout. It
+uploaded version 2 JSON records for `uk-smoke-h0100-s578-20260909T125305Z` to
+`policyengine/populace-uk-staging`; it did not upload the H5 dataset. Its
+authenticated read-back does not verify the current run-scoped-only layout.
+That obsolete sampling option has also been removed because it selected source
+families before construction and therefore did not guarantee a requested final
+household count.
 
 ## Monitoring authentication
 
@@ -239,12 +239,13 @@ References:
 
 ## Monitoring, rollback, and publication
 
-Monitor `runs.json` for discovery, `progress.json` for current status, and
-`events.ndjson` for ordered stage durations. A remote verification run also
-downloads and validates the run manifest, progress document, latest-run
-pointer, and run index. Upload failures are recorded with counts and reviewed
-error codes while local recording continues; unrestricted remote exception
-text is not serialized.
+Consumers discover runs by enumerating `runs/*/run_manifest.json`, then derive
+the latest run from manifest `updated_at` timestamps. Monitor each run's
+`progress.json` for current status and `events.ndjson` for ordered stage
+durations. A remote verification run downloads and validates only its own run
+manifest and progress document. Upload failures are recorded with counts and
+reviewed error codes while local recording continues; unrestricted remote
+exception text is not serialized.
 
 Rollback is configuration-first: use `--staging-local-only` to retain local
 evidence or `--no-staging` for a deliberate opt-out, disable the GitHub

@@ -24,11 +24,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 STAGING_CONTRACT_VERSION = 2
 DEFAULT_UK_STAGING_REPO = "policyengine/populace-uk-staging"
 DEFAULT_STAGING_PREFIX = "runs"
-LATEST_STAGING_POINTER = "latest_staging.json"
-RUNS_INDEX = "runs.json"
 
-RUN_INDEX_SCHEMA = "microcosm.staging.run-index"
-LATEST_RUN_SCHEMA = "microcosm.staging.latest-run"
 RUN_MANIFEST_SCHEMA = "microcosm.staging.run-manifest"
 PROGRESS_SCHEMA = "microcosm.staging.progress"
 CALIBRATION_PROGRESS_SCHEMA = "microcosm.staging.calibration-progress"
@@ -40,8 +36,6 @@ LifecycleStatus = Literal["running", "completed", "failed"]
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SCHEMA_NAMES = {
-    RUN_INDEX_SCHEMA,
-    LATEST_RUN_SCHEMA,
     RUN_MANIFEST_SCHEMA,
     PROGRESS_SCHEMA,
     CALIBRATION_PROGRESS_SCHEMA,
@@ -392,74 +386,6 @@ SCHEMAS: dict[str, dict[str, Any]] = {
             "details",
         ],
     ),
-    LATEST_RUN_SCHEMA: _object_schema(
-        LATEST_RUN_SCHEMA,
-        {
-            "run_id": _SAFE_ID_SCHEMA,
-            "candidate_id": _SAFE_ID_SCHEMA,
-            "release_id": _NULLABLE_SAFE_ID_SCHEMA,
-            "updated_at": _TIMESTAMP_SCHEMA,
-            "paths": {
-                "type": "object",
-                "properties": {
-                    "run_manifest": {"type": "string"},
-                    "progress": {"type": "string"},
-                    "calibration_progress": {"type": ["string", "null"]},
-                    "events": {"type": "string"},
-                },
-                "required": [
-                    "run_manifest",
-                    "progress",
-                    "calibration_progress",
-                    "events",
-                ],
-                "additionalProperties": False,
-            },
-        },
-        ["run_id", "candidate_id", "release_id", "updated_at", "paths"],
-    ),
-    RUN_INDEX_SCHEMA: _object_schema(
-        RUN_INDEX_SCHEMA,
-        {
-            "updated_at": _TIMESTAMP_SCHEMA,
-            "runs": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "run_id": _SAFE_ID_SCHEMA,
-                        "candidate_id": _SAFE_ID_SCHEMA,
-                        "release_id": _NULLABLE_SAFE_ID_SCHEMA,
-                        "country_code": {"type": "string", "pattern": "^[A-Z]{2}$"},
-                        "run_kind": _SAFE_ID_SCHEMA,
-                        "non_release": {"type": "boolean"},
-                        "status": {"enum": ["running", "completed", "failed"]},
-                        "stage": _SAFE_ID_SCHEMA,
-                        "started_at": _TIMESTAMP_SCHEMA,
-                        "updated_at": _TIMESTAMP_SCHEMA,
-                        "progress_path": {"type": "string"},
-                        "run_manifest_path": {"type": "string"},
-                    },
-                    "required": [
-                        "run_id",
-                        "candidate_id",
-                        "release_id",
-                        "country_code",
-                        "run_kind",
-                        "non_release",
-                        "status",
-                        "stage",
-                        "started_at",
-                        "updated_at",
-                        "progress_path",
-                        "run_manifest_path",
-                    ],
-                    "additionalProperties": False,
-                },
-            },
-        },
-        ["updated_at", "runs"],
-    ),
 }
 
 
@@ -554,10 +480,6 @@ def validate_v2_document(payload: Mapping[str, Any]) -> dict[str, Any]:
             raise StagingContractError("Failed runs require sanitized failure data.")
         if normalized["status"] != "failed" and normalized["failure"] is not None:
             raise StagingContractError("Non-failed runs cannot contain failure data.")
-    if name == RUN_INDEX_SCHEMA:
-        run_ids = [row["run_id"] for row in normalized["runs"]]
-        if len(run_ids) != len(set(run_ids)):
-            raise StagingContractError("Run index contains duplicate run identifiers.")
     return normalized
 
 
@@ -657,25 +579,15 @@ class HuggingFaceDatasetStorage:
             self.api = HfApi()
         return self.api
 
-    def upload(
-        self,
-        local_path: Path,
-        path_in_repo: str,
-        *,
-        parent_commit: str | None = None,
-    ) -> None:
-        options: dict[str, Any] = {}
-        if parent_commit is not None:
-            options["parent_commit"] = parent_commit
+    def upload(self, local_path: Path, path_in_repo: str) -> None:
         self._api().upload_file(
             path_or_fileobj=str(local_path),
             path_in_repo=path_in_repo,
             repo_id=self.repo_id,
             repo_type="dataset",
-            **options,
         )
 
-    def download(self, path_in_repo: str, *, revision: str | None = None) -> bytes:
+    def download(self, path_in_repo: str) -> bytes:
         api = self._api()
         download = getattr(api, "hf_hub_download", None)
         if download is None:
@@ -686,33 +598,8 @@ class HuggingFaceDatasetStorage:
             filename=path_in_repo,
             repo_type="dataset",
             force_download=True,
-            revision=revision,
         )
         return Path(local).read_bytes()
-
-    def revision(self) -> str:
-        revision = (
-            self._api()
-            .repo_info(
-                repo_id=self.repo_id,
-                repo_type="dataset",
-            )
-            .sha
-        )
-        if not isinstance(revision, str) or not revision:
-            raise StagingContractError(
-                "Remote staging repository did not provide a revision."
-            )
-        return revision
-
-    def list_files(self, *, revision: str) -> list[str]:
-        return list(
-            self._api().list_repo_files(
-                repo_id=self.repo_id,
-                repo_type="dataset",
-                revision=revision,
-            )
-        )
 
 
 class StagingTelemetryV2:
@@ -1002,13 +889,9 @@ class StagingTelemetryV2:
         self._maybe_upload(force=True)
         expected_manifest = self._manifest()
         expected_progress = self._progress()
-        expected_latest = self._latest()
-        expected_summary = self._summary()
         expected = {
             f"{self.repo_run_prefix}/run_manifest.json": RUN_MANIFEST_SCHEMA,
             f"{self.repo_run_prefix}/progress.json": PROGRESS_SCHEMA,
-            LATEST_STAGING_POINTER: LATEST_RUN_SCHEMA,
-            RUNS_INDEX: RUN_INDEX_SCHEMA,
         }
         try:
             documents = {
@@ -1022,8 +905,6 @@ class StagingTelemetryV2:
                     )
             manifest = documents[f"{self.repo_run_prefix}/run_manifest.json"]
             progress = documents[f"{self.repo_run_prefix}/progress.json"]
-            latest = documents[LATEST_STAGING_POINTER]
-            index = documents[RUNS_INDEX]
             if manifest != expected_manifest:
                 raise StagingReadBackError(
                     "Remote run manifest does not match local pre-read-back state."
@@ -1031,15 +912,6 @@ class StagingTelemetryV2:
             if progress != expected_progress:
                 raise StagingReadBackError(
                     "Remote progress does not match local pre-read-back state."
-                )
-            if latest["run_id"] == self.run_id and latest != expected_latest:
-                raise StagingReadBackError(
-                    "Remote latest-run record does not match local run state."
-                )
-            indexed = [row for row in index["runs"] if row["run_id"] == self.run_id]
-            if indexed != [expected_summary]:
-                raise StagingReadBackError(
-                    "Remote run-index record does not match local run state."
                 )
         except Exception as exc:
             self._delivery["read_back"] = "failed"
@@ -1147,128 +1019,10 @@ class StagingTelemetryV2:
             "events": list(self._calibration_events),
         }
 
-    def _latest(self) -> dict[str, Any]:
-        return {
-            "schema_name": LATEST_RUN_SCHEMA,
-            "schema_version": STAGING_CONTRACT_VERSION,
-            "run_id": self.run_id,
-            "candidate_id": self.candidate_id,
-            "release_id": self.release_id,
-            "updated_at": self.updated_at,
-            "paths": {
-                "run_manifest": f"{self.repo_run_prefix}/run_manifest.json",
-                "progress": f"{self.repo_run_prefix}/progress.json",
-                "calibration_progress": (
-                    f"{self.repo_run_prefix}/calibration_progress.json"
-                    if self._calibration_events
-                    else None
-                ),
-                "events": f"{self.repo_run_prefix}/events.ndjson",
-            },
-        }
-
-    def _summary(self) -> dict[str, Any]:
-        return {
-            "run_id": self.run_id,
-            "candidate_id": self.candidate_id,
-            "release_id": self.release_id,
-            "country_code": self.country_code,
-            "run_kind": self.run_kind,
-            "non_release": self.release_id is None,
-            "status": self.status,
-            "stage": self.current_stage,
-            "started_at": self.started_at,
-            "updated_at": self.updated_at,
-            "progress_path": f"{self.repo_run_prefix}/progress.json",
-            "run_manifest_path": f"{self.repo_run_prefix}/run_manifest.json",
-        }
-
-    def _summary_from_manifest(self, manifest: Mapping[str, Any]) -> dict[str, Any]:
-        run_id = str(manifest["run_id"])
-        return {
-            "run_id": run_id,
-            "candidate_id": manifest["candidate_id"],
-            "release_id": manifest["release_id"],
-            "country_code": manifest["country_code"],
-            "run_kind": manifest["run_kind"],
-            "non_release": manifest["non_release"],
-            "status": manifest["status"],
-            "stage": manifest["current_stage"],
-            "started_at": manifest["started_at"],
-            "updated_at": manifest["updated_at"],
-            "progress_path": f"{self.path_prefix}/{run_id}/progress.json",
-            "run_manifest_path": (f"{self.path_prefix}/{run_id}/run_manifest.json"),
-        }
-
-    def _remote_index_from_run_manifests(self, *, revision: str) -> dict[str, Any]:
-        """Derive the compatibility index from valid run-scoped manifests."""
-
-        prefix = f"{self.path_prefix}/"
-        suffix = "/run_manifest.json"
-        summaries: list[dict[str, Any]] = []
-        for remote_path in self._transport.list_files(revision=revision):
-            if not remote_path.startswith(prefix) or not remote_path.endswith(suffix):
-                continue
-            run_id = remote_path[len(prefix) : -len(suffix)]
-            if not _SAFE_ID.fullmatch(run_id):
-                continue
-            try:
-                manifest = validate_v2_document(
-                    json.loads(self._transport.download(remote_path, revision=revision))
-                )
-            except Exception:
-                continue
-            if (
-                manifest["schema_name"] != RUN_MANIFEST_SCHEMA
-                or manifest["run_id"] != run_id
-            ):
-                continue
-            summaries.append(self._summary_from_manifest(manifest))
-        summaries.sort(
-            key=lambda row: str(row.get("updated_at") or row.get("started_at")),
-            reverse=True,
-        )
-        if not summaries:
-            raise StagingContractError(
-                "Remote staging repository contains no valid run manifests."
-            )
-        return validate_v2_document(
-            {
-                "schema_name": RUN_INDEX_SCHEMA,
-                "schema_version": STAGING_CONTRACT_VERSION,
-                "updated_at": max(str(row["updated_at"]) for row in summaries),
-                "runs": summaries,
-            }
-        )
-
-    def _index(self) -> dict[str, Any]:
-        existing: list[dict[str, Any]] = []
-        path = self.local_dir / RUNS_INDEX
-        if path.exists():
-            try:
-                payload = validate_v2_document(json.loads(path.read_text()))
-                existing = list(payload["runs"])
-            except (OSError, ValueError, StagingContractError):
-                existing = []
-        runs = [row for row in existing if row["run_id"] != self.run_id]
-        runs.append(self._summary())
-        runs.sort(
-            key=lambda row: str(row.get("updated_at") or row.get("started_at")),
-            reverse=True,
-        )
-        return {
-            "schema_name": RUN_INDEX_SCHEMA,
-            "schema_version": STAGING_CONTRACT_VERSION,
-            "updated_at": self.updated_at,
-            "runs": runs,
-        }
-
     def _persist_bundle(self) -> None:
         documents = {
             self.run_dir / "run_manifest.json": self._manifest(),
             self.run_dir / "progress.json": self._progress(),
-            self.local_dir / LATEST_STAGING_POINTER: self._latest(),
-            self.local_dir / RUNS_INDEX: self._index(),
         }
         if self._calibration_events:
             documents[self.run_dir / "calibration_progress.json"] = (
@@ -1299,12 +1053,6 @@ class StagingTelemetryV2:
             paths.append(
                 (self.run_dir / relative, f"{self.repo_run_prefix}/{relative}")
             )
-        paths.extend(
-            [
-                (self.local_dir / LATEST_STAGING_POINTER, LATEST_STAGING_POINTER),
-                (self.local_dir / RUNS_INDEX, RUNS_INDEX),
-            ]
-        )
         return paths
 
     def _upload_path(
@@ -1313,18 +1061,13 @@ class StagingTelemetryV2:
         remote_path: str,
         *,
         count_delivery: bool,
-        parent_commit: str | None = None,
     ) -> bool:
         data = local_path.read_bytes()
         self._content_policy.validate_remote_file(remote_path, data)
         if count_delivery:
             self._delivery["upload_attempts"] += 1
         try:
-            self._transport.upload(
-                local_path,
-                remote_path,
-                parent_commit=parent_commit,
-            )
+            self._transport.upload(local_path, remote_path)
         except Exception:
             self._consecutive_upload_failures += 1
             self._delivery["last_error_code"] = "UPLOAD_FAILED"
@@ -1346,33 +1089,6 @@ class StagingTelemetryV2:
             self._delivery["last_error_code"] = None
             return True
         return False
-
-    def _publish_remote_index(self) -> None:
-        """Publish an index derived from one repository revision."""
-
-        index_path = self.local_dir / RUNS_INDEX
-        for _ in range(3):
-            try:
-                revision = self._transport.revision()
-                index = self._remote_index_from_run_manifests(revision=revision)
-                index_path.write_bytes(_json_bytes(index))
-            except Exception:
-                self._delivery["last_error_code"] = "UPLOAD_FAILED"
-                print(
-                    "warning: staging run index could not be derived from remote "
-                    "run manifests",
-                    file=sys.stderr,
-                )
-                return
-            if self._upload_path(
-                index_path,
-                RUNS_INDEX,
-                count_delivery=True,
-                parent_commit=revision,
-            ):
-                return
-            if self._remote_disabled:
-                return
 
     def _reconcile_remote_delivery_metadata(self) -> None:
         """Refresh counter-bearing metadata without counting these two writes."""
@@ -1396,14 +1112,11 @@ class StagingTelemetryV2:
             return
         self._last_upload_at = now
         for local_path, remote_path in self._upload_paths():
-            if remote_path == RUNS_INDEX:
-                self._publish_remote_index()
-            else:
-                self._upload_path(
-                    local_path,
-                    remote_path,
-                    count_delivery=True,
-                )
+            self._upload_path(
+                local_path,
+                remote_path,
+                count_delivery=True,
+            )
             if self._remote_disabled:
                 break
         self._persist_bundle()
@@ -1426,8 +1139,6 @@ def validate_v2_bundle(
     required = {
         "run_manifest": (run_dir / "run_manifest.json", RUN_MANIFEST_SCHEMA),
         "progress": (run_dir / "progress.json", PROGRESS_SCHEMA),
-        "latest": (root / LATEST_STAGING_POINTER, LATEST_RUN_SCHEMA),
-        "index": (root / RUNS_INDEX, RUN_INDEX_SCHEMA),
     }
     for label, (path, schema_name) in required.items():
         try:
@@ -1459,11 +1170,9 @@ def validate_v2_bundle(
         )
     if any(event["run_id"] != run_id for event in events):
         raise StagingContractError("Staging events identify a different run.")
-    for label in ("run_manifest", "progress", "latest"):
+    for label in ("run_manifest", "progress"):
         if documents[label]["run_id"] != run_id:
             raise StagingContractError(f"{label} identifies a different run.")
-    if not any(row["run_id"] == run_id for row in documents["index"]["runs"]):
-        raise StagingContractError("Run index does not contain the validated run.")
     manifest = documents["run_manifest"]
     expected_run_paths = {
         "progress": f"{prefix}/{run_id}/progress.json",
@@ -1474,26 +1183,10 @@ def validate_v2_bundle(
             raise StagingContractError(
                 f"Run manifest {field} path does not identify the validated run."
             )
-    expected_latest_paths = {
-        "run_manifest": f"{prefix}/{run_id}/run_manifest.json",
-        "progress": expected_run_paths["progress"],
-        "events": expected_run_paths["events"],
-    }
-    for field, expected in expected_latest_paths.items():
-        if documents["latest"]["paths"][field] != expected:
-            raise StagingContractError(
-                f"Latest-run {field} path does not identify the validated run."
-            )
     for field in (*_RUN_REQUIRED, "sample", "delivery", "failure"):
         if documents["run_manifest"][field] != documents["progress"][field]:
             raise StagingContractError(f"Bundle disagrees on {field}.")
-    for field in ("candidate_id", "release_id"):
-        values = {documents[label][field] for label in ("run_manifest", "latest")}
-        if len(values) != 1:
-            raise StagingContractError(f"Bundle disagrees on {field}.")
     calibration_path = manifest["paths"]["calibration_progress"]
-    if documents["latest"]["paths"]["calibration_progress"] != calibration_path:
-        raise StagingContractError("Bundle disagrees on calibration progress path.")
     if calibration_path is not None:
         expected_calibration = f"{prefix}/{run_id}/calibration_progress.json"
         if (
