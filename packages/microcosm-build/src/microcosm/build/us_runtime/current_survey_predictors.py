@@ -20,6 +20,7 @@ from microcosm.frame import WeightKind
 
 from . import acs_income_universe as universe
 from . import cps_carried_current as leaves
+from . import current_survey_geography as observed_geography
 from . import graph_puf_diagnostic_consumer as host
 from . import support_provenance as provenance
 
@@ -28,6 +29,11 @@ FEATURES = (
     "survey_predictor_age",
     "survey_predictor_employment_income",
     "survey_predictor_self_employment_income",
+)
+DEMOGRAPHIC_FEATURES = (
+    *FEATURES,
+    "survey_predictor_is_female",
+    "survey_predictor_state_fips",
 )
 TARGETS = ("survey_current_INT_VAL", "survey_current_DIV_VAL", "survey_current_CAP_VAL")
 MONEY_FIELDS = leaves.CPS_CURRENT_PREDICTOR_MONEY_FIELDS
@@ -40,6 +46,126 @@ SEED = 578
 def require(condition, reason):
     if not condition:
         raise ValueError("CURRENT_SURVEY_PREDICTOR_" + reason)
+
+
+def feature_columns(demographic_conditioning=False):
+    require(type(demographic_conditioning) is bool, "DEMOGRAPHIC_OPTION")
+    return DEMOGRAPHIC_FEATURES if demographic_conditioning else FEATURES
+
+
+def _check_demographic_values(values, receipt):
+    """Detached projections must still match their source producer's receipt."""
+    require(
+        type(values) is observed_geography.demographics.CurrentAsecDemographicValues
+        and type(receipt) is bytes
+        and values.receipt == receipt,
+        "DEMOGRAPHIC_RECEIPT",
+    )
+    document = json.loads(receipt)
+    for entity in ("person", "household"):
+        table = getattr(values, entity)
+        require(
+            codec.sha(table.reset_index(drop=True).to_json(orient="table").encode())
+            == document[f"{entity}_projection_sha256"],
+            "DEMOGRAPHIC_PROJECTION_CHANGED",
+        )
+
+
+def _demographic_features(preparation, entry):
+    """Bind selected source sex and observation-time state, without fallback.
+
+    The maintained ASEC owner retains unknown literals and allocation status.
+    This opt-in model refuses those unknowns rather than completing them. State
+    uses the shared literal geography join, not an assigned block's state.
+    """
+    state = entry[2]
+    values = observed_geography.demographics.qualify_current_asec_demographics(
+        preparation
+    )
+    receipt = values.receipt
+    _check_demographic_values(values, receipt)
+    document = json.loads(receipt)
+    require(
+        document["preparation_sha256"] == codec.sha(entry[1])
+        and document["sex_observation_year"] == 2025
+        and document["state_observation_year"] == 2025
+        and document["income_year"] == 2024,
+        "DEMOGRAPHIC_PERIOD",
+    )
+    acs_frame = state.source_frames[0]
+    source.acs_native.verify_acs_native_coverage(state.native[0], acs_frame)
+    acs_payload = source.acs_native._owned(state.native[0]).payload
+    require(json.loads(acs_payload)["vintage"] == 2024, "ACS_DEMOGRAPHIC_PERIOD")
+    # This pure operation verifies literal household keys and the complete
+    # selected source roster using the just-qualified ASEC household projection.
+    households = observed_geography._project(
+        json.loads(entry[1])["origins"]["households"],
+        state.frame.table("household"),
+        acs_frame.table("household"),
+        values.household,
+    )
+    people = state.frame.person
+    index = pd.Index(_ids(people.person_id), name="person_id")
+    asec = people[provenance.support_channel_column("person")].eq("asec")
+    native_ids = people[provenance.spine_source_id_column("person")]
+    require(
+        values.person.index.is_unique
+        and set(values.person.index) == set(index[asec])
+        and np.array_equal(
+            values.person.reindex(index[asec]).native_person_id.to_numpy(),
+            native_ids.loc[asec].to_numpy(),
+        ),
+        "DEMOGRAPHIC_ASEC_PERSON_JOIN",
+    )
+    asec_person = values.person.reindex(index[asec])
+    require(
+        asec_person.sex_known.all() and asec_person.is_female.notna().all(),
+        "DEMOGRAPHIC_UNKNOWN",
+    )
+    original = acs_frame.person.set_index("person_id", drop=False)
+    require(
+        original.index.is_unique
+        and set(original.index) == set(native_ids.loc[~asec])
+        and {"SEX", "is_female"} <= set(original),
+        "DEMOGRAPHIC_ACS_PERSON_JOIN",
+    )
+    acs_person = original.reindex(native_ids.loc[~asec].to_numpy())
+    sex = _numeric(acs_person.SEX)
+    require(
+        np.isin(sex, (1, 2)).all()
+        and pd.api.types.is_bool_dtype(acs_person.is_female.dtype)
+        and acs_person.is_female.notna().all()
+        and np.array_equal(acs_person.is_female.to_numpy(), sex == 2),
+        "ACS_SEX_IDENTITY",
+    )
+    female = np.empty(len(index), dtype=np.float64)
+    female[asec] = asec_person.is_female.to_numpy(dtype=np.float64)
+    female[~asec] = (sex == 2).astype(np.float64)
+    states = {row[0]: row[2] for row in households}
+    selected_states = people.person_household_id.map(states)
+    require(selected_states.notna().all(), "DEMOGRAPHIC_UNKNOWN")
+    features = pd.DataFrame(
+        {
+            DEMOGRAPHIC_FEATURES[-2]: female,
+            DEMOGRAPHIC_FEATURES[-1]: selected_states.to_numpy(dtype=np.float64),
+        },
+        index=index,
+    )
+    evidence = {
+        "asec_projection_sha256": codec.sha(receipt),
+        "acs_native_sha256": codec.sha(acs_payload),
+        "asec_sex_and_state_observation_year": 2025,
+        "acs_sex_and_state_observation_year": 2024,
+        "state_is_income_year_residence_claim": False,
+        "asec_allocated_sex": "retained_when_source_owner_binding_is_known",
+        "acs_sex_allocation_provenance": "unresolved; no_unallocated_value_claim",
+        "unknown_policy": "refuse_opted_in_fit; no_fill_or_carried_fallback",
+        "state_encoding": "numeric_source_FIPS_split_predictor; not_geographic_distance",
+        "state_domain": "source_dictionary_codes; not_atomic_geography_admission",
+        "features_sha256": codec.sha(features.to_numpy(dtype="<f8").tobytes()),
+    }
+    _check_demographic_values(values, receipt)
+    return features, evidence, values, receipt
 
 
 def _numeric(value, *, nullable=False):
@@ -121,10 +247,15 @@ class QualifiedSurveyPredictors:
     native_money: pd.DataFrame
     origins: pd.DataFrame
     evidence: dict
+    demographic_conditioning: bool = False
 
 
 def qualify_current_survey_predictors(
-    preparation, allocated_population, clone_population
+    preparation,
+    allocated_population,
+    clone_population,
+    *,
+    demographic_conditioning=False,
 ):
     """Read the actual full-parent money owner once, then seal all retained state.
 
@@ -135,6 +266,7 @@ def qualify_current_survey_predictors(
     by ADJINC. This model uses that explicitly declared temporal harmonization;
     it does not claim the observation windows are equivalent.
     """
+    predictors = feature_columns(demographic_conditioning)
     require(
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
         "PREPARATION_TYPE",
@@ -159,6 +291,9 @@ def qualify_current_survey_predictors(
         "NATIVE_ISSUANCE",
     )
     parent = native_entry[2].parent
+    demographics = (
+        _demographic_features(preparation, entry) if demographic_conditioning else None
+    )
     ready = parent.ready()
     header = json.loads(ready.header)
     require(
@@ -223,6 +358,11 @@ def qualify_current_survey_predictors(
         index=index,
         dtype=np.float64,
     )
+    if demographics is not None:
+        extra, _, _, _ = demographics
+        require(extra.index.equals(features.index), "DEMOGRAPHIC_FEATURE_AXIS")
+        for name in DEMOGRAPHIC_FEATURES[len(FEATURES) :]:
+            features[name] = extra[name].to_numpy(copy=True)
     require(np.isfinite(features.to_numpy()).all(), "FEATURE_UNKNOWN")
     donor_columns = features.loc[pids[asec]].copy()
     for target, raw in zip(TARGETS, MONEY_FIELDS[2:], strict=True):
@@ -274,8 +414,14 @@ def qualify_current_survey_predictors(
         "earnings_universe": dict(universe_receipt),
         "split_contract": leaves.cps_carried_current_leaf_contract(),
         "model_judgments": {
-            "conditioning": list(FEATURES),
-            "omitted_sex_and_state": "current_ASEC_raw_source_projection_unbound; required_followup_before_launch",
+            "conditioning": list(predictors),
+            **(
+                {"demographic_conditioning": demographics[1]}
+                if demographics is not None
+                else {
+                    "omitted_sex_and_state": "explicit_compatibility_default; opt_in_requires_current_source_qualification"
+                }
+            ),
             "quality_acceptance": "held_out_fit_quality_not_yet_assessed",
             "income_period_harmonization": "2024_price_basis_with_explicitly_different_interview_windows",
             "financial_chain": list(TARGETS),
@@ -315,6 +461,20 @@ def qualify_current_survey_predictors(
         "FINAL_POPULATION",
     )
     host.survey_budget._preparation_entry(preparation, entry[1], entry)
+    if demographics is not None:
+        extra, demographic_evidence, demographic_values, demographic_receipt = (
+            demographics
+        )
+        _check_demographic_values(demographic_values, demographic_receipt)
+        require(
+            codec.sha(extra.to_numpy(dtype="<f8").tobytes())
+            == demographic_evidence["features_sha256"]
+            and np.array_equal(
+                features.loc[:, list(DEMOGRAPHIC_FEATURES[len(FEATURES) :])].to_numpy(),
+                extra.to_numpy(),
+            ),
+            "FINAL_DEMOGRAPHIC_FEATURES",
+        )
     return QualifiedSurveyPredictors(
         projection,
         matrix,
@@ -324,6 +484,7 @@ def qualify_current_survey_predictors(
         money,
         origins,
         evidence,
+        demographic_conditioning,
     )
 
 

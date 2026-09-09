@@ -102,6 +102,7 @@ def _attach_edges():
 
 def _params(qualified, host_pins, n_estimators):
     require(type(n_estimators) is int and n_estimators > 0, "TREE_COUNT")
+    values.feature_columns(qualified.demographic_conditioning)
     require(
         type(host_pins) is dict
         and set(host_pins) == {e.name for e in host.current_survey_host_edges()},
@@ -120,6 +121,7 @@ def _params(qualified, host_pins, n_estimators):
         "host_edges": codec.encode_json(host_pins).decode(),
         "seed": values.SEED,
         "n_estimators": n_estimators,
+        "demographic_conditioning": qualified.demographic_conditioning,
     }
 
 
@@ -130,6 +132,7 @@ def current_survey_predictor_nodes(
         type(qualified) is values.QualifiedSurveyPredictors, "QUALIFIED_VALUES_TYPE"
     )
     params = _params(qualified, host_pins, n_estimators)
+    predictors = values.feature_columns(qualified.demographic_conditioning)
     projection = Node(
         PROJECTION_NODE,
         CurrentSurveyPredictorProjectionKernel.ref,
@@ -164,7 +167,7 @@ def current_survey_predictor_nodes(
         inputs=_inputs(qualified.donor_frame),
         params=params,
         outputs=tuple(
-            Owned("person", c, "float64") for c in (*values.FEATURES, *values.TARGETS)
+            Owned("person", c, "float64") for c in (*predictors, *values.TARGETS)
         ),
         artifact_inputs=_projection_edges(),
     )
@@ -172,7 +175,7 @@ def current_survey_predictor_nodes(
         FIT_PREFIX,
         population=DONOR_NODE,
         entity="person",
-        predictors=values.FEATURES,
+        predictors=predictors,
         targets=values.TARGETS,
         seed=values.SEED,
         phase=values.PHASE,
@@ -211,14 +214,18 @@ class _Kernel(host._CurrentSurveyKernel):
         *,
         host_pins,
         n_estimators=100,
+        demographic_conditioning=False,
     ):
         self.preparation = preparation
         self.allocated_population = allocated_population
         self.clone_population = clone_population
         self.host_pins = codec.decode_json(codec.encode_json(host_pins))
         self.n_estimators = n_estimators
+        values.feature_columns(demographic_conditioning)
+        self.demographic_conditioning = demographic_conditioning
 
     def implementation_hash(self):
+        demographics = values.observed_geography.demographics
         return codec.sha(
             codec.encode_json(
                 {
@@ -228,6 +235,14 @@ class _Kernel(host._CurrentSurveyKernel):
                         values,
                         values.leaves,
                         values.universe,
+                        values.observed_geography,
+                        demographics,
+                        demographics.qualify_current_asec_demographics,
+                        demographics.demographic,
+                        demographics.demographic.load_authenticated_asec_demographic_source,
+                        demographics.demographic._snapshot,
+                        demographics.household,
+                        demographics.source_csv_builtin,
                         population_ops,
                         replay,
                         qrf,
@@ -243,7 +258,10 @@ class _Kernel(host._CurrentSurveyKernel):
     def _qualified(self, context):
         require(not context.sources, "UNDECLARED_SOURCE")
         result = values.qualify_current_survey_predictors(
-            self.preparation, self.allocated_population, self.clone_population
+            self.preparation,
+            self.allocated_population,
+            self.clone_population,
+            demographic_conditioning=self.demographic_conditioning,
         )
         nodes = current_survey_predictor_nodes(
             result,
@@ -363,13 +381,24 @@ class CurrentSurveyPredictorDonorColumnsKernel(_Kernel):
         return KernelResult(
             columns={
                 ("person", c): qualified.donor_columns[c]
-                for c in (*values.FEATURES, *values.TARGETS)
+                for c in (
+                    *values.feature_columns(qualified.demographic_conditioning),
+                    *values.TARGETS,
+                )
             },
             receipt=qualified.evidence,
         )
 
 
-def read_current_survey_draws(matrix, matrix_producer_key, raw_draws, apply_states):
+def read_current_survey_draws(
+    matrix,
+    matrix_producer_key,
+    raw_draws,
+    apply_states,
+    *,
+    demographic_conditioning=False,
+):
+    predictors = values.feature_columns(demographic_conditioning)
     require(
         codec._hash(matrix_producer_key)
         and type(raw_draws) is tuple
@@ -379,8 +408,7 @@ def read_current_survey_draws(matrix, matrix_producer_key, raw_draws, apply_stat
     )
     prepared = model_input.decode_recipient_matrix(matrix)
     require(
-        prepared.entity == "person"
-        and tuple(prepared.features.columns) == values.FEATURES,
+        prepared.entity == "person" and tuple(prepared.features.columns) == predictors,
         "MATRIX_FEATURE_ROSTER",
     )
     result = pd.DataFrame(index=prepared.features.index)
@@ -397,7 +425,7 @@ def read_current_survey_draws(matrix, matrix_producer_key, raw_draws, apply_stat
         )
         require(
             chain.entity == "person"
-            and tuple(chain.predictors) == values.FEATURES
+            and tuple(chain.predictors) == predictors
             and tuple(chain.targets) == values.TARGETS
             and tuple(chain.completed_targets) == values.TARGETS[: i + 1]
             and chain.recipient_index == qrf._index_identity(prepared.features.index)
@@ -443,7 +471,11 @@ class CurrentSurveyPredictorAttachKernel(_Kernel):
                 host.shared.artifact(context, s, MATRIX_APPLY_STATE_TYPE).payload
             )
         drawn = read_current_survey_draws(
-            matrix.payload, matrix.producer_key, tuple(raw), tuple(states)
+            matrix.payload,
+            matrix.producer_key,
+            tuple(raw),
+            tuple(states),
+            demographic_conditioning=self.demographic_conditioning,
         )
         columns = values.complete_predictor_columns(
             qualified, self.clone_population.frame, drawn
@@ -474,6 +506,7 @@ def verify_materialized_current_survey_predictors(
     apply_states,
     host_pins,
     n_estimators=100,
+    demographic_conditioning=False,
 ):
     """Use actual executor-observed Population and authenticated typed artifacts.
 
@@ -482,14 +515,21 @@ def verify_materialized_current_survey_predictors(
     owner, metadata value, weight and mass ledger of the expected full result.
     """
     qualified = values.qualify_current_survey_predictors(
-        preparation, allocated_population, clone_population
+        preparation,
+        allocated_population,
+        clone_population,
+        demographic_conditioning=demographic_conditioning,
     )
     require(
         projection == qualified.projection and matrix == qualified.matrix,
         "MATERIALIZED_SOURCE",
     )
     drawn = read_current_survey_draws(
-        matrix, matrix_producer_key, raw_draws, apply_states
+        matrix,
+        matrix_producer_key,
+        raw_draws,
+        apply_states,
+        demographic_conditioning=demographic_conditioning,
     )
     attach = current_survey_predictor_nodes(
         qualified,
