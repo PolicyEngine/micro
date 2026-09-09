@@ -553,3 +553,62 @@ Post-exit chain (`355-dataset-size/after-p95b.sh`): `populace-877` fast-forwarde
 (0ab86823, tracker included); P95b light evaluation 00/10/20/90 done 12:07Z; heavy steps 30/40/50 (+ 90)
 for P50 then P95b running with no solve on the machine.
 
+### Heavy evaluation steps on both 55k runs (30/40/50, 12:07–13:00Z, no solve running)
+
+**30 incumbent score: not measured.** `score_uk_local_candidate.py` refuses R17's frozen scoring register
+("requires the frozen active reference count 19419, got 19105"): the register was compiled on the pre-#874
+surface and the 55k runs bind 19,419 active local references (the composed rent rows and the re-pinned feed).
+Scoring against the incumbent needs a register compiled on the 6fb700e surface; candidate runs do not write
+one. Open item.
+
+**40 frozen-vs-recomputed (engine re-resolved on the compact frame, 99 s):** 340 of 364 national rows
+matched; maximum relative divergence **9.3% (P50) / 11.1% (P95b)** → the pre-registered red flag (> 5%)
+fires. Eleven / twelve rows exceed 1%: `isc.private_school_students` (frozen 557k, recomputed 523k, −6%) and
+the seven `voa.council_tax_stock.band_*` rows (recomputed +3% to +10% above frozen). The other 328 matched
+rows agree within 1%. This is the population-dependent-measure physics the plan said to size: the refit froze
+the pool's contributions; the engine on 55k rows resolves the council-tax band imputation and the private
+school flag differently.
+
+**50 downstream (uk-candidate-eval under 2.94.0; "incumbent" = R17's dense H5 on spine-m and the old feed, so
+input differences ride along):**
+
+- T3 variable distributions vs R17: P50 135 pass / 45 attention / 9 fail / 2 expected; P95b 137 / 44 / 9 / 1.
+  The same nine fail in both: `bsp_reported` (2.1× R17's total), `child_tax_credit_reported` (1.6×),
+  `jsa_income_reported` (1.6×), `education_consumption` (1.6×), `winter_fuel_allowance_reported` (0.65×),
+  `domestic_rates` (0.70×), `pension_credit` / `pension_credit_reported` (totals within 3%, shape), and
+  `uc_deduction_combination` (no ratio) — small reported-benefit populations the 55k support cannot carry.
+- T4 admin anchors: 3 pass (UC spend 73.9bn vs anchor 79.3bn, R17 75.6bn; UC caseload 6.70m vs 6.76m; carer
+  element), 5 fail, 9 pending, differentiators 0/4 — every failure is shared with R17 (LCWRA caseload 6.4m vs
+  anchor 2.4m, R17 7.6m; income tax 269bn vs 331bn, R17 268bn; population 68.4m vs 69.5m, R17 69.8m;
+  multi-family households; the social-rented housing-element probe errors in the tool for both).
+- T5 eight reforms (Δ government balance, bn): candidate 7 of 8 pass vs R17 6 of 8; both fail the UC taper
+  reform (−35 vs −17 expected); P50 and P95b agree with each other to 0.1bn on every reform and with R17 to
+  0.1–0.3bn on six (VAT +2pp 24.7 vs R17 21.1 vs expected 31.3).
+- #731 scorecard (engine 2.94.0 on each H5; the incumbent enhanced-FRS leg still fails in the 2.94.0 loader):
+  P50 / P95b / R17 — population 68.7 / 68.9 / 70.1m; **households 27.3 / 27.5 / 29.4m**; state pension
+  **127.1 / 127.5 / 137.3bn**; income tax 287.7 / 287.6 / 286.3bn; UC 77.8 / 78.1 / 79.5bn; council tax
+  46.2 / 46.5 / 48.6bn; poverty BHC 9.49 / 9.45 / 9.87%; top-1% net income share 7.49 / 7.49 / 6.72%;
+  **Gini 0.350 / 0.351 / 0.375**. The pre-registered downstream flags (totals ≤ 2%, poverty ≤ 0.5 pp, Gini
+  ≤ 0.005) fire on households, state pension, council tax and Gini.
+- Footprint per file (wall, peak RSS): T3 114 s / 6.9 GB; T4 64 s / 9.0 GB; T5 1,166 s / 11.3 GB; the #731
+  scorecard 6.6 s / 3.5 GB on the 55k H5 against 55 s / 11.7 GB on R17's — the eight-fold load-and-simulate
+  gain the issue is about.
+
+**The mechanism behind the downstream shifts is in the refit's own numbers, not in the inputs.** The
+Horvitz–Thompson baseline sums to 29.25m households (the pool total); the free-mass refit ends at
+**27.00m (P50) / 27.17m (P95b), −7% to −8%**, and the loss sits on specific groups: national
+`ons.household_composition.lone_households_over_65` −36.5% (dense 0.7%), `couple_non_dependent_children`
+−57.9% (dense 0.4%), `lone_parent_dependent_children` −50% (dense 23%), `ons.population.female_80_84` −31%
+(dense 0.9%), `obr.state_pension` −18.5% (dense −13.4%), the state-pension income bands 9–22% over on the
+compact. The selection keeps the rows the local targets need and sheds mass on older lone households, the
+oldest women and couples with adult children — which is why the compact frames show fewer households, a
+lower state-pension bill, lower poverty and a Gini 0.025 below the dense. National rows within 10%: 323 /
+321 against the dense reference's 353.
+
+Reading for the rulings: the 55k size reproduces national totals that are carried by many rows (income
+tax, UC, reforms) to within a few percent of the dense, and loses the ones carried by few rows or by the
+oldest households; the frozen-target refit cannot be told to hold the household total (mass is free) and
+the stretch bound 10 on the HT baseline stops it from re-weighting the few survivors. S4 at 110,000 tests
+whether doubling the support closes those gaps; a mass-conserving refit, or protecting a carrier per
+national composition row the way the local rows are protected, are the two machinery levers if it does not.
+
