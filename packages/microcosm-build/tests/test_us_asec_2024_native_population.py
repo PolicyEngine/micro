@@ -44,6 +44,7 @@ def _rebuild_observations(
     extra_household,
     legacy_weights,
     missing_money=None,
+    current_predictor_money=None,
 ):
     """Build larger invented real checkpoints and the actual observation attachment."""
     parent_path = tmp_path / "invented-original-v4.h5"
@@ -88,6 +89,26 @@ def _rebuild_observations(
         # Alter only invented source construction, before identities, attachments
         # and normal issuance. Never mutate an already authenticated parent.
         person.iloc[position, person.columns.get_loc(field)] = np.nan
+    if current_predictor_money is not None:
+        # Alter only invented original source construction before checkpoint
+        # identities, observation attachments, private pins and fresh issuance.
+        person = tables["person"]
+        positions = np.flatnonzero(person.source_year.to_numpy() == 2024)
+        assert set(current_predictor_money) == {
+            "WSAL_VAL",
+            "SEMP_VAL",
+            "INT_VAL",
+            "DIV_VAL",
+            "CAP_VAL",
+        }
+        for field, observations in current_predictor_money.items():
+            observations = np.asarray(observations)
+            assert observations.dtype == np.dtype("float64")
+            assert (
+                observations.shape == (len(positions),)
+                and np.isfinite(observations).all()
+            )
+            person.iloc[positions, person.columns.get_loc(field)] = observations
     values = (
         legacy_weights
         if legacy_weights is not None
@@ -152,11 +173,17 @@ def _fixture(
     extra_household=False,
     legacy_weights=None,
     missing_money=None,
+    current_predictor_money=None,
     **changes,
 ):
     helpers = _helpers()
     _, persons = helpers._fixtures(tmp_path, monkeypatch, **changes)
-    if extra_household or legacy_weights is not None or missing_money is not None:
+    if (
+        extra_household
+        or legacy_weights is not None
+        or missing_money is not None
+        or current_predictor_money is not None
+    ):
         _rebuild_observations(
             tmp_path,
             monkeypatch,
@@ -164,6 +191,7 @@ def _fixture(
             extra_household=extra_household,
             legacy_weights=legacy_weights,
             missing_money=missing_money,
+            current_predictor_money=current_predictor_money,
         )
     # Both real owners must pin the same final invented original member bytes.
     monkeypatch.setattr(restoration, "_MEMBER_PINS", coverage._MEMBER_PINS)

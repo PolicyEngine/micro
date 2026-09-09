@@ -314,12 +314,12 @@ def test_allocation_transport_streams_canonical_exact_rows_and_refuses_before_ov
         graph._allocation_payload(instructions, **kwargs)
 
 
-def authenticated_arguments(tmp_path, monkeypatch):
+def authenticated_arguments(tmp_path, monkeypatch, **fixture_kwargs):
     # This helper creates closed, privately pinned invented source bytes and
     # executes the actual ASEC parent, both catalogues and both native issuers.
     from test_us_survey_population_preparation import fixture
 
-    arguments = fixture(tmp_path, monkeypatch)
+    arguments = fixture(tmp_path, monkeypatch, **fixture_kwargs)
     return {**arguments, "store_root": tmp_path / "graph-store"}
 
 

@@ -227,6 +227,61 @@ class CpsCarriedCurrentLeaves:
     spm_unit: Mapping[str, np.ndarray]
 
 
+CPS_CURRENT_PREDICTOR_MONEY_FIELDS = (
+    "WSAL_VAL",
+    "SEMP_VAL",
+    "INT_VAL",
+    "DIV_VAL",
+    "CAP_VAL",
+)
+CPS_CURRENT_PREDICTOR_PERSON_LEAVES = (
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "taxable_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains_before_response",
+)
+
+
+def derive_cps_current_predictor_leaves(amounts):
+    """Pure five-field split, sharing the maintained current-money judgments.
+
+    Callers qualify the actual money owner or modeled target artifacts. This
+    numerical function grants no source authority and never fills an unknown.
+    Inputs are aligned physical float64 arrays, already in the declared dollar
+    basis. INT/DIV/CAP fitted for ACS remain modeled, including their splits.
+    """
+    _require(isinstance(amounts, Mapping), "PREDICTOR_MONEY_MAPPING")
+    _require(
+        set(amounts) == set(CPS_CURRENT_PREDICTOR_MONEY_FIELDS),
+        "PREDICTOR_MONEY_ROSTER",
+    )
+    lengths = set()
+    for value in amounts.values():
+        _require(
+            type(value) is np.ndarray
+            and value.ndim == 1
+            and value.dtype == np.dtype("float64"),
+            "PREDICTOR_MONEY_TYPE",
+        )
+        _require(bool(np.isfinite(value).all()), "PREDICTOR_MONEY_UNKNOWN")
+        lengths.add(len(value))
+    _require(len(lengths) == 1 and next(iter(lengths)) > 0, "PREDICTOR_MONEY_AXIS")
+    dividends, gains = amounts["DIV_VAL"], amounts["CAP_VAL"]
+    return {
+        "employment_income_before_lsr": amounts["WSAL_VAL"].copy(),
+        "self_employment_income_before_lsr": amounts["SEMP_VAL"].copy(),
+        "taxable_interest_income": amounts["INT_VAL"] * TAXABLE_INTEREST_FRACTION,
+        "qualified_dividend_income": dividends * QUALIFIED_DIVIDEND_FRACTION,
+        "non_qualified_dividend_income": dividends * (1 - QUALIFIED_DIVIDEND_FRACTION),
+        "long_term_capital_gains_before_response": gains
+        * LONG_TERM_CAPITAL_GAIN_FRACTION,
+        "short_term_capital_gains": gains * (1 - LONG_TERM_CAPITAL_GAIN_FRACTION),
+    }
+
+
 def derive_cps_carried_current_leaves(
     selected: SelectedCurrentMoney,
     *,
@@ -239,21 +294,14 @@ def derive_cps_carried_current_leaves(
     rows = selected.person_rows
     codes = _routing(routing, rows)
     amounts = _amounts(selected, rows)
-    dividends = amounts["DIV_VAL"]
-    gains = amounts["CAP_VAL"]
     # The money recipe already contributes zero for a declared-NIU annuity, so
     # the pension base is the plain sum of the two restated amounts.
     pensions = amounts["PNSN_VAL"] + amounts["ANN_VAL"]
     person: dict[str, np.ndarray] = {
         "age": codes["A_AGE"].astype("float64"),
-        "employment_income_before_lsr": amounts["WSAL_VAL"],
-        "self_employment_income_before_lsr": amounts["SEMP_VAL"],
-        "taxable_interest_income": amounts["INT_VAL"] * TAXABLE_INTEREST_FRACTION,
-        "qualified_dividend_income": dividends * QUALIFIED_DIVIDEND_FRACTION,
-        "non_qualified_dividend_income": dividends * (1 - QUALIFIED_DIVIDEND_FRACTION),
-        "long_term_capital_gains_before_response": gains
-        * LONG_TERM_CAPITAL_GAIN_FRACTION,
-        "short_term_capital_gains": gains * (1 - LONG_TERM_CAPITAL_GAIN_FRACTION),
+        **derive_cps_current_predictor_leaves(
+            {name: amounts[name] for name in CPS_CURRENT_PREDICTOR_MONEY_FIELDS}
+        ),
         "taxable_private_pension_income": pensions * TAXABLE_PENSION_FRACTION,
         "tax_exempt_private_pension_income": pensions * (1 - TAXABLE_PENSION_FRACTION),
         "taxable_ira_distributions": _ira_distributions(amounts, codes, rows),

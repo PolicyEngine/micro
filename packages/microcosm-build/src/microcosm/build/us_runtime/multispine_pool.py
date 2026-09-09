@@ -104,10 +104,6 @@ from microcosm.build.us_runtime.retirement_contributions import (
 from microcosm.build.us_runtime.retirement_distributions import (
     with_us_retirement_distribution_inputs,
 )
-from microcosm.build.us_runtime.spine_agreement import (
-    default_spine_agreement_registry,
-    spine_agreement_gate,
-)
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.support_provenance import (
     SPINE_ASSEMBLY_MANIFEST_KEY,
@@ -1735,6 +1731,14 @@ def materialize_pool_deferred_transfer_inputs(frame: Frame) -> PoolStageOutput:
     )
     return PoolStageOutput(result, {"inputs": receipts})
 
+
+# The default agreement registry validates the engine ABI, whose fresh
+# manifest reads the pool functions above. Define that surface before importing
+# the registry so either module can be the first import in a fresh process.
+from microcosm.build.us_runtime.spine_agreement import (  # noqa: E402
+    default_spine_agreement_registry,
+    spine_agreement_gate,
+)
 
 POOL_SPINE_AGREEMENT_REGISTRY = default_spine_agreement_registry(
     pool_transfer_target_families()

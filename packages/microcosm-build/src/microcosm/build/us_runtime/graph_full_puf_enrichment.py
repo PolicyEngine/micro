@@ -1,4 +1,4 @@
-"""Bounded full65 attachment to an independently retained upstream Population.
+"""Bounded PUF profile attachment to an independently retained Population.
 
 This is a placement owner, not source admission or a source-successor issuer.
 The caller must already have qualified the complete survey predictor stages and
@@ -71,9 +71,40 @@ TAX_UNIT_MASK = "full_puf_tax_unit_mask"
 MASKS = MappingProxyType({"person": PERSON_MASK, "tax_unit": TAX_UNIT_MASK})
 PLACEMENT_TYPE = ArtifactType("microcosm.us.full_puf_placement", 1)
 SCOPE = "full65_attachment_complete_upstream_required"
-_ROSTERS = (("person", full.PERSON_OUTPUTS), ("tax_unit", full.TAX_UNIT_OUTPUTS))
-_OUTPUT_COORDINATES = frozenset((e, c) for e, cols in _ROSTERS for c in cols)
 require = full._require
+
+
+def _rosters(profile):
+    profile = full.require_puf_output_profile(profile)
+    return (("person", profile.person_outputs), ("tax_unit", profile.tax_unit_outputs))
+
+
+def _scope(profile):
+    profile = full.require_puf_output_profile(profile)
+    return profile.value + "_attachment_complete_upstream_required"
+
+
+def _profile_chain(profile, fit_nodes, apply_nodes):
+    profile = full.require_puf_output_profile(profile)
+    require(
+        not {"prior_year_wages", "employment_income_last_year"} & set(profile.targets)
+        and type(fit_nodes) is type(apply_nodes) is tuple
+        and len(fit_nodes) == len(apply_nodes) == len(profile.targets),
+        "FULL_PUF_CHAIN_ROSTER",
+    )
+    require(
+        all(
+            type(fit) is type(apply) is Node
+            and fit.params.get("predictors") == profile.predictors
+            and fit.params.get("targets") == profile.targets
+            and fit.params.get("target") == apply.params.get("target") == target
+            and fit.params.get("phase") == apply.params.get("phase") == profile.phase
+            for fit, apply, target in zip(
+                fit_nodes, apply_nodes, profile.targets, strict=True
+            )
+        ),
+        "FULL_PUF_CHAIN_PROFILE",
+    )
 
 
 def _digest(parts):
@@ -168,14 +199,15 @@ def _structural(frame, entity):
     )
 
 
-def _inputs(frame, *, masks=False):
+def _inputs(frame, *, masks=False, profile=full.FULL65):
+    coordinates = frozenset((e, c) for e, cols in _rosters(profile) for c in cols)
     result = []
     for entity in frame.entities:
         columns = tuple(
             c
             for c in frame.table(entity)
             if c not in _structural(frame, entity)
-            and (not masks or (entity, c) not in _OUTPUT_COORDINATES)
+            and (not masks or (entity, c) not in coordinates)
         )
         # Full attachment must project every table, including its structural IDs.
         # The graph cannot express a Slice with zero nonstructural columns.
@@ -185,9 +217,9 @@ def _inputs(frame, *, masks=False):
     return tuple(result)
 
 
-def _outputs(frame):
+def _outputs(frame, *, profile=full.FULL65):
     result = []
-    for entity, columns in _ROSTERS:
+    for entity, columns in _rosters(profile):
         table = frame.table(entity)
         for column in columns:
             boolean = column in full.support._PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS
@@ -232,7 +264,7 @@ def _masks(frame):
 
 @dataclass(frozen=True)
 class FullPufAttachmentBinding:
-    """Retained comparison inputs; possession confers no source authority."""
+    """Retained profile and comparison inputs; no source authority is conferred."""
 
     population: Population
     expected_population: Population
@@ -249,8 +281,10 @@ class FullPufAttachmentBinding:
     expected_stamp: str
     donor_stamp: str
     known_stamp: str
+    profile: full.PufOutputProfile = full.FULL65
 
     def check(self):
+        _profile_chain(self.profile, self.fit_nodes, self.apply_nodes)
         require(
             _population_stamp(self.population) == self.population_stamp
             and _population_stamp(self.expected_population) == self.expected_stamp,
@@ -295,8 +329,13 @@ def retain_full_puf_attachment(
     fit_nodes,
     apply_nodes,
     prefix="puf_full_attachment",
+    profile=full.FULL65,
 ):
-    """Pin already prepared upstream values and an actual matrix producer edge.
+    """Pin prepared upstream values, selected outputs and a real matrix edge.
+
+    ``profile`` defaults to the complete legacy FULL65 roster. PUF59 owns only
+    its selected columns; any excluded incumbent remains upstream-owned and
+    participates only in the complete Population preservation checks.
 
     ``population`` is executor-observed; ``expected_population`` is a separately
     retained upstream comparison value, not derived from the attachment result.
@@ -305,6 +344,7 @@ def retain_full_puf_attachment(
     a version with inherited incumbents. This function admits neither a donor nor
     a survey source and does not construct an upstream Population from a Frame.
     """
+    profile = full.require_puf_output_profile(profile)
     require(
         type(population) is type(expected_population) is Population
         and population is not expected_population
@@ -326,14 +366,7 @@ def retain_full_puf_attachment(
         and dict(input_owners) == dict(population.owners),
         "FULL_PUF_UPSTREAM_GRAPH_BINDING",
     )
-    require(
-        len(full.PERSON_OUTPUTS) == 56
-        and len(full.TAX_UNIT_OUTPUTS) == 9
-        and not {"prior_year_wages", "employment_income_last_year"} & set(full.TARGETS)
-        and type(fit_nodes) is type(apply_nodes) is tuple
-        and len(fit_nodes) == len(apply_nodes) == 65,
-        "FULL_PUF_CHAIN_ROSTER",
-    )
+    _profile_chain(profile, fit_nodes, apply_nodes)
     first = fit_nodes[0]
     matrix_edges = tuple(
         e for e in apply_nodes[0].artifact_inputs if e.name == "matrix"
@@ -352,6 +385,7 @@ def retain_full_puf_attachment(
         n_estimators=first.params["n_estimators"],
         zero_atol=first.params["zero_atol"],
         prefix=first.id.removesuffix(".fit.000"),
+        profile=profile,
     )
     require(
         fit_nodes == expected_fits and apply_nodes == expected_applies,
@@ -364,11 +398,11 @@ def retain_full_puf_attachment(
         require(
             name not in population.frame.table(entity), "FULL_PUF_MASK_ALREADY_PRESENT"
         )
-    _outputs(population.frame)
-    _inputs(population.frame)
+    _outputs(population.frame, profile=profile)
+    _inputs(population.frame, profile=profile)
     _masks(population.frame)
     prepared = full.prepare_full_puf_inputs(
-        population.frame, donor, predictor_known=predictor_known
+        population.frame, donor, predictor_known=predictor_known, profile=profile
     )
     _value(edge, matrix)
     require(matrix.payload == prepared.matrix, "FULL_PUF_PREPARED_MATRIX")
@@ -388,6 +422,7 @@ def retain_full_puf_attachment(
         _population_stamp(expected_population),
         _table_stamp(donor),
         _table_stamp(predictor_known),
+        profile,
     )
     binding.check()
     return binding
@@ -398,7 +433,8 @@ def _params(binding):
     # Nullable backing storage beneath nulls is canonicalized by Frame-store
     # v2. Graph column/frame keys bind the upstream values across sessions.
     return {
-        "scope": SCOPE,
+        "scope": _scope(binding.profile),
+        "output_profile": binding.profile.value,
         "donor_values": binding.donor_stamp,
         "predictor_knownness": binding.known_stamp,
         "matrix_producer_key": binding.matrix.producer_key,
@@ -446,13 +482,13 @@ def full_puf_attachment_nodes(binding):
         FullPufMaskKernel.ref,
         population=binding.population.version,
         # Reading fields rewritten by attach would create a graph dependency cycle.
-        inputs=_inputs(frame, masks=True),
+        inputs=_inputs(frame, masks=True, profile=binding.profile),
         outputs=tuple(Owned(e, c, "bool") for e, c in MASKS.items()),
         params=_params(binding),
         artifact_inputs=(binding.matrix_edge,),
         artifact_outputs=(ArtifactOutput("placement", PLACEMENT_TYPE),),
     )
-    inputs = list(_inputs(frame))
+    inputs = list(_inputs(frame, profile=binding.profile))
     for entity, mask in MASKS.items():
         for i, item in enumerate(inputs):
             if item.entity == entity:
@@ -465,7 +501,7 @@ def full_puf_attachment_nodes(binding):
         FullPufAttachKernel.ref,
         population=binding.population.version,
         inputs=tuple(inputs),
-        outputs=_outputs(frame),
+        outputs=_outputs(frame, profile=binding.profile),
         params=_params(binding),
         artifact_inputs=_attach_edges(binding),
     )
@@ -538,7 +574,7 @@ def _placement(binding):
     return codec.encode_json(
         {
             **_params(binding),
-            "target_order": list(full.TARGETS),
+            "target_order": list(binding.profile.targets),
             "selected_ids": {
                 entity: frame.table(entity)
                 .loc[mask, frame.schema.entity_id_column(entity)]
@@ -569,7 +605,7 @@ def _checked_artifacts(binding, edges, artifacts, producer_keys=None):
             values["placement"].payload == _placement(binding),
             "FULL_PUF_PLACEMENT_BINDING",
         )
-        last_raw = f"raw_{len(binding.apply_nodes) - 1:03d}"
+        last_raw = f"raw_{len(binding.profile.targets) - 1:03d}"
         for names in ((last_raw, "apply_state"), ("last_model", "training_state")):
             require(
                 len({values[name].producer_key for name in names}) == 1,
@@ -588,15 +624,16 @@ def _finalized_columns(binding, values):
         matrix_producer_key=values["matrix"].producer_key,
         raw_draws={
             target: values[f"raw_{i:03d}"].payload
-            for i, target in enumerate(full.TARGETS)
+            for i, target in enumerate(binding.profile.targets)
         },
         apply_state=values["apply_state"].payload,
         training_state=values["training_state"].payload,
         last_model=values["last_model"].payload,
         seed=binding.fit_nodes[0].params["seed"],
+        profile=binding.profile,
     )
     masks, columns = _masks(frame), {}
-    for owned in _outputs(frame):
+    for owned in _outputs(frame, profile=binding.profile):
         table, mask = finalized.table(owned.entity), masks[owned.entity]
         selected = table.loc[mask, owned.column]
         require(selected.notna().all(), "FULL_PUF_FINALIZED_UNKNOWN:" + owned.column)
@@ -659,7 +696,11 @@ class FullPufMaskKernel(_FullPufKernel):
         return KernelResult(
             columns=_mask_result(binding).columns,
             artifacts={"placement": _placement(binding)},
-            receipt={"scope": SCOPE, "source_admission_issued": False},
+            receipt={
+                "scope": _scope(binding.profile),
+                "output_profile": binding.profile.value,
+                "source_admission_issued": False,
+            },
         )
 
 
@@ -700,11 +741,16 @@ def verify_materialized_full_puf_attachment(
     expected = population_ops.patch(expected, attach, result)
     replay.same_replayed_population(expected, population)
     binding.check()
-    return {**result.receipt, "scope": SCOPE, "complete_population_compared": True}
+    return {
+        **result.receipt,
+        "scope": _scope(binding.profile),
+        "output_profile": binding.profile.value,
+        "complete_population_compared": True,
+    }
 
 
 def _manifest_contract(binding, compiled, manifest):
-    """Bind declarations, real kernel implementations and all 130 chain nodes."""
+    """Bind declarations and real kernel identities for the selected complete chain."""
     mask, attach = full_puf_attachment_nodes(binding)
     require(
         compiled.graph.node(binding.population_node.id) == binding.population_node,
@@ -777,7 +823,7 @@ def _manifest_contract(binding, compiled, manifest):
 def load_full_puf_attachment_artifacts(binding, *, compiled, manifest, store):
     """Load real producer bytes after verifying the graph and both ends of edges.
 
-    ``compiled`` is the actual graph used in this run. Recompute full65 node keys
+    ``compiled`` is the actual graph used in this run. Recompute selected node keys
     from its exact declarations and maintained kernel identities before loading
     trusted model bytes. Upstream source qualification remains the caller's duty.
     """

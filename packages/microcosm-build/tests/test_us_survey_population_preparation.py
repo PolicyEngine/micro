@@ -32,6 +32,7 @@ def fixture(
     zero=True,
     zero_key=None,
     missing_asec_money=None,
+    current_predictor_money=None,
 ):
     asec_root = tmp_path / "asec-original"
     asec_root.mkdir()
@@ -40,6 +41,7 @@ def fixture(
         monkeypatch,
         extra_household=True,
         missing_money=missing_asec_money,
+        current_predictor_money=current_predictor_money,
         tokens=("2", "1", "2", "1", "2", "1"),
         household_rows=None
         if zero and zero_key is None
