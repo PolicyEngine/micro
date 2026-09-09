@@ -39,6 +39,7 @@ class MemoryApi:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.files: dict[str, bytes] = {}
+        self.downloaded: list[str] = []
 
     def upload_file(self, *, path_or_fileobj, path_in_repo, repo_id, repo_type):
         assert repo_id == "policyengine/populace-uk-staging"
@@ -48,6 +49,7 @@ class MemoryApi:
     def hf_hub_download(self, *, filename, repo_id, repo_type, **kwargs):
         if filename not in self.files:
             raise FileNotFoundError(filename)
+        self.downloaded.append(filename)
         destination = self.root / "download" / filename
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(self.files[filename])
@@ -484,3 +486,88 @@ def test_canonical_version_2_fixtures_are_reproducible():
         cwd=ROOT,
         check=True,
     )
+
+
+def test_remote_read_back_downloads_every_run_scoped_file(tmp_path):
+    api = MemoryApi(tmp_path)
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        api=api,
+        upload_interval_seconds=0,
+    )
+    diagnostic = tmp_path / "aggregate.json"
+    diagnostic.write_text(json.dumps({"target_count": 3}))
+    telemetry.add_artifact(
+        "aggregate-diagnostics",
+        diagnostic,
+        artifact_kind="aggregate_diagnostics",
+        classification="aggregate",
+    )
+    telemetry.calibration_progress(
+        {
+            "kind": "calibration_epoch",
+            "epoch": 1,
+            "epochs": 2,
+            "phase": "solve",
+            "loss": 1.0,
+            "iteration": 1,
+        }
+    )
+    telemetry.complete()
+
+    telemetry.verify_remote()
+
+    expected = {remote for _, remote in telemetry._upload_paths()}
+    assert set(api.downloaded) == expected
+
+
+@pytest.mark.parametrize(
+    "corrupt_path",
+    [
+        "runs/uk-smoke-5-42/events.ndjson",
+        "runs/uk-smoke-5-42/calibration_progress.json",
+        "runs/uk-smoke-5-42/artifacts/aggregate-diagnostics.json",
+    ],
+)
+def test_remote_read_back_rejects_changed_declared_file(tmp_path, corrupt_path):
+    api = MemoryApi(tmp_path)
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        api=api,
+        upload_interval_seconds=0,
+    )
+    diagnostic = tmp_path / "aggregate.json"
+    diagnostic.write_text(json.dumps({"target_count": 3}))
+    telemetry.add_artifact(
+        "aggregate-diagnostics",
+        diagnostic,
+        artifact_kind="aggregate_diagnostics",
+        classification="aggregate",
+    )
+    telemetry.calibration_progress(
+        {
+            "kind": "calibration_epoch",
+            "epoch": 1,
+            "epochs": 2,
+            "phase": "solve",
+            "loss": 1.0,
+            "iteration": 1,
+        }
+    )
+    telemetry.complete()
+    download = telemetry._transport.download
+
+    def altered_download(path_in_repo):
+        data = download(path_in_repo)
+        return b"{}\n" if path_in_repo == corrupt_path else data
+
+    telemetry._transport.download = altered_download
+
+    with pytest.raises(StagingReadBackError, match="does not match local"):
+        telemetry.verify_remote()
+
+    assert telemetry.delivery_summary["read_back"] == "failed"

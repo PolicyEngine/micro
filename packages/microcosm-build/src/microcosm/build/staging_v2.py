@@ -887,32 +887,18 @@ class StagingTelemetryV2:
         if self._transport is None:
             raise StagingReadBackError("Remote read-back requires remote staging mode.")
         self._maybe_upload(force=True)
-        expected_manifest = self._manifest()
-        expected_progress = self._progress()
         expected = {
-            f"{self.repo_run_prefix}/run_manifest.json": RUN_MANIFEST_SCHEMA,
-            f"{self.repo_run_prefix}/progress.json": PROGRESS_SCHEMA,
+            remote_path: local_path.read_bytes()
+            for local_path, remote_path in self._upload_paths()
         }
         try:
-            documents = {
-                path: validate_v2_document(json.loads(self._transport.download(path)))
-                for path in expected
-            }
-            for path, schema_name in expected.items():
-                if documents[path]["schema_name"] != schema_name:
+            for path, expected_bytes in expected.items():
+                remote_bytes = self._transport.download(path)
+                self._content_policy.validate_remote_file(path, remote_bytes)
+                if remote_bytes != expected_bytes:
                     raise StagingReadBackError(
-                        f"Remote file {path} has the wrong schema identity."
+                        f"Remote file {path} does not match local pre-read-back state."
                     )
-            manifest = documents[f"{self.repo_run_prefix}/run_manifest.json"]
-            progress = documents[f"{self.repo_run_prefix}/progress.json"]
-            if manifest != expected_manifest:
-                raise StagingReadBackError(
-                    "Remote run manifest does not match local pre-read-back state."
-                )
-            if progress != expected_progress:
-                raise StagingReadBackError(
-                    "Remote progress does not match local pre-read-back state."
-                )
         except Exception as exc:
             self._delivery["read_back"] = "failed"
             self._delivery["last_error_code"] = "READ_BACK_FAILED"
