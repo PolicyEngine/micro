@@ -1845,3 +1845,75 @@ def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
             seed=7,
             size_checkpoint_dir=tmp_path / "no-size",
         )
+
+
+def test_progress_lines_cover_the_dense_solve_the_probes_and_the_refit():
+    from microcosm.build.uk_runtime.solve_progress import uk_solve_progress_callback
+
+    frame = _clone_frame()
+    problem = _size_problem()
+    lines: list[str] = []
+    solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        bound_families=["census_households/constituency"],
+        dataset_households=2,
+        epochs=2,
+        seed=7,
+        selection_pi_hi=0.5,
+        progress=lines.append,
+    )
+    text = "\n".join(lines)
+    # The dense solve, each probe's epochs, the probe verdicts, the stop line
+    # and the refit all appear, timestamped, in that order.
+    dense = next(i for i, line in enumerate(lines) if "dense solve: epoch 2/2" in line)
+    probe_epoch = next(
+        i for i, line in enumerate(lines) if "probe 1/10 (lambda" in line
+    )
+    probe_done = next(i for i, line in enumerate(lines) if "probe 1/10 done:" in line)
+    stopped = next(i for i, line in enumerate(lines) if "search stopped:" in line)
+    refit = next(i for i, line in enumerate(lines) if "refit: epoch 2/2" in line)
+    assert dense < probe_epoch < probe_done < stopped < refit
+    assert "open_probability_mass" in lines[probe_done]
+    assert "verdict feasible" in text
+    assert "drawable True" in lines[stopped]
+    assert all(line[8] == "Z" for line in lines), lines[:2]
+
+    # The formatter itself: a loss line only every ``every`` epochs and at the
+    # last epoch; probe and stop events in one line each.
+    sink: list[str] = []
+    callback = uk_solve_progress_callback(sink.append, every=3)
+    for epoch in range(1, 8):
+        callback(
+            {"kind": "calibration_epoch", "epoch": epoch, "epochs": 7, "loss": 0.5}
+        )
+    assert [line.split("epoch ")[1].split(" ")[0] for line in sink] == [
+        "3/7",
+        "6/7",
+        "7/7",
+    ]
+    callback(
+        {
+            "kind": "budget_probe",
+            "budget_iteration": 2,
+            "budget_iters": 10,
+            "l0_lambda": 1e-6,
+            "measure": 54834,
+            "target_records": 55000,
+            "budget_basis": "open_probability_mass",
+            "verdict": "boundary_mass_short",
+            "certainty_count": 54563,
+            "boundary_draw": 437,
+            "boundary_mass": 290.6,
+            "boundary_max": 0.947,
+        }
+    )
+    assert sink[-1].endswith(
+        "probe 2/10 done: lambda 1e-06, open_probability_mass 54834 for 55000 "
+        "requested, verdict boundary_mass_short, certainties 54563, boundary draw "
+        "437 from mass 290.6 (max 0.947)"
+    )
+    callback({"kind": "something_else"})
+    assert len(sink) == 4
+    with pytest.raises(ValueError, match="every"):
+        uk_solve_progress_callback(sink.append, every=0)

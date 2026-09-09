@@ -2015,7 +2015,7 @@ def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
 
 
 def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, capsys
 ):
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
@@ -2057,6 +2057,12 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
     first = tmp_path / "first"
     status = builder.main([*common, "--out", str(first), "--selection-pi-hi", "0.5"])
     assert status in (0, 1)
+    # The solve is no longer silent: probe verdicts and the search stop reach
+    # stderr as they happen, beside the phase lines.
+    err = capsys.readouterr().err
+    assert "probe 1/10 done:" in err and "search stopped:" in err
+    assert "dense solve: epoch 2/2" in err and "refit: epoch 2/2" in err
+    assert "size selection checkpoint written to" in err
     assert (first / SIZE_CHECKPOINT_ARRAYS_FILENAME).is_file()
     checkpoint = json.loads((first / SIZE_CHECKPOINT_MANIFEST_FILENAME).read_text())
     assert checkpoint["selection"]["households"] == 300

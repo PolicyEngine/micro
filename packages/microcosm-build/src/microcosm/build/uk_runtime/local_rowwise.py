@@ -1056,6 +1056,7 @@ def solve_uk_rowwise_weights_under_doctrine(
     size_checkpoint_dir: Path | None = None,
     resume_size_checkpoint: Path | None = None,
     checkpoint_identity: Mapping[str, Any] | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> UKRowwiseDoctrineSolve:
     """Solve rowwise household weights under the reviewed doctrine.
 
@@ -1071,6 +1072,11 @@ def solve_uk_rowwise_weights_under_doctrine(
     identity, the pool or the target surface differ. The draw's threshold
     (``selection_pi_hi``) may differ from the one the search stopped on; the
     size receipt records both.
+
+    ``progress`` receives one readable line per hundred epochs of the dense
+    solve, of every budget probe and of the refit, one line per finished
+    probe with its drawability verdict, and one when the search stops
+    (:func:`~microcosm.build.uk_runtime.solve_progress.uk_solve_progress_callback`).
 
     Structurally knob-free like before the ``calibrate()`` migration: no
     per-target parameters and no doctrine parameter — the bounds always come
@@ -1190,6 +1196,13 @@ def solve_uk_rowwise_weights_under_doctrine(
         raise ValueError("size checkpoints apply to a dataset_households solve.")
     if size_checkpoint_dir is not None and resume_size_checkpoint is not None:
         raise ValueError("a resumed solve does not write a second checkpoint.")
+    progress_callback = None
+    if progress is not None:
+        from microcosm.build.uk_runtime.solve_progress import (
+            uk_solve_progress_callback,
+        )
+
+        progress_callback = uk_solve_progress_callback(progress)
     restored = None
     if resume_size_checkpoint is not None:
         from microcosm.build.uk_runtime.size_checkpoint import load_uk_size_checkpoint
@@ -1217,6 +1230,7 @@ def solve_uk_rowwise_weights_under_doctrine(
             seed=seed,
             target_loss_weights=target_loss_weights,
             target_loss_cap=doctrine.target_loss_cap,
+            progress_callback=progress_callback,
         )
     selected_support = None
     size_receipt = None
@@ -1245,6 +1259,7 @@ def solve_uk_rowwise_weights_under_doctrine(
                 learning_rate=learning_rate,
                 seed=size_seed,
                 pi_hi=selection_pi_hi,
+                progress_callback=progress_callback,
             )
             if size_checkpoint_dir is not None:
                 from microcosm.build.uk_runtime.size_checkpoint import (
@@ -1271,6 +1286,7 @@ def solve_uk_rowwise_weights_under_doctrine(
             seed=size_seed,
             pi_hi=selection_pi_hi,
             selection=size_selection,
+            progress_callback=progress_callback,
         )
         dense_result = result
         result = sized.result

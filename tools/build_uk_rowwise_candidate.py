@@ -479,6 +479,11 @@ def _pin_from_artifact(info: Mapping[str, Any]) -> dict[str, object]:
     }
 
 
+def _stderr_progress(line: str) -> None:
+    """Solver progress (epoch losses, budget probes, the search verdict)."""
+    print(line, file=sys.stderr, flush=True)
+
+
 def _size_checkpoint_identity(
     args: argparse.Namespace,
     *,
@@ -1107,6 +1112,7 @@ def _run_candidate(
             size_checkpoint_dir=out_dir if write_checkpoint else None,
             resume_size_checkpoint=resume_checkpoint,
             checkpoint_identity=checkpoint_identity,
+            progress=_stderr_progress,
         )
         _validate_solve_result(solve, problem=problem)
         if solve.size_receipt is not None and solve.size_receipt.get("checkpoint"):

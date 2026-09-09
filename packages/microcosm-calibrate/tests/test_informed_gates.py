@@ -182,8 +182,30 @@ def test_feasibility_aware_search_stops_only_on_a_drawable_design(monkeypatch):
     verdict = exact_k_design_feasibility(plain.gate_open_probabilities, k, 0.95)
     assert verdict["feasible"] is False and verdict["reason"] == "boundary_mass_short"
 
-    aware = calibrate(frame, targets, feasible_draw_pi_hi=0.95, **common)
+    events: list[dict] = []
+    aware = calibrate(
+        frame,
+        targets,
+        feasible_draw_pi_hi=0.95,
+        progress_callback=events.append,
+        **common,
+    )
     search = aware.options["budget_search"]
+    # One budget_probe event per probe, matching the receipt, then the stop.
+    probe_events = [e for e in events if e.get("kind") == "budget_probe"]
+    assert [e["l0_lambda"] for e in probe_events] == [
+        p["l0_lambda"] for p in search["probes"]
+    ]
+    assert [e["verdict"] for e in probe_events] == [
+        p["verdict"] for p in search["probes"]
+    ]
+    assert probe_events[0]["budget_iteration"] == 1
+    assert probe_events[0]["budget_basis"] == BUDGET_BASIS_OPEN_PROBABILITY_MASS
+    done = [e for e in events if e.get("kind") == "budget_search_done"]
+    assert len(done) == 1 and done[0]["stopped_on"] == search["stopped_on"]
+    assert done[0]["selected_l0_lambda"] == search["selected_l0_lambda"]
+    # The stub optimizer emits no epoch events; only the search's own do.
+    assert {e.get("kind") for e in events} == {"budget_probe", "budget_search_done"}
     assert aware.options["feasible_draw_pi_hi"] == 0.95
     assert search["stopped_on"] == "acceptable_within_tolerance"
     assert search["selected_feasible"] is True

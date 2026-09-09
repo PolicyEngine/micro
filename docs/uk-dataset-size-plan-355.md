@@ -121,6 +121,17 @@ tail below 0.95 held 291 rows of mass for 437 places. Two changes follow:
   refusal therefore costs a re-draw, not the pool solve. `--no-size-checkpoint`
   opts out. The checkpoint is candidate evidence, never a release input.
 
+### The solve reports progress (2026-09-09)
+
+A size run used to be silent between "solving ... under the doctrine..." and its manifest, five
+hours later. The doctrine solve now takes a `progress` line sink (the driver writes it to stderr,
+so it lands in the run log): a timestamped loss line every hundred epochs and at the last epoch
+of the dense solve, of every budget probe and of the refit; one line per finished probe with its
+penalty, open mass, certainties, boundary draw and mass, and its drawability verdict
+(`budget_probe` events from the search); and one line when the search stops, naming why and
+what it selected (`budget_search_done`). Nothing else changes: the events ride the calibrator's
+existing `progress_callback` seam.
+
 ## Certification and publication still required
 
 The implementation produces **candidates**, not a new certified UK default.

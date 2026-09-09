@@ -1190,7 +1190,10 @@ def _search_l0_lambda_for_budget(
     best run is chosen; if no probe is feasible within the iteration budget the
     closest run is still returned and the draw refuses with its measurement.
     ``search_receipt``, when supplied, is filled in place with every probe's
-    penalty, measure and verdict and the reason the search stopped.
+    penalty, measure and verdict and the reason the search stopped. Beside the
+    per-epoch ``calibration_epoch`` events, ``progress_callback`` receives one
+    ``budget_probe`` event per finished probe (the same fields as the receipt's
+    probe entry) and a closing ``budget_search_done`` event.
 
     Args:
         matrix: The constraint matrix ``A`` (dense or sparse-CSR torch tensor), as
@@ -1330,6 +1333,17 @@ def _search_l0_lambda_for_budget(
                 probes.append(
                     {"l0_lambda": lam, "measure": None, "verdict": "over_pruned"}
                 )
+                if progress_callback is not None:
+                    progress_callback(
+                        {
+                            "kind": "budget_probe",
+                            "budget_iteration": evaluation,
+                            "budget_iters": budget_iters,
+                            "target_records": target_records,
+                            "budget_basis": budget_basis,
+                            **probes[-1],
+                        }
+                    )
                 return _over_pruned, "over_pruned"
             raise
         probe: dict[str, object] = {"l0_lambda": lam, "measure": int(n_nonzero)}
@@ -1350,6 +1364,19 @@ def _search_l0_lambda_for_budget(
             )
         probe["verdict"] = verdict
         probes.append(probe)
+        if progress_callback is not None:
+            # One event per finished probe, beside the per-epoch stream, so a
+            # long search is readable from a log: penalty, measure, verdict.
+            progress_callback(
+                {
+                    "kind": "budget_probe",
+                    "budget_iteration": evaluation,
+                    "budget_iters": budget_iters,
+                    "target_records": target_records,
+                    "budget_basis": budget_basis,
+                    **probe,
+                }
+            )
         key = (
             0 if verdict in (_not_required, FEASIBLE) else 1,
             abs(n_nonzero - target_records),
@@ -1418,6 +1445,25 @@ def _search_l0_lambda_for_budget(
         else:
             break
 
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "kind": "budget_search_done",
+                "evaluations": int(evaluation),
+                "budget_iters": int(budget_iters),
+                "target_records": int(target_records),
+                "stopped_on": (
+                    "acceptable_within_tolerance" if settled() else "budget_exhausted"
+                ),
+                "selected_l0_lambda": None if best is None else float(best[2]),
+                "selected_measure": None if best is None else int(best[3]),
+                "selected_feasible": (
+                    None
+                    if best_key is None or feasible_draw_pi_hi is None
+                    else best_key[0] == 0
+                ),
+            }
+        )
     if search_receipt is not None:
         search_receipt.update(
             {

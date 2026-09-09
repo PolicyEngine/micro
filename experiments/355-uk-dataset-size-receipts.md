@@ -487,3 +487,14 @@ past 25% against 53 in the same run's dense reference. The dense reference itsel
 new inputs (loss +6%, national within 10% 353 vs 340), so no D2 is needed to explain the deltas: they are
 size effects. The pre-registered response is S4 at 110,000 to locate the support floor; María's call.
 
+**Progress tracker (María, 2026-09-09 ~08:40Z: "add the progress tracker to the branch").** The doctrine
+solve takes a `progress` line sink; the driver writes it to stderr, so the run log now shows a timestamped
+loss line every 100 epochs (and the last) of the dense solve, of each budget probe and of the refit, one
+line per finished probe with its penalty, open mass, certainties, boundary draw and mass and its drawability
+verdict, and one line when the search stops. The events (`budget_probe`, `budget_search_done`) ride the
+calibrator's existing `progress_callback` seam beside the per-epoch events (`uk_runtime/solve_progress.py`;
+tests at the calibrate, solve and driver levels). `solve.py` moved again, so the pins were re-cut a third
+time (bundles am 906e0a55… / be 39619d06… / uk 635f5e39…, loader golden 864f9799…, seed protocol 1daa63de…,
+seed map 8a8b353c…, US spec 0a5f4af6…, coverage report, H1 calibrate fixture). The running 0.95 solve
+predates this and stays silent until its checkpoint; S4 / S3 will show their probes as they finish.
+

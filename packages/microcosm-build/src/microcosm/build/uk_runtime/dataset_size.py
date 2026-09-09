@@ -1,6 +1,7 @@
 """Exact household-count UK candidates on a fixed, materialized target surface."""
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -50,6 +51,22 @@ class UKSizeSelection:
     learning_rate: float
     seed: int
     search_pi_hi: float
+
+
+ProgressCallback = Callable[[dict[str, object]], None]
+
+
+def _phased(
+    progress_callback: ProgressCallback | None, phase: str
+) -> ProgressCallback | None:
+    """Tag every progress event with the size stage it belongs to."""
+    if progress_callback is None:
+        return None
+
+    def callback(event: dict[str, object]) -> None:
+        progress_callback({"phase": phase, **event})
+
+    return callback
 
 
 def _check_size_inputs(frame: Frame, dense: CalibrationResult, households: int) -> int:
@@ -113,6 +130,7 @@ def select_uk_dataset_size(
     learning_rate: float,
     seed: int,
     pi_hi: float = 1.0,
+    progress_callback: ProgressCallback | None = None,
 ) -> UKSizeSelection:
     """Run the informed L0 budget search for an exact-count draw of ``households``.
 
@@ -160,6 +178,7 @@ def select_uk_dataset_size(
         mass_reason=dense.options["mass_reason"],
         budget_basis=BUDGET_BASIS_OPEN_PROBABILITY_MASS,
         feasible_draw_pi_hi=pi_hi,
+        progress_callback=_phased(progress_callback, "size_search"),
         **_solver_common(dense, epochs=epochs, learning_rate=learning_rate, seed=seed),
     )
     if selection.gate_open_probabilities is None:
@@ -185,6 +204,7 @@ def refit_uk_dataset_size(
     seed: int,
     pi_hi: float = 1.0,
     selection: UKSizeSelection | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> UKDatasetSize:
     """Run informed L0, a fixed-size draw, and refit under the dense doctrine.
 
@@ -229,6 +249,7 @@ def refit_uk_dataset_size(
             learning_rate=learning_rate,
             seed=seed,
             pi_hi=pi_hi,
+            progress_callback=progress_callback,
         )
         reused = False
     else:
@@ -299,6 +320,7 @@ def refit_uk_dataset_size(
         k=households,
         support_inclusion_probabilities=q,
         mass_reason=dense.options["mass_reason"],
+        progress_callback=_phased(progress_callback, "size_refit"),
         **common,
     ).refit
     if (
