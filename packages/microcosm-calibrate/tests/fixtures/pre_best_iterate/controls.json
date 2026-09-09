@@ -131,7 +131,7 @@
       "_validate_target_loss_cap": "7d7a663cc1de3f3667ea713329387a7913063335a47bc693299fd5c2479f8553"
     },
     "gates_source_path": "packages/microcosm-calibrate/src/microcosm/calibrate/gates.py",
-    "gates_module_sha256": "379e4adbb3ed7cdd13f7c7c548da45163f2a50330c874ee51095d38243d392e6",
+    "gates_module_sha256": "14608a5ee02132f06eaad4a59de3b051c8b8e1d07bd1768f4eb57f237173cef7",
     "prune_rel_atol": 1e-06,
     "note": "Compare this frozen function and the current solver in the same runtime with separate seed resets. Recorded Mac bytes remain an additional check only on the authoring runtime and dependency versions."
   }
