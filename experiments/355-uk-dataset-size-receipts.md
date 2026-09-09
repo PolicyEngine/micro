@@ -498,3 +498,26 @@ time (bundles am 906e0a55… / be 39619d06… / uk 635f5e39…, loader golden 86
 seed map 8a8b353c…, US spec 0a5f4af6…, coverage report, H1 calibrate fixture). The running 0.95 solve
 predates this and stays silent until its checkpoint; S4 / S3 will show their probes as they finish.
 
+### P95b — 55,000 at `pi_hi 0.95` on the fixed code: the search trace
+
+Checkpoint `size_selection_checkpoint.{npz,json}` written 12:03Z, 7.95 h after launch (dense solve ≈ 1.1 h,
+then ten probes ≈ 41 min each). Dense closing loss 0.015083618… — bit-identical to P50's, the third
+reproduction of the same dense solve. The feasibility-aware search (`feasible_draw_pi_hi 0.95`, mass basis)
+spent its whole ten-probe budget and stopped `acceptable_within_tolerance` on the last one:
+
+- λ 1e-3 (bracket mid-point): mass 10,072, only the 10,026 protected gates open, tail max 0.0006 → drawable
+  but far below the request (steer: smaller penalty).
+- λ 1e-5: 22,864, certainties 22,753, 32,247 places from a tail mass of 118 (max 0.925) → boundary mass short.
+- λ 1e-6: 59,706, certainties 59,338 → certainties exceed k (steer: larger penalty).
+- λ 3.16e-6: 40,825 → short. λ 1.78e-6: 50,223 → short. **λ 1.334e-6: 54,834, certainties 54,563, 437 places
+  from mass 291 → short — S2's and P50's landing, now a rejected probe.** λ 1.15e-6: 57,276 → exceed.
+  λ 1.24e-6: 56,043 → exceed. λ 1.29e-6: 55,407, certainties 55,124 → exceed by 124.
+- **λ 1.3097e-6: mass 55,121, certainties 54,844, 156 places from a tail mass of 296 (max 0.9497 → 156 × 0.95
+  = 148 ≤ 296) → drawable, within the band → selected.**
+
+Reading: at 0.95 the drawable window on this pool is roughly Σπ ∈ [54,880, 55,130], about 0.5% of k, and the
+bisection on log λ needed all ten probes to land in it (S2's ±5% band had stopped after the first in-band
+probe). At 0.5 the first in-band probe was already drawable (P50). The threshold is therefore a cost knob
+as much as a design knob: 0.95 cost 6.7 h of probes for a selection that differs from P50's by ~250
+certainties and the tail draws. With the checkpoint, any further threshold on this pool is a re-draw.
+
