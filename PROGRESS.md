@@ -757,3 +757,5 @@ Layer 8: GRAPH-ATTACHMENT-METADATA.patch applied; all declared postimages and pr
 Layer 9: F-JOINT-GEOGRAPHY-GATE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
 
 Layer 10: SOURCE-CLOSURE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 11: PLACEMENT-ADDITIONS.patch applied; all declared postimages and preservation hashes verified. No tests executed.
