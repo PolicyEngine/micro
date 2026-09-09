@@ -248,6 +248,57 @@ class QualifiedSurveyPredictors:
     origins: pd.DataFrame
     evidence: dict
     demographic_conditioning: bool = False
+    geography_config_payload: bytes | None = None
+
+
+def _qualified_seal(value):
+    """Seal the actual returned values across the last source/support borrow."""
+    require(type(value) is QualifiedSurveyPredictors, "QUALIFIED_VALUES_TYPE")
+    geography = host.survey_budget.geography
+    tables = []
+    for table in (value.donor_columns, value.native_money, value.origins):
+        require(type(table) is pd.DataFrame, "QUALIFIED_TABLE_TYPE")
+        metadata = codec.encode_json(
+            {
+                "columns": list(table.columns),
+                "column_axis": [
+                    type(table.columns).__name__,
+                    str(table.columns.dtype),
+                    list(table.columns.names),
+                ],
+                "index_axis": [
+                    type(table.index).__name__,
+                    str(table.index.dtype),
+                    list(table.index.names),
+                ],
+                "shape": list(table.shape),
+            }
+        )
+        selected = np.ones(len(table), dtype=np.bool_)
+        parts = tuple(
+            (str(series.dtype), geography._storage_parts(series, selected))
+            for series in (
+                pd.Series(table.index.to_numpy(copy=False)),
+                *(table[c] for c in table),
+            )
+        )
+        tables.append((metadata, parts))
+    return (
+        value.projection,
+        value.matrix,
+        value.demographic_conditioning,
+        value.geography_config_payload,
+        codec.encode_json(value.evidence),
+        tuple(
+            geography._population_stamp(
+                host.survey_budget.Population.from_frame(
+                    frame, "survey_predictors.detached_values"
+                )
+            )
+            for frame in (value.source_frame, value.donor_frame)
+        ),
+        tuple(tables),
+    )
 
 
 def qualify_current_survey_predictors(
@@ -256,6 +307,7 @@ def qualify_current_survey_predictors(
     clone_population,
     *,
     demographic_conditioning=False,
+    geography_config=None,
 ):
     """Read the actual full-parent money owner once, then seal all retained state.
 
@@ -267,6 +319,7 @@ def qualify_current_survey_predictors(
     it does not claim the observation windows are equivalent.
     """
     predictors = feature_columns(demographic_conditioning)
+    config_payload = host.survey_budget._config_payload(geography_config)
     require(
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
         "PREPARATION_TYPE",
@@ -276,8 +329,13 @@ def qualify_current_survey_predictors(
     view = source.CheckedSurveyPopulationView(
         entry[1], state.context, state.frame, state.plan, json.loads(entry[1])
     )
-    _, allocation = host.survey_budget._initial(
-        view, allocated_population, clone_population
+    _, allocation, geography_binding = host.survey_budget._initial(
+        view,
+        allocated_population,
+        clone_population,
+        preparation=preparation,
+        geography_config=geography_config,
+        _with_geography_binding=True,
     )
     seals = tuple(
         host.survey_budget._population_identity(p)
@@ -430,6 +488,8 @@ def qualify_current_survey_predictors(
         "source_admission_issued": False,
         "release_eligible": False,
     }
+    if geography_binding is not None:
+        evidence["atomic_geography"] = json.loads(geography_binding)
     matrix = model_input.encode_recipient_matrix(
         features.loc[pids[acs]], entity="person", entity_ids=pids[acs].astype("<i8")
     )
@@ -445,7 +505,32 @@ def qualify_current_survey_predictors(
         },
         source.MAX_PAYLOAD_BYTES,
     )
+    result = QualifiedSurveyPredictors(
+        projection,
+        matrix,
+        state.frame,
+        donor_frame,
+        donor_columns,
+        money,
+        origins,
+        evidence,
+        demographic_conditioning,
+        config_payload,
+    )
+    derived_seal = _qualified_seal(result)
+    if geography_config is not None:
+        require(
+            host.survey_budget._config_payload(geography_config) == config_payload,
+            "FINAL_GEOGRAPHY_CONFIG",
+        )
+        # Money/demographic owners have finished their I/O. Re-read the exact
+        # normalized support before sealing any retained or returned values.
+        host.survey_budget.geography._read_support(geography_config)
     source._pure_final(state)
+    require(
+        host.survey_budget._config_payload(geography_config) == config_payload,
+        "FINAL_GEOGRAPHY_CONFIG",
+    )
     require(
         source.asec_native._ISSUED.get(id(state.native[1])) is native_entry
         and native_entry[2].parent is parent
@@ -475,17 +560,8 @@ def qualify_current_survey_predictors(
             ),
             "FINAL_DEMOGRAPHIC_FEATURES",
         )
-    return QualifiedSurveyPredictors(
-        projection,
-        matrix,
-        state.frame,
-        donor_frame,
-        donor_columns,
-        money,
-        origins,
-        evidence,
-        demographic_conditioning,
-    )
+    require(_qualified_seal(result) == derived_seal, "FINAL_DERIVED_VALUES")
+    return result
 
 
 def complete_predictor_columns(qualified, clone_frame, drawn_money):

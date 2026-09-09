@@ -16,8 +16,11 @@ intended architecture.
 
 The optional ten-node survey prefix now assigns a block before cloning, and its
 thirteen-node age-calibration extension passes cold execution and required
-replay on invented originals. Native support and national/CD acceptance remain
-pending. The earlier joint tract/district operator is a separate path. See
+replay on invented originals. A twenty-node extension now carries atomic
+geography through current financial imputation and required replay. Native
+Delaware block support passes source normalization; complete national support
+and national/CD acceptance remain pending. The earlier joint tract/district
+operator is a separate path. See
 [Geography assignment](geography-assignment.md) for the country contracts,
 implementation and source boundaries.
 
@@ -143,10 +146,15 @@ from the benchmark's accepted baseline.
 
 The following work remains open:
 
-1. Connect the accepted source-qualified demographic financial model to the
-   atomic survey prefix and genuine combined survey population. Three opted-in
-   financial controls and two existing default-path fit/replay controls pass;
-   native fit quality remains unassessed. The composed runner is in progress.
+1. Run the accepted twenty-node atomic and financial composition on the genuine
+   combined survey population. Its cold/required replay, complete retained
+   fields and geography, default three-feature versus explicit five-feature
+   conditioning, and both final mutation refusals pass on invented inputs.
+   Two test-code mistakes in the initial four-case run were corrected and
+   rerun separately; the passing mutation cases were preserved. See the
+   [composition acceptance](../experiments/us-atomic-financial-composition-acceptance-20260909.json).
+   Native fit quality and admission of the financial result into subsequent
+   calibration remain unassessed.
 2. Qualify recipient return roles and adopt an explicit Social Security
    conditioning measurement before native PUF55 fitting. The genuine
    207,692-return canonical donor has already passed its 55-output projection;
@@ -179,10 +187,16 @@ These are active workstreams. No release, merge or deployment is implied by this
 draft, and the source changes do not relax the outstanding acceptance checks.
 
 The population-only Census API adapter passes thirty-five invented controls.
-The first native Delaware acquisition obtained only P1_001N block/state responses
-and CD119/PUMA mapping bytes from the fixed Census endpoints. Those bytes are
-awaiting maintained source normalization; successful download is not source or
-population acceptance. Delaware-only support must not enter the national survey
+The native Delaware source control preserves all 15,317 populated blocks and
+reconciles them to the independent Census state total of 989,948. It counts
+4,881 zero-population blocks, checks CD119/PUMA joins and exactly reads back its
+79,769-byte support artifact. The run took 10.94 seconds and 1.735 GB peak RSS.
+The first attempt correctly refused an incomplete ZIP-member declaration;
+a separate metadata probe established the six-member archive roster, and the
+corrected check still decompresses only `NationalCD119.txt`. The
+[accepted source control](../experiments/us-atomic-native-de-corrected-1-control-20260909.json)
+preserves the original failed evidence. This is not national population or
+release acceptance. Delaware-only support must not enter the national survey
 graph. Complete support for the fifty states and DC is required first.
 
 ## Related reviews

@@ -122,6 +122,9 @@ def _params(qualified, host_pins, n_estimators):
         "seed": values.SEED,
         "n_estimators": n_estimators,
         "demographic_conditioning": qualified.demographic_conditioning,
+        "geography_config_sha256": None
+        if qualified.geography_config_payload is None
+        else codec.sha(qualified.geography_config_payload),
     }
 
 
@@ -215,6 +218,7 @@ class _Kernel(host._CurrentSurveyKernel):
         host_pins,
         n_estimators=100,
         demographic_conditioning=False,
+        geography_config=None,
     ):
         self.preparation = preparation
         self.allocated_population = allocated_population
@@ -223,6 +227,10 @@ class _Kernel(host._CurrentSurveyKernel):
         self.n_estimators = n_estimators
         values.feature_columns(demographic_conditioning)
         self.demographic_conditioning = demographic_conditioning
+        self.geography_config = geography_config
+        self.geography_config_payload = host.survey_budget._config_payload(
+            geography_config
+        )
 
     def implementation_hash(self):
         demographics = values.observed_geography.demographics
@@ -249,6 +257,9 @@ class _Kernel(host._CurrentSurveyKernel):
                         model_input,
                         sys.modules[decode_matrix_apply_state.__module__],
                         sys.modules[legacy_qrf_train_nodes.__module__],
+                        # The optional pre-clone geography admission invokes
+                        # the budget owner's complete reconstruction closure.
+                        *host.survey_budget._modules(),
                         dependencies=self.capabilities.dependencies,
                     ),
                 }
@@ -257,11 +268,21 @@ class _Kernel(host._CurrentSurveyKernel):
 
     def _qualified(self, context):
         require(not context.sources, "UNDECLARED_SOURCE")
+        require(
+            host.survey_budget._config_payload(self.geography_config)
+            == self.geography_config_payload,
+            "GEOGRAPHY_CONFIG_CHANGED",
+        )
         result = values.qualify_current_survey_predictors(
             self.preparation,
             self.allocated_population,
             self.clone_population,
             demographic_conditioning=self.demographic_conditioning,
+            geography_config=self.geography_config,
+        )
+        require(
+            result.geography_config_payload == self.geography_config_payload,
+            "GEOGRAPHY_CONFIG_CHANGED",
         )
         nodes = current_survey_predictor_nodes(
             result,
@@ -507,6 +528,7 @@ def verify_materialized_current_survey_predictors(
     host_pins,
     n_estimators=100,
     demographic_conditioning=False,
+    geography_config=None,
 ):
     """Use actual executor-observed Population and authenticated typed artifacts.
 
@@ -519,6 +541,7 @@ def verify_materialized_current_survey_predictors(
         allocated_population,
         clone_population,
         demographic_conditioning=demographic_conditioning,
+        geography_config=geography_config,
     )
     require(
         projection == qualified.projection and matrix == qualified.matrix,
