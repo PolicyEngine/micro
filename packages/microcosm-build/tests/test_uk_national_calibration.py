@@ -263,6 +263,25 @@ def _fact_for_reference(
     }
 
 
+def _facts_for_reference(reference: LedgerTargetReference, value: float) -> list[dict]:
+    """Expand the paid headline into its declared synthetic month/cell grid."""
+    if reference.name != "dwp.uc.households":
+        return [_fact_for_reference(reference, value)]
+
+    facts = []
+    for month in reference.ledger_selector["period_value"]:
+        for cell, operand in enumerate(reference.value_operands):
+            fact = _fact_for_reference(reference, value / len(reference.value_operands))
+            fact["aggregate_fact_key"] += f":{month}:{cell}"
+            fact["dimensions"] = dict(operand["dimension_values"])
+            fact["period"] = {"type": "month", "value": month}
+            fact["source_release_key"] = "ledger.source_release.v2:uc-paid-fixture"
+            fact["source"] = {"source_sha256": "a" * 64}
+            fact["observed_measure"]["unit"] = "count"
+            facts.append(fact)
+    return facts
+
+
 def _materialization_binding_frame(
     *,
     include_counterfactual_delta: bool = True,
@@ -472,7 +491,29 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
         for reference in spec.target_references
         if reference.name == "dwp.uc.households"
     )
-    assert uc_reference.value_operation == "calendar_year_average"
+    assert uc_reference.value_operation == "monthly_window_sum_average"
+    assert uc_reference.period_match_policy == "source_window"
+    assert uc_reference.ledger_selector["period_value"] == [
+        f"2025-{month:02d}" for month in range(1, 13)
+    ]
+    assert len(uc_reference.value_operands) == 10
+    assert {
+        tuple(
+            operand["dimension_values"][key]
+            for key in ("family_type", "payment_indicator", "child_entitlement")
+        )
+        for operand in uc_reference.value_operands
+    } == {
+        (family, "Yes", entitled)
+        for family in (
+            "Single, no children",
+            "Single, with children",
+            "Couple, no children",
+            "Couple, with children",
+            "Unknown or missing family type",
+        )
+        for entitled in ("No", "Yes")
+    }
 
     references = tuple(
         reference
@@ -504,12 +545,13 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
     )
     references = tuple(_reference_by_name(name) for name in selected_names)
     facts = [
-        _fact_for_reference(reference, value)
+        fact
         for reference, value in zip(
             references,
             (20.0, 33.0, 2.0, 5.0, 3.0),
             strict=True,
         )
+        for fact in _facts_for_reference(reference, value)
     ]
     from microcosm.build.ledger_targets import compile_ledger_target_references
     from microcosm.build.uk_runtime.ledger_targets import (
@@ -518,6 +560,9 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
     )
 
     registry = compile_ledger_target_references(facts, references, country="uk")
+    headline = next(spec for spec in registry.specs if spec.name == "dwp.uc.households")
+    assert headline.value == 20.0
+    assert headline.metadata["ledger_member_fact_count"] == "120"
     resolver = StubCrosstabResolver()
     resolver.contract_targets = _uk_contract_targets()
     stage = UKNationalCalibrationStage(
@@ -983,3 +1028,20 @@ def test_unmapped_household_reduction_names_the_published_reducer():
                 "value": 1,
             }
         )
+
+
+@pytest.mark.parametrize("defect", ["missing", "duplicate"])
+def test_packaged_uc_headline_refuses_incomplete_month_cell_fixture(defect) -> None:
+    from microcosm.build.ledger_targets import compile_ledger_target_references
+
+    reference = _reference_by_name("dwp.uc.households")
+    facts = _facts_for_reference(reference, 20.0)
+    if defect == "missing":
+        # Keep every month represented but omit one paid/entitlement cell.
+        facts.pop(0)
+    else:
+        # Keep the expected total size and unique IDs; repeat a cell instead.
+        facts[0]["dimensions"] = dict(facts[1]["dimensions"])
+
+    with pytest.raises(ValueError, match="monthly window"):
+        compile_ledger_target_references(facts, [reference], country="uk")

@@ -801,6 +801,12 @@ def _uc_composition_frame():
                         "LONE_PARENT",
                         "SINGLE",
                     ],
+                    "uc_calibration_administrative_family_type": [
+                        "LONE_PARENT",
+                        "UNKNOWN",
+                        "UNKNOWN",
+                        "SINGLE",
+                    ],
                     "universal_credit": [100.0, 0.0, 0.0, 100.0],
                     "uc_calibration_child_count": [1, 0, 1, 0],
                 }
@@ -885,6 +891,8 @@ def test_uc_national_counts_exclude_ni_and_unknown_regions_at_benunit_grain():
                     "benunit_id": np.arange(10),
                     "universal_credit": np.full(10, 29_000.0),
                     "uc_calibration_family_type": ["COUPLE_NO_CHILDREN"] * 10,
+                    "uc_calibration_administrative_family_type": ["COUPLE_NO_CHILDREN"]
+                    * 10,
                     "uc_calibration_child_count": np.ones(10),
                 }
             ),

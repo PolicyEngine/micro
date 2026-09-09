@@ -13,7 +13,10 @@ from microcosm.build.uk_runtime.ledger_targets import (
     UKFrameTargetAdapter,
     materialize_uk_ledger_targets,
 )
-from microcosm.build.uk_runtime.measure_simulation import compute_uk_measure_input
+from microcosm.build.uk_runtime.measure_simulation import (
+    UKMeasureResolver,
+    compute_uk_measure_input,
+)
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
@@ -95,6 +98,266 @@ def test_uc_family_measure_refuses_ambiguous_claimant_count():
         )
 
 
+def _administrative_fixture(allowances=None):
+    frame, original = _fixture()
+    # In benefit-unit order: lone parent; structural young couple receiving a
+    # single allowance; lone parent; unavailable allowance; cohabiting parents.
+    # The single-allowance couple is an explicit input scenario, not an assertion
+    # that the engine reconstructs administrative partner eligibility.
+    values = np.array([1200, 1200, 1200, 0, 1800], dtype=np.float32)
+    if allowances is not None:
+        values = np.asarray(allowances)
+
+    def parameters(period):
+        assert period == "2025"
+        return SimpleNamespace(
+            gov=SimpleNamespace(
+                dwp=SimpleNamespace(
+                    universal_credit=SimpleNamespace(
+                        standard_allowance=SimpleNamespace(
+                            amount=SimpleNamespace(SINGLE_YOUNG=80, SINGLE_OLD=100)
+                        )
+                    )
+                )
+            )
+        )
+
+    def calculate(variable, year):
+        if variable == "uc_standard_allowance":
+            return values
+        if variable == "uc_child_element":
+            # A reported 19-year-old need not attract a child element; a young
+            # claimant qualifying as a QYP does not make their own claim entitled.
+            return np.array([0, 0, 100, 0, 100])
+        if variable == "universal_credit":
+            return np.array([100, 100, 0, 0, 100])
+        return original.calculate(variable, year)
+
+    return frame, SimpleNamespace(
+        calculate=calculate,
+        tax_benefit_system=SimpleNamespace(parameters=parameters, variables={}),
+    )
+
+
+def test_administrative_family_uses_allowance_without_rewriting_claimant_roles():
+    """DWP Family Type uses the allowance, including single-rate couples.
+
+    https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html
+    """
+    frame, sim = _administrative_fixture()
+    before = frame.table("person").copy(deep=True)
+    values, route = compute_uk_measure_input(
+        frame, sim, "benunit", "uc_calibration_administrative_family_type", 2025
+    )
+    assert values.tolist() == [
+        "LONE_PARENT",
+        "SINGLE",
+        "LONE_PARENT",
+        "UNKNOWN",
+        "COUPLE_WITH_CHILDREN",
+    ]
+    assert route == "uc_allowance_and_reported_child_proxy"
+    structural, _ = compute_uk_measure_input(
+        frame, sim, "benunit", "uc_calibration_family_type", 2025
+    )
+    assert structural[1] == "COUPLE_NO_CHILDREN"
+    pd.testing.assert_frame_equal(before, frame.table("person"))
+
+
+def test_administrative_family_uses_strict_single_maximum_in_amount_precision():
+    # Compare at the precision of the model amount, not a tolerance that can
+    # relabel an actual amount above the maximum. Test both float widths.
+    for dtype in (np.float32, np.float64):
+        boundary = dtype(1200)
+        above = np.nextafter(boundary, dtype(np.inf))
+        frame, sim = _administrative_fixture(
+            np.array([boundary, above, boundary, 0, 1800], dtype=dtype)
+        )
+        values, _ = compute_uk_measure_input(
+            frame, sim, "benunit", "uc_calibration_administrative_family_type", 2025
+        )
+        assert values[0] == "LONE_PARENT"
+        assert values[1] == "COUPLE_NO_CHILDREN"
+        assert values[3] == "UNKNOWN"
+
+
+@pytest.mark.parametrize("allowances", [[1200], [1200, 1200, np.nan, 0, 1800]])
+def test_administrative_family_refuses_unusable_allowances(allowances):
+    frame, sim = _administrative_fixture(allowances)
+    with pytest.raises(ValueError, match="UC.*allowance"):
+        compute_uk_measure_input(
+            frame, sim, "benunit", "uc_calibration_administrative_family_type", 2025
+        )
+
+
+def test_child_entitlement_diagnostic_is_distinct_from_reported_children():
+    frame, sim = _administrative_fixture()
+    children, _ = compute_uk_measure_input(
+        frame, sim, "benunit", "uc_calibration_child_count", 2025
+    )
+    entitled, route = compute_uk_measure_input(
+        frame, sim, "benunit", "uc_calibration_child_entitlement", 2025
+    )
+    assert children.tolist() == [1, 0, 1, 0, 1]
+    assert entitled.tolist() == [False, False, True, False, True]
+    assert (entitled & (sim.calculate("universal_credit", 2025) > 0)).tolist() == [
+        False,
+        False,
+        False,
+        False,
+        True,
+    ]
+    assert route == "uc_child_element_entitlement_proxy"
+
+
+def test_paid_comparison_receipt_records_observation_and_family_limits():
+    frame, sim = _administrative_fixture()
+    resolver = UKMeasureResolver.__new__(UKMeasureResolver)
+    resolver.frame, resolver.simulation, resolver.year = frame, sim, 2025
+    resolver._receipt = {"mode": "synthetic"}
+    resolver._uc_tcl_measures_used = set()
+    assert "uc_paid_comparison_contract" not in resolver.receipt()
+    for variable in (
+        "uc_calibration_administrative_family_type",
+        "uc_calibration_child_entitlement",
+    ):
+        assert resolver.knows("benunit", variable)
+        assert not resolver.knows("household", variable)
+        assert resolver.entity_for(variable) == "benunit"
+        resolver.compute("benunit", variable)
+    contract = resolver.receipt()["uc_paid_comparison_contract"]
+    assert contract["model_payment_proxy"] == "universal_credit > 0"
+    assert contract["model_child_entitlement_proxy"] == "uc_child_element > 0"
+    assert contract["open_nil_claims_identified"] is False
+    assert contract["model_period"] == "2025"
+    assert contract["zero_standard_allowance_family"] == "UNKNOWN"
+    assert "ineligible partner" in contract["family_limitations"]
+    assert len(contract["computed_measures"]) == 2
+
+
+def test_paid_diagnostic_masks_preserve_benunit_order_and_separate_joint_states():
+    from microcosm.build.uk_runtime.measure_simulation import (
+        compute_uc_paid_diagnostic_masks,
+    )
+
+    frame, sim = _administrative_fixture()
+    before = {
+        entity: frame.table(entity).copy(deep=True) for entity in ("person", "benunit")
+    }
+    masks = compute_uc_paid_diagnostic_masks(frame, sim, 2025)
+    assert frame.table("benunit").benunit_id.tolist() == [50, 30, 10, 40, 20]
+    assert all(mask.shape == (5,) and mask.dtype == bool for mask in masks.values())
+    assert masks["paid.total"].tolist() == [True, True, False, False, True]
+    assert masks["model.zero_award"].tolist() == [False, False, True, True, False]
+    assert masks["paid.child_entitled"].tolist() == [False, False, False, False, True]
+    assert masks["paid.family_measure_disagreement"].tolist() == [
+        False,
+        True,
+        False,
+        False,
+        False,
+    ]
+    assert masks["paid.child_count_measure_disagreement"].tolist() == [
+        True,
+        False,
+        False,
+        False,
+        False,
+    ]
+    assert masks["paid.children.1"].tolist() == [True, False, False, False, True]
+    assert masks["paid_no_child_entitlement.family.LONE_PARENT"].tolist() == [
+        True,
+        False,
+        False,
+        False,
+        False,
+    ]
+    assert masks["paid_child_entitled.family.COUPLE_WITH_CHILDREN"].tolist() == [
+        False,
+        False,
+        False,
+        False,
+        True,
+    ]
+    assert not masks["paid.family.UNKNOWN"].any()
+    # Each partition independently conserves the paid mask; it does not create
+    # a family-by-child-count joint from the separate publisher tables.
+    for dimension, categories in {
+        "family": [
+            "SINGLE",
+            "LONE_PARENT",
+            "COUPLE_NO_CHILDREN",
+            "COUPLE_WITH_CHILDREN",
+            "UNKNOWN",
+        ],
+        "children": ["0", "1", "2", "3", "4", "5_or_more"],
+    }.items():
+        np.testing.assert_array_equal(
+            sum(
+                masks[f"paid.{dimension}.{category}"].astype(int)
+                for category in categories
+            ),
+            masks["paid.total"].astype(int),
+        )
+        for category in categories:
+            np.testing.assert_array_equal(
+                masks[f"paid_child_entitled.{dimension}.{category}"]
+                | masks[f"paid_no_child_entitlement.{dimension}.{category}"],
+                masks[f"paid.{dimension}.{category}"],
+            )
+    for entity in before:
+        pd.testing.assert_frame_equal(before[entity], frame.table(entity))
+    assert not any("nil" in name or "open" in name for name in masks)
+
+
+@pytest.mark.requires_uk
+@pytest.mark.parametrize("year", [2024, 2025])
+def test_released_engine_single_allowance_is_not_misclassified_by_float_precision(year):
+    """Use the engine's processed year rates and real float32 allowance output."""
+    from policyengine_uk import Simulation
+
+    from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
+
+    frame, _ = _fixture()
+    person, benunit = frame.table("person"), frame.table("benunit")
+    claimants = frs_uc_claimant_mask(person, benunit)
+    people = {
+        str(int(row.person_id)): {
+            "age": {str(year): int(row.age)},
+            "is_uc_claimant": {str(year): bool(claimants[i])},
+        }
+        for i, row in enumerate(person.itertuples(index=False))
+    }
+    units = {
+        str(int(bu)): {
+            "members": [
+                str(int(pid))
+                for pid in person.loc[person.person_benunit_id == bu, "person_id"]
+            ]
+        }
+        for bu in benunit.benunit_id
+    }
+    sim = Simulation(
+        situation={
+            "people": people,
+            "benunits": units,
+            "households": {
+                key: {"members": unit["members"]} for key, unit in units.items()
+            },
+        }
+    )
+    values, _ = compute_uk_measure_input(
+        frame, sim, "benunit", "uc_calibration_administrative_family_type", year
+    )
+    assert values.tolist() == [
+        "LONE_PARENT",
+        "COUPLE_NO_CHILDREN",
+        "LONE_PARENT",
+        "SINGLE",
+        "COUPLE_WITH_CHILDREN",
+    ]
+
+
 def test_full_uc_payment_registry_matches_independent_relationship_and_band_cases():
     """All active rows count benefit units, retaining edges of excluded bands."""
     # Expected labels are stated by scenario, never calculated by the resolver.
@@ -169,13 +432,31 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.ones(len(hh)), WeightKind.DESIGN)},
     )
-    sim = SimpleNamespace(calculate=lambda variable, year: np.asarray(qualifying[::-1]))
+    allowance = np.array(
+        [1800 if family.startswith("COUPLE") else 1200 for family in expected_families]
+    )
+    _, administrative_sim = _administrative_fixture()
+    sim = SimpleNamespace(
+        calculate=lambda variable, year: (
+            allowance
+            if variable == "uc_standard_allowance"
+            else np.asarray(qualifying[::-1])
+        ),
+        tax_benefit_system=administrative_sim.tax_benefit_system,
+    )
     family, _ = compute_uk_measure_input(
         frame, sim, "benunit", "uc_calibration_family_type", 2025
     )
     np.testing.assert_array_equal(family, expected_families)
     adapter = UKFrameTargetAdapter(frame)
     adapter.set_column("benunit", "uc_calibration_family_type", family)
+    administrative_family, _ = compute_uk_measure_input(
+        frame, sim, "benunit", "uc_calibration_administrative_family_type", 2025
+    )
+    np.testing.assert_array_equal(administrative_family, expected_families)
+    adapter.set_column(
+        "benunit", "uc_calibration_administrative_family_type", administrative_family
+    )
 
     refs = [
         r
