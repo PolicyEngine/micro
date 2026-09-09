@@ -772,3 +772,7 @@ Per-layer pins and actual commit messages checked; store/current-main preservati
 
 ### Next
 Root reviews exact ordinary guard/source/resource admissions before execution. Full65 findings and survey/SCF lanes remain separately owned. No remote action is authorized.
+
+### Integration source-resource closure — 2026-09-09
+
+Root preflight found seven JSON source definitions declared by the ordinary guard but omitted by the staged patch delivery. Added the exact previously reviewed resource bytes from the accepted full65 source projection; no new resource admission or genuine payload. Preserved source staging and earlier evidence.
