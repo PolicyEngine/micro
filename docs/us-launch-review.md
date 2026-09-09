@@ -143,9 +143,9 @@ The following work remains open:
 
 1. Finish current survey predictors and demographic graph bindings, then connect
    them to the genuine combined survey population.
-2. Integrate the genuine 59-output donor and its corrected integrity codec with
-   the combined population, complete source-qualified Social Security recipient
-   reconciliation, and supply SCF loan inputs. Separate component runs passed
+2. Project the genuine canonical59 donor into the explicit 55-output profile,
+   bind the survey Social Security total as predictor nine, complete survey
+   beneficiary/component modeling, and supply SCF loan inputs. Separate component runs passed
    128 profile/compatibility controls and 26 current-survey predictor controls;
    see [the implementation status](current-survey-puf59-progress.md) and
    [donor construction and growth](puf2015-canonical59-and-growth.md).
@@ -157,11 +157,14 @@ The following work remains open:
    the build must retain one assigned Census block and derive its larger
    geographies. Prior wages remain excluded. A source operator's existence is
    not complete cell coverage.
-4. Verify the optimized identity encoder on genuine survey replay. One genuine
-   successor run reached persisted-artifact verification but exhausted its
-   two-hour CPU limit. That run failed; it is not a verified build. Performance
-   changes now pass the small identity controls; a new genuine run must also pass
-   the current seven-node calibration/diagnostics checks before acceptance.
+4. Extend the accepted small native replay to the complete build. The genuine
+   seven-node age-development run now passes at 1/1000: 1,584 source households,
+   3,168 records after the support clone, final export/readback and owner/target
+   verification, 71.1 minutes and 8.26 GB peak RSS. Its source is frozen at
+   `a9895d8a5`, before the new Social Security, PUF55 and atomic-geography work.
+   The prior two-hour failure and stale-derived-attachment failure remain failed
+   historical runs. [The scoped acceptance record](../experiments/us-survey-age-development-20260909.json)
+   does not certify enrichment, full national/CD calibration or a release.
 5. Run real model evaluation, national/CD calibration, holdout checks and complete
    export/replay verification, followed by a dashboard bound to that exact file.
    Check every pruned analysis file separately.

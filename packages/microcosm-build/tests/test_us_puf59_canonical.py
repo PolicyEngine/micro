@@ -2,13 +2,16 @@
 
 
 def test_puf59_canonical_source_and_artifact_controls():
+    import copy
     import hashlib
+    import json
     from dataclasses import replace
 
     import numpy as np
     import pandas as pd
 
     from microcosm.build.us_runtime import full_puf_enrichment as enrichment
+    from microcosm.build.us_runtime import puf55_canonical_donor as donor55
     from microcosm.build.us_runtime import puf59_canonical as canonical
     from microcosm.build.us_runtime import puf59_canonical_artifact as artifact
     from microcosm.build.us_runtime import puf_full_source as full
@@ -360,8 +363,100 @@ def test_puf59_canonical_source_and_artifact_controls():
         np.array_equal(donor.weight.to_numpy(), result.design_weight),
     )
 
+    # Reuse actual source decoding, canonical construction and envelope checks.
+    # The old four SS carriers represent one total, never observed components.
+    for candidate in (small_result, result):
+        packed = artifact.encode_canonical_puf59(candidate)
+        digest = hashlib.sha256(packed).hexdigest()
+        projected, metadata = donor55.canonical_puf55_donor_from_artifact(
+            packed, expected_artifact_sha256=digest
+        )
+        profile = enrichment.PUF55_SURVEY_SS
+        check(
+            "puf55_exact_order_" + str(len(candidate.recids)),
+            tuple(projected.columns)
+            == (
+                *profile.predictors,
+                *profile.targets,
+                "weight",
+                "puf_person_incidence_capacity",
+            ),
+        )
+        check(
+            "puf55_identity_axis_" + str(len(candidate.recids)),
+            projected.index.name == "tax_unit_id"
+            and np.array_equal(projected.index.to_numpy(), candidate.recids),
+        )
+        check(
+            "puf55_total_predictor_is_grown_source_total",
+            np.array_equal(
+                projected[enrichment.SURVEY_SS_TOTAL_PREDICTOR].to_numpy(),
+                candidate.columns["social_security_retirement"],
+            ),
+        )
+        check(
+            "puf55_all_retained_targets_and_weight_unchanged",
+            all(
+                np.array_equal(projected[k].to_numpy(), candidate.columns[k])
+                for k in profile.targets
+            )
+            and np.array_equal(projected.weight.to_numpy(), candidate.design_weight)
+            and (projected.puf_person_incidence_capacity == 1).all(),
+        )
+        check(
+            "puf55_no_component_carriers_or_source_authority",
+            not set(enrichment.SURVEY_SS_COMPONENTS) & set(projected.columns)
+            and metadata["artifact_sha256"] == digest
+            and metadata["source_receipt_sha256"] == candidate.receipt["sha256"]
+            and metadata["social_security_total"]["origin"] == "modeled_transport"
+            and metadata["release_eligible"] is False
+            and metadata["source_authority_granted"] is False,
+        )
+        check(
+            "puf55_source_bytes_unchanged",
+            artifact.encode_canonical_puf59(candidate) == packed,
+        )
+        refuses(
+            "puf55_expected_artifact_identity_required",
+            lambda packed=packed: donor55.canonical_puf55_donor_from_artifact(
+                packed, expected_artifact_sha256="0" * 64
+            ),
+            "PUF55_DONOR_ARTIFACT_IDENTITY",
+        )
+
+    # Correctly rehashed, internally consistent artifacts still cannot change
+    # the upstream SS carrier semantics accepted by this projection.
+    def repacked_ss_change(*, column=None, method=None):
+        changed_arrays = dict(arrays)
+        changed_receipt = copy.deepcopy(receipt)
+        if column is not None:
+            changed_arrays[column] = np.ones(len(arrays["RECID"]))
+            changed_receipt["growth"]["output_values_sha256"] = growth._digest(
+                changed_arrays
+            )
+        if method is not None:
+            changed_receipt["model_assumptions"]["ss_method"] = method
+        changed_receipt.pop("sha256")
+        changed_receipt["sha256"] = hashlib.sha256(
+            json.dumps(
+                changed_receipt, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ).encode()
+        ).hexdigest()
+        return artifact.reencode_canonical_puf59(changed_arrays, changed_receipt)
+
+    for altered in (
+        repacked_ss_change(column="social_security_disability"),
+        repacked_ss_change(method="Individual component observations"),
+    ):
+        refuses(
+            "puf55_changed_carrier_contract_refused",
+            lambda altered=altered: donor55.canonical_puf55_donor_from_artifact(
+                altered, expected_artifact_sha256=hashlib.sha256(altered).hexdigest()
+            ),
+            "PUF55_DONOR_SS_CARRIER",
+        )
+
     # Integrity successor: domain-valid mutations cannot inherit old provenance.
-    import json
     import struct
 
     check(
