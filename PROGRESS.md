@@ -726,3 +726,14 @@ The still-earlier PolicyEngine-US 1.819.0 lock-bump lane merged into
 `origin/main` at `7b90bb18` on 2026-08-24; its final state remains at commit
 `05d254aa` and its detailed receipts remain in the historical section of
 `_LANE-NOTES.md`.
+
+## US launch integration staging — 2026-09-09
+
+### State
+Source-only staging in progress. Execution and source/data admission remain root-owned.
+
+### Done
+Verified requested clean branch, base HEAD, main ancestry and preservation pins.
+
+### Next
+Apply thirteen explicit source layers, commit each, then separately review isolated ordinary execution. Existing journal history above is retained.
