@@ -506,3 +506,80 @@ def test_observer_payload_cannot_mutate_the_accepted_state():
         _post_projection_observer=alter,
     )
     assert actual.tobytes() == expected.tobytes()
+
+
+def _grouped_run(**overrides):
+    options = dict(epochs=6, learning_rate=0.05, grouped_upper_bounds=_groups())
+    options.update(overrides)
+    return calibrate(_frame(), _targets(), **options)
+
+
+def test_public_grouped_apg_reaches_the_adam_path_and_warns(monkeypatch):
+    """The deprecated alias is normalized before the grouped mode check."""
+    entered = []
+    grouped = solve._optimize_grouped
+
+    def recorded(*args, **kwargs):
+        entered.append(True)
+        return grouped(*args, **kwargs)
+
+    monkeypatch.setattr(solve, "_optimize_grouped", recorded)
+    with pytest.warns(DeprecationWarning, match="apg"):
+        aliased = _grouped_run(method="apg")
+    plain = _grouped_run(method="adam")
+    assert entered == [True, True]
+    assert aliased.options["method"] == "adam" == plain.options["method"]
+    assert aliased.weights.tobytes() == plain.weights.tobytes()
+    assert (
+        aliased.options["grouped_upper_bounds"] == plain.options["grouped_upper_bounds"]
+    )
+
+
+def test_ungrouped_apg_alias_is_unchanged_by_the_reordering():
+    """Control: the ungrouped alias behaviour the move must not disturb."""
+    with pytest.warns(DeprecationWarning, match="apg"):
+        aliased = calibrate(_frame(), _targets(), epochs=6, method="apg")
+    plain = calibrate(_frame(), _targets(), epochs=6, method="adam")
+    assert aliased.options["method"] == "adam"
+    assert aliased.weights.tobytes() == plain.weights.tobytes()
+
+
+@pytest.mark.parametrize("mass", ["conserved", "Free", "", "none", None, 0, True])
+def test_public_grouped_invalid_mass_is_reported_as_mass(monkeypatch, mass):
+    """An unknown mass must not be silently read as a conserve-mass request."""
+    calls = []
+    monkeypatch.setattr(torch.optim, "Adam", lambda *a, **k: calls.append(1))
+    with pytest.raises(ValueError, match="mass must be") as caught:
+        _grouped_run(epochs=2, mass=mass)
+    assert "grouped upper bounds" not in str(caught.value)
+    assert not calls
+
+
+@pytest.mark.parametrize("method", ["sgd", "APG", "", "adam "])
+def test_public_grouped_unknown_method_is_reported_as_method(monkeypatch, method):
+    """An unknown method is a method error, not a grouped-mode refusal."""
+    calls = []
+    monkeypatch.setattr(torch.optim, "Adam", lambda *a, **k: calls.append(1))
+    with pytest.raises(ValueError, match="Unknown method") as caught:
+        _grouped_run(epochs=2, method=method)
+    assert "grouped upper bounds" not in str(caught.value)
+    assert not calls
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected",
+    [
+        ({"method": "prox"}, "grouped upper bounds"),
+        ({"mass": "conserve"}, "grouped upper bounds"),
+        ({"method": "apg", "max_weight_ratio": 2.0}, "grouped upper bounds"),
+        ({"method": "apg", "target_records": 2}, "grouped upper bounds"),
+        ({"method": "apg", "mass": "conserve"}, "grouped upper bounds"),
+    ],
+)
+def test_grouped_mode_constraints_survive_the_reordering(monkeypatch, kwargs, expected):
+    """Valid-valued but unsupported grouped modes still refuse as before."""
+    calls = []
+    monkeypatch.setattr(torch.optim, "Adam", lambda *a, **k: calls.append(1))
+    with pytest.raises(ValueError, match=expected):
+        _grouped_run(epochs=2, **kwargs)
+    assert not calls

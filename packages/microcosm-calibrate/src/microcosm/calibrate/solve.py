@@ -1797,6 +1797,28 @@ def calibrate(
             ``l2_lambda``, or if no targets compile (from the matrix build).
     """
     _validate_grouped_zero_option(grouped_upper_bounds, grouped_preserve_zeros)
+    # Normalize and value-check method/mass before grouped-mode validation:
+    # grouped bounds are documented as Adam with free mass, so the deprecated
+    # 'apg' alias must reach that check as 'adam', and an invalid mass string
+    # must report itself rather than be read as a mass-conserving request.
+    if method == "apg":
+        warnings.warn(
+            "method='apg' is deprecated and now aliases method='adam'; result "
+            "options record the normalized method='adam'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        method = "adam"
+    if method not in ("adam", "prox"):
+        raise ValueError(
+            f"Unknown method {method!r}; supported: 'adam' (Adam on log-weights), "
+            "'prox' (proximal gradient on raw weights, for the l1_lambda penalty), "
+            "and deprecated alias 'apg' -> 'adam'."
+        )
+    if mass not in (FREE_MASS, CONSERVE_MASS):
+        raise ValueError(
+            f"mass must be {FREE_MASS!r} or {CONSERVE_MASS!r}, got {mass!r}."
+        )
     if grouped_upper_bounds is not None:
         _validate_grouped_mode(
             grouped_upper_bounds,
@@ -1830,24 +1852,6 @@ def calibrate(
             _post_projection_observer(payload)
         _check_grouped_household_ids(frame, actual_ids)
 
-    if method == "apg":
-        warnings.warn(
-            "method='apg' is deprecated and now aliases method='adam'; result "
-            "options record the normalized method='adam'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        method = "adam"
-    if method not in ("adam", "prox"):
-        raise ValueError(
-            f"Unknown method {method!r}; supported: 'adam' (Adam on log-weights), "
-            "'prox' (proximal gradient on raw weights, for the l1_lambda penalty), "
-            "and deprecated alias 'apg' -> 'adam'."
-        )
-    if mass not in (FREE_MASS, CONSERVE_MASS):
-        raise ValueError(
-            f"mass must be {FREE_MASS!r} or {CONSERVE_MASS!r}, got {mass!r}."
-        )
     if mass_reason is not None:
         if mass != FREE_MASS:
             raise ValueError(

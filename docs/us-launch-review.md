@@ -68,13 +68,29 @@ Receipt: `f8009ec6d07d076eff6a90ec97061d538756293547a21758ab2bc38fa5f7aab8`.
 
 Fable's earlier replay review closed seven findings. A separate review of the
 published consolidation identified the checkpoint test gap and additional
-grouped-bound, metadata-store and facade coverage work, which remains open.
+grouped-bound, metadata-store and facade coverage work. The portable grouped-bound,
+fixed-support and metadata-store selection now passes all 117 tests with no skips.
+The fixes reject nonfinite stored JSON as `StoreCorrupt` and normalize the deprecated
+`apg` alias before grouped-mode validation. Source/control, resource and provider
+bytes match before, after and in an external postcheck. Receipt:
+`3674af9d610417897539da6eae766726d0f582ae6dd3bc2c3e550fefa45bab68`.
+The historical platform fixture and complete facade import coverage remain separate.
 Environment-specific prepatch byte fixtures do not establish portable CI byte
 parity. Existing v1 graph stores remain preserved; v2 execution uses a new store
 rather than silently promoting old frames.
 
 Private runtime records and generated population artifacts stay outside this
 source PR. Receipt identifiers are audit references, not reproducibility inputs.
+
+The composed 156-case test run against source commit `8157300` at documentation
+head `78d84f9` passed 152 cases and failed four current-survey cases with
+`PRODUCER_CHANGED`. Its execution guard also recorded unexpected test-bytecode
+and installed-model cache-directory probes. Source/control, model-source and
+resource bytes remained unchanged. This is a failed integration run, not a
+replacement for the earlier passing component evidence. Its receipt is
+`67ff10fef45c58d2d6ea15c72b4311a4daa901dd2aae263fbb863d38c13bc7c8`.
+Broader CI also identifies missing helpers and stale schema, seed and runtime
+classification expectations. These failures remain open.
 
 ## Component evidence and remaining work
 
@@ -84,6 +100,21 @@ including DC. PUF source ingestion retained 207,692 ordinary records and exclude
 four disclosure records. A corrected SCF wage-code interpretation passed source
 preparation and model-mechanism checks. Those results belong to their respective
 component revisions; they do not establish a calibrated result on this branch.
+
+The corrected canonical-donor codec v2 was rebuilt from the same accepted typed
+PUF source. All 207,692 returns and 59 outputs passed selected-cohort replay and
+byte/value serialization checks in 24.37 seconds, using 1.95 GB peak RSS. The 481
+source/control files and four resources matched their before/after/current pins.
+Receipt: `6b334ca8df6c6ba721b60f84d28c43151a1e1b54e097616a3c0fa208daeb8cba`.
+This run constructs the donor; it does not fit or place it onto survey recipients.
+
+The proposed identity encoder passed two 40-case preflights and four 40-case
+timing runs in both execution orders. The 36 tiny invented cases retain exact
+identity bytes and mutation checks. Nine of the 72 case/trial comparisons were
+slower, including the small Python-string Frame in both orders; larger numeric
+fixtures improved substantially. These timings do not establish genuine-build
+speed. Integration must preserve the newer current-wage projection in the
+published source, which was absent from the benchmark's accepted baseline.
 
 The following work remains open:
 

@@ -69,6 +69,16 @@ approximation, with its source and vintage. A mapping convention cannot be
 presented as observed household location. See the
 [ONS methodology](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/methodologies/smallareapopulationestimatesqmi).
 
+For US congressional districts, the Census Bureau's CD119 block equivalency
+file assigns whole original 2020 tabulation blocks to districts. Colorado's
+block `080010096072000` crosses the enacted CD07/CD08 boundary but is assigned
+to CD08 for tabulation. Represent this as an official tabulation mapping,
+not exact spatial containment. The same source distinguishes original 2020
+blocks from subsequently adjusted geometry and includes undefined `ZZ` areas.
+See the [Census Bureau's CD119 documentation](https://www.census.gov/geographies/mapping-files/2025/dec/rdo/119-congressional-district-bef.html).
+By contrast, the same-vintage tract-to-PUMA relation is nested, as described in
+the [Census PUMA guidance](https://www.census.gov/programs-surveys/geography/guidance/geo-areas/pumas.html).
+
 ## Required behavior
 
 - Respect observed source constraints, such as ACS PUMA and FRS region. Record

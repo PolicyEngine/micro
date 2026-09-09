@@ -194,10 +194,32 @@ def _require_key(key: str) -> str:
     return key
 
 
+def _reject_non_finite_constant(token: str) -> float:
+    """Refuse the ``NaN``/``Infinity`` literals ``json`` accepts by default."""
+    raise ValueError(f"Stored JSON carries the non-finite constant {token}.")
+
+
+def _finite_json_number(token: str) -> float:
+    """Refuse numeric literals that overflow to an infinity (e.g. ``1e999``)."""
+    value = float(token)
+    if not math.isfinite(value):
+        raise ValueError(f"Stored JSON carries the non-finite number {token}.")
+    return value
+
+
 def _load_json_file(path: Path, *, label: str) -> Any:
+    # ``_canonical_json`` writes every store JSON with ``allow_nan=False``, so
+    # no valid payload can carry a non-finite value and the decode boundary is
+    # the right place to refuse one.  Without these hooks a corrupt frame
+    # manifest survives the load and only fails later inside the canonical
+    # re-encode, which escapes as TypeError instead of StoreCorrupt.
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=_reject_non_finite_constant,
+            parse_float=_finite_json_number,
+        )
+    except (OSError, UnicodeDecodeError, ValueError) as error:
         raise StoreCorrupt(f"Stored {label} is not readable canonical JSON.") from error
 
 
