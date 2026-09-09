@@ -619,7 +619,6 @@ class StagingTelemetryV2:
         run_kind: str = "build",
         delivery_mode: DeliveryMode = "local_and_remote",
         repo_id: str | None = DEFAULT_UK_STAGING_REPO,
-        path_prefix: str = DEFAULT_STAGING_PREFIX,
         upload_interval_seconds: float = 30.0,
         api: Any = None,
         clock: Callable[[], str] = _utc_now,
@@ -654,9 +653,8 @@ class StagingTelemetryV2:
         self.repo_id = (
             repo_id.strip() if isinstance(repo_id, str) and repo_id.strip() else None
         )
-        self.path_prefix = _safe_relative_path(path_prefix, label="path_prefix")
         self.local_dir = Path(local_dir)
-        self.run_dir = self.local_dir / self.path_prefix / self.run_id
+        self.run_dir = self.local_dir / DEFAULT_STAGING_PREFIX / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.upload_interval_seconds = max(0.0, float(upload_interval_seconds))
         self._clock = clock
@@ -704,7 +702,7 @@ class StagingTelemetryV2:
 
     @property
     def repo_run_prefix(self) -> str:
-        return f"{self.path_prefix}/{self.run_id}"
+        return f"{DEFAULT_STAGING_PREFIX}/{self.run_id}"
 
     @property
     def uploads_succeeded(self) -> int:
@@ -917,9 +915,7 @@ class StagingTelemetryV2:
         self._maybe_upload(force=True)
 
     def validate_local_bundle(self) -> dict[str, Any]:
-        return validate_v2_bundle(
-            self.local_dir, self.run_id, path_prefix=self.path_prefix
-        )
+        return validate_v2_bundle(self.local_dir, self.run_id)
 
     def _append_event(
         self,
@@ -1112,13 +1108,11 @@ class StagingTelemetryV2:
 def validate_v2_bundle(
     local_dir: Path | str,
     run_id: str,
-    *,
-    path_prefix: str = DEFAULT_STAGING_PREFIX,
 ) -> dict[str, Any]:
     """Validate a complete locally stored version 2 bundle."""
 
     run_id = _safe_identifier(run_id, label="run_id")
-    prefix = _safe_relative_path(path_prefix, label="path_prefix")
+    prefix = DEFAULT_STAGING_PREFIX
     root = Path(local_dir)
     run_dir = root / prefix / run_id
     documents: dict[str, Any] = {}

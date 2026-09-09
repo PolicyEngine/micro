@@ -7,10 +7,7 @@ import math
 import os
 from pathlib import Path
 
-from microcosm.build.staging_v2 import (
-    DEFAULT_STAGING_PREFIX,
-    DEFAULT_UK_STAGING_REPO,
-)
+from microcosm.build.staging_v2 import DEFAULT_UK_STAGING_REPO
 
 __all__ = ["add_uk_staging_arguments", "validate_uk_staging_arguments"]
 
@@ -36,13 +33,6 @@ def add_uk_staging_arguments(parser: argparse.ArgumentParser) -> None:
             "Access-controlled Hugging Face dataset repository for best-effort "
             "telemetry delivery."
         ),
-    )
-    parser.add_argument(
-        "--staging-prefix",
-        default=_environment_default(
-            "POPULACE_UK_STAGING_PREFIX", DEFAULT_STAGING_PREFIX
-        ),
-        help="Repository-relative prefix for run-specific directories.",
     )
     parser.add_argument(
         "--staging-run-id",

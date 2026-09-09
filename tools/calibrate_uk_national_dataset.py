@@ -329,7 +329,6 @@ def _create_staging_telemetry(args: argparse.Namespace) -> StagingTelemetryV2 | 
         run_kind="calibration",
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
-        path_prefix=args.staging_prefix,
         upload_interval_seconds=args.staging_upload_interval_seconds,
     )
 

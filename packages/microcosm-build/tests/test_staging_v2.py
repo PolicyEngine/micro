@@ -1,3 +1,4 @@
+import argparse
 import hashlib
 import json
 import subprocess
@@ -6,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from microcosm.build.staging_cli import add_uk_staging_arguments
 from microcosm.build.staging_v2 import (
     CALIBRATION_PROGRESS_SCHEMA,
     EVENT_SCHEMA,
@@ -240,8 +242,6 @@ def test_bundle_validation_rejects_shared_document_disagreement(tmp_path, field)
 def test_identifiers_and_paths_cannot_escape_contract_root(tmp_path):
     with pytest.raises(StagingContractError, match="run_id"):
         _recorder(tmp_path, run_id="../outside")
-    with pytest.raises(StagingContractError, match="path_prefix"):
-        _recorder(tmp_path, path_prefix="../runs")
     with pytest.raises(StagingContractError, match="Local-only"):
         _recorder(tmp_path, repo_id="policyengine/example")
 
@@ -571,3 +571,24 @@ def test_remote_read_back_rejects_changed_declared_file(tmp_path, corrupt_path):
         telemetry.verify_remote()
 
     assert telemetry.delivery_summary["read_back"] == "failed"
+
+
+def test_version_2_storage_prefix_is_fixed_to_runs(tmp_path):
+    telemetry = _recorder(tmp_path)
+
+    assert telemetry.run_dir == tmp_path / "telemetry" / "runs" / telemetry.run_id
+    assert telemetry.repo_run_prefix == f"runs/{telemetry.run_id}"
+    with pytest.raises(TypeError, match="path_prefix"):
+        _recorder(tmp_path, path_prefix="candidate-runs")
+    with pytest.raises(TypeError, match="path_prefix"):
+        validate_v2_bundle(tmp_path, telemetry.run_id, path_prefix="candidate-runs")
+
+
+def test_version_2_cli_does_not_offer_a_storage_prefix_override():
+    parser = argparse.ArgumentParser()
+    add_uk_staging_arguments(parser)
+
+    args = parser.parse_args([])
+    assert not hasattr(args, "staging_prefix")
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--staging-prefix", "candidate-runs"])

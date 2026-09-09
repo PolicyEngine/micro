@@ -115,10 +115,14 @@ Both UK commands support these staging modes:
   into build evidence.
 
 Common options are `--staging-dir`, `--staging-repo-id`,
-`--staging-prefix`, `--staging-run-id`, `--staging-candidate-id`,
+`--staging-run-id`, `--staging-candidate-id`,
 `--staging-upload-interval-seconds`, and `--staging-read-back`. An empty
 repository identifier is invalid in remote mode. Authenticated read-back is
 valid only in remote mode.
+
+Version 2 storage uses the fixed repository prefix `runs/`. Individual runs
+cannot select another prefix, so consumers can enumerate that subtree without
+traversing the rest of the repository.
 
 Each local or remote run contains only files below its own run directory:
 
