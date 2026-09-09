@@ -1,5 +1,5 @@
 {
-  "source_fact_feed": ".codex-work/consumer_facts_uk.jsonl",
+  "source_fact_feed": "chronicle-uk-6fb700e/consumer_facts.jsonl",
   "target_period": 2025,
   "candidate_count": 22530,
   "contract_target_count": 34,
