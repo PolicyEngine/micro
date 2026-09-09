@@ -422,3 +422,68 @@ seed protocol 6174167d…, seed map 892435cc…, loader golden vector b556379f�
 (multispine pool-tool test), the regenerated US coverage report, the H1 calibrate parity fixture
 (regenerated on the authoring platform, `fit.qrf` platform map reverted).
 
+### P50 — 55,000 at `pi_hi 0.5`, 2,000 epochs: the first sized dataset at full fidelity
+
+**Completed 2026-09-09 04:06Z, exit 1 = candidate blocked by the gate battery** (17,543 s = 4.87 h wall,
+11.6 GB peak RSS; Logbook row 1b2a4d98…, chained on S2's d5a33c11…). Code e80112a4 clean (pre-fix; the
+0.95 run carries the fixes). Every stage ran: dense joint solve (20,794 × 792,690), informed L0 search,
+draw, refit, compact export, sidecars, battery, manifest.
+
+- **Determinism at scale:** the search landed on S2's λ 1.3335e-06 and Σπ 54,834 exactly, and the scan
+  matches S2's (54,595 certainties at 0.5, 405 boundary draws from 738,095 gates, mass 266, max 0.463).
+  The seeded dense solve and search reproduce bit-for-bit on the same inputs.
+- **Size:** requested = realized = 55,000; protected carriers 10,026; H5 **213 MB** (R17 dense 2,36 GB).
+- **Dense reference** (spine-p, feed 6fb700e, 2,000 epochs): loss 0.2934 → **0.01508** (R17 0.01425 at
+  1,500 epochs on spine-m and the old feed: within 6%, no D2 trigger); Kish ESS 125,324 (R17 129,236);
+  local rows within 10% / 25%: 98.9% / 99.75%, 53 rows past 25% (9 constituency, 41 LA, 3 national).
+- **Compact refit** (55k, HT baseline, stretch bound 10, realized max ratio 10.0): loss 1.0245 → **0.0347**
+  (2.3× the dense; pre-registered "≤ 2× expected, > 5× red"); median |rel err| 0.0079 (dense 0.0080);
+  within 10% / 25%: **93.0% / 97.7%**, **463 rows past 25%** (175 constituency, 288 LA); past-cap census
+  403 → 4 (399 escaped). `max_target_scaled_change` 153 on council_tax/band_g E09000002 (target 50, dense
+  2,408, compact 10,076): the handful of tiny council-tax band-F/G targets the dense already misses by 25–47×
+  dominate every maximum; the substantive losses are support collapses on cells whose dense support was
+  spread over many rows (uc_hh_3plus_children E14001096: 5,074 → 479; tenure/social_rent N09000005:
+  14,545 → 2,149; hmrc self-employment amounts in E14001310 / E09000020 at −93%).
+- **Area support (the headline):** constituencies 650, rows per area min/median 46/84 (1 below 50), Kish
+  ESS min/median **11.4 / 59.2, 211 of 650 below the 50 floor (32%)**, distinct sources median 78 (2 below
+  50); local authorities 361, rows 2/128, ESS 2.0/89.3, **42 of 361 below 50 (12%)**, sources 4 below 50.
+  The pre-registered response ("breaches > 25% of areas → S4 at 110k") is triggered.
+- **Six gates on the compact frame:** area_support FAILED (251 entries), target_fit FAILED (20 rows),
+  per_family_fit / weight_ess / weight_ratio / ladder PASSED. Unreleasable by construction.
+- Evaluation: light steps 00/10/20/90 run beside the 0.95 solve; 30/40/50 (engine, T3/T4/T5) when the
+  machine is free.
+
+**P95b = `spine-p/f100-k15-h55000-e2000-p95b-s42`** launched by the chain 04:06:10Z on the fixed code
+e2667da9 (clean; fast-forward of `uk-dataset-sizes-355` onto `uk-355-fixes`), chained on P50's row
+1b2a4d98…, `--selection-pi-hi 0.95`; writes `size_selection_checkpoint.{npz,json}` before the draw.
+
+**P50 evaluation, light steps** (`evaluate_size_run.sh … --steps 00-run-acceptance,10-dense-reference,
+20-vs-reference,90-summary`, 15 s, beside the 0.95 solve; heavy steps 30/40/50 deferred until no solve
+runs). Run acceptance: every check passed. Pre-registered table (P50 / its dense reference / R17):
+
+- dense reference loss 0.01508 / — / 0.01425 → watch (expected ≤ 0.014; red > 0.0285). Compact ÷ dense loss
+  2.30 → watch (≤ 2 expected; red > 5). Maximum target-scaled change 153 → red (< 0.5), carried by the tiny
+  council-tax band rows below.
+- national rows within 10%: **323** / 353 / 340 → red (≥ 335 expected, red < 330); within 25%: 352 / 361 /
+  356. Constituency share within 10%: 96.4% / 99.8% / 99.8% → watch; local-authority share: 90.7% / 97.7% /
+  97.7% → watch (red < 90%). Rows past 25%: **475** / 53 / 45 → red (≤ 60).
+- Kish ESS 33,672 / 125,324 / 129,236 → ok (20–40k expected). Maximum ÷ median positive weight **22.0** /
+  389 / 400 → the compact frame is far tighter than the dense (HT baseline + stretch 10). Share of rows
+  stretched above 100× the pool design 0.07% → ok.
+- minimum constituency ESS 11.4 (R17 63.8); area-support breach share **25.0%** (253 of 1,011 areas) → red
+  at the pre-registered 25% line; failed release-blocking gates 2 (area_support, target_fit; per-family,
+  ratio, ESS, ladder passed). Frozen-vs-recomputed: not measured (step 40).
+- wall 17,543 s / — / 11,122 s; peak RSS 11.6 GB / — / 11.1 GB; H5 **213 MB** / — / 2,356 MB.
+- Paired with R17 on 20,473 common rows (94 target values moved with the feed; 321 rows only in P50 = the
+  composed rent rows and the TFC/bus rows; 2 only in R17 = the two excluded UC bands): wins 9,541, ties
+  168, losses 10,764; of R17's 42 red rows 20 are now green; new red rows are the tiny council-tax band F/G
+  targets (E09000002 band G target 50 → 10,076; E08000028; E06000021 band F) and support collapses on
+  spread cells (see above).
+
+Reading: at 55,000 rows the exact count, the footprint (11× smaller H5) and the weight discipline (max ÷
+median 22 vs 400) are real; the price is support — a third of constituencies under the ESS floor, four
+families (ladder census_households, private_rent, council_tax, tenure) under 90% within 10%, and 475 rows
+past 25% against 53 in the same run's dense reference. The dense reference itself is close to R17 on the
+new inputs (loss +6%, national within 10% 353 vs 340), so no D2 is needed to explain the deltas: they are
+size effects. The pre-registered response is S4 at 110,000 to locate the support floor; María's call.
+
