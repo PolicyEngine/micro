@@ -438,8 +438,12 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
                     10 if reference.name == "dwp.uc.households" else 2
                 )
             else:
-                assert reference.value_operation == "calendar_year_average"
+                assert reference.value_operation == "monthly_window_average"
+                assert reference.period_match_policy == "source_window"
+                assert not reference.value_operands
                 assert reference.name.startswith("dwp.uc.households_children_")
+            assert reference.uprating_from_period is None
+            assert reference.uprating_to_period is None
         else:
             expected_months = MONTHS
             assert reference.value_operation == "calendar_year_average"
