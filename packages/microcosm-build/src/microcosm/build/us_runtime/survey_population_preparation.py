@@ -115,6 +115,68 @@ def _digest(value):
     return digest.hexdigest()
 
 
+def _catalogue_fast_path(value):
+    """Recognize immutable, bounded raw records without changing admission."""
+    if type(value) is not tuple or len(value) != 2:
+        return False
+    for group in value:
+        if type(group) is not tuple:
+            return False
+        for record in group:
+            if type(record) is not tuple or len(record) != 7:
+                return False
+            people = record[6]
+            if type(people) is not tuple or len(people) > 20:
+                return False
+            if any(type(person) is not tuple or len(person) != 9 for person in people):
+                return False
+            characters = 0
+            for row in (record[:6], *people):
+                for item in row:
+                    if type(item) is str:
+                        if not item.isascii():
+                            return False
+                        characters += len(item)
+                        if characters > 65_536:
+                            return False
+                    elif type(item) is int:
+                        if not -(2**63) <= item < 2**63:
+                            return False
+                    else:
+                        return False
+    return True
+
+def _catalogue_chunks(value):
+    # Decide for the whole value before encoding. Unexpected shapes retain
+    # the generic encoder's full-depth scalar pass and error precedence.
+    if not _catalogue_fast_path(value):
+        yield from _chunks(value)
+        return
+    _check_scalars(value)
+    encoder = json.JSONEncoder(
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    )
+    yield "["
+    for group_index, group in enumerate(value):
+        if group_index:
+            yield ","
+        yield "["
+        for record_index, record in enumerate(group):
+            if record_index:
+                yield ","
+            # encode uses the ordinary one-shot C provider when available.
+            # At most 186 leaves and 65,536 ASCII characters bound this
+            # individual JSON record below 400 KiB, including escaping.
+            yield encoder.encode(record)
+        yield "]"
+    yield "]"
+
+def _catalogue_digest(value):
+    digest = hashlib.sha256()
+    for chunk in _catalogue_chunks(value):
+        digest.update(chunk.encode("utf-8"))
+    return digest.hexdigest()
+
 def _value(value):
     if isinstance(value, Enum):
         return value.value
@@ -410,6 +472,23 @@ def _live():
                         )
     result["rng"] = (np.random.Generator, np.random.PCG64, np.random.SeedSequence)
     result["csv"] = (csv.reader, _csv.reader)
+    # The bounded catalogue path also uses JSONEncoder.encode and its C
+    # provider. Bind their actual live identities through this existing seal.
+    result["json_catalogue"] = (
+        json.JSONEncoder,
+        json.encoder,
+        tuple(
+            _function_seal(function)
+            if isinstance(function, FunctionType)
+            else _runtime_marker(function)
+            for function in (
+                getattr(json.JSONEncoder, name, None)
+                for name in ("__init__", "encode", "iterencode")
+            )
+        ),
+        getattr(json.encoder, "c_make_encoder", None),
+        getattr(json.encoder, "encode_basestring", None),
+    )
     result["contract"] = (
         PROTOCOL,
         REQUEST_PROTOCOL,
@@ -881,7 +960,7 @@ def _nested_seals(catalogues, native):
                 for paths in acs.snapshots
             ]
         ),
-        _digest((acs_cat.records, acs_cat.vacancies)),
+        _catalogue_digest((acs_cat.records, acs_cat.vacancies)),
     ]
     for module, value in ((asec_catalogue, catalogues[1]), (asec_native, native[1])):
         entry = module._ISSUED.get(id(value))
