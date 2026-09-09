@@ -1,10 +1,12 @@
-"""Country admission for two explicit seven-node survey age profiles.
+"""Country admission for survey age profiles with an explicit source prefix.
 
 Every call reconstructs the accepted source preparation. The numerical kernels
 are values-only; source, full-population, group/row-cap and cache checks live
 here. The original entry point remains invented-only; the named development
 entry point derives its targets from an explicitly pinned S0101-only capture.
 Both permit only the first IMPORTANCE-to-CALIBRATED transition and no release.
+An optional atomic-geography recipe enriches the accepted allocation before
+cloning; the sampling budget continues to retain the original raw allocation.
 """
 
 from __future__ import annotations
@@ -183,7 +185,7 @@ def _expected_nodes(
             state = json.loads(prefix_identities[node.id])
             state["artifacts"] = {(e, c): k for e, c, k in state["artifacts"]}
             # The accepted prefix runner already independently sealed this
-            # receipt. No receipt from the new seven-node run is trusted here.
+            # receipt. No receipt from the receiving run is trusted here.
             states[node.id] = state
             continue
         key = keys[node.id]
@@ -300,6 +302,7 @@ def run_survey_age_calibration(
     epochs,
     learning_rate,
     resume="auto",
+    geography_config=None,
 ):
     """Reconstruct sources and admit a complete invented calibration graph.
 
@@ -327,6 +330,7 @@ def run_survey_age_calibration(
         learning_rate=learning_rate,
         resume=resume,
         calibration=calibration,
+        geography_config=geography_config,
     )
 
 
@@ -342,6 +346,7 @@ def run_survey_age_development(
     epochs,
     learning_rate,
     resume="auto",
+    geography_config=None,
 ):
     """Run development calibration after deriving targets from exact source pins.
 
@@ -382,6 +387,7 @@ def run_survey_age_development(
         calibration=calibration,
         age_source_dir=age_source_dir,
         activation=activation,
+        geography_config=geography_config,
     )
 
 
@@ -398,6 +404,7 @@ def _run_survey_age_calibration(
     calibration,
     age_source_dir=None,
     activation=None,
+    geography_config=None,
 ):
     """Shared population, budget, replay, diagnostic and final-return checks."""
     _require(type(resume) is str and resume in {"auto", "require"}, "RESUME")
@@ -414,22 +421,110 @@ def _run_survey_age_calibration(
             canonical_json(calibration_binding) == activation_identity,
             "ACTIVATION_BINDING",
         )
-    prefix = source_graph.run_authenticated_survey_population(
-        source_dir,
-        snapshot_root=snapshot_root,
-        store_root=store_root,
-        fraction=fraction,
-        seed=seed_value,
-        resume=resume,
-        clones=True,
-        return_values=True,
+    geography = None
+    geography_identity = None
+    geography_config_payload = None
+    prefix_populations = {}
+    if geography_config is None:
+        prefix = source_graph.run_authenticated_survey_population(
+            source_dir,
+            snapshot_root=snapshot_root,
+            store_root=store_root,
+            fraction=fraction,
+            seed=seed_value,
+            resume=resume,
+            clones=True,
+            return_values=True,
+        )
+    else:
+        from . import graph_atomic_survey_population as atomic_source
+
+        geography_config_payload = (
+            atomic_source.reconstruction.AtomicSurveyReconstruction.to_bytes(
+                geography_config
+            )
+        )
+        prefix = atomic_source.run_atomic_survey_population(
+            source_dir,
+            snapshot_root=snapshot_root,
+            store_root=store_root,
+            fraction=fraction,
+            seed=seed_value,
+            resume=resume,
+            geography_config=geography_config,
+            return_values=True,
+        )
+        geography = atomic_source.reconstruction.reconstruct_atomic_survey_geography(
+            prefix.preparation, prefix.allocated_population, geography_config
+        )
+        replay.same_replayed_population(
+            geography.population, prefix.geography_population
+        )
+        geography_identity = budgets._population_identity(prefix.geography_population)
+        prefix_populations = {
+            stage.node.id: stage.population for stage in geography.stages
+        }
+        expanded, _receipts = atomic_source._clone_expectations(
+            geography, prefix.compiled.graph.nodes, prefix.compiled
+        )
+        prefix_populations.update(expanded)
+    source_owner, source_view = source_graph._checked_preparation(prefix.preparation)
+    preparation_entry = source_owner._ISSUED.get(id(prefix.preparation))
+    instructions = source_graph.allocation_instructions(
+        source_view.selection_plan, source_view.receipt["origins"]["households"]
     )
+    _, allocated_context, allocation_payload, _, _ = source_graph._allocation_output(
+        source_view.frame, source_view.context, instructions, _sha(source_view.payload)
+    )
+    prefix_artifacts = (
+        (
+            source_graph.CREATE_NODE,
+            "preparation",
+            source_graph.PREPARATION_TYPE,
+            source_view.payload,
+            source_graph.SurveyPopulationCreateKernel.capabilities,
+        ),
+        (
+            source_graph.CREATE_NODE,
+            "frame_context",
+            source_graph.US_FRAME_CONTEXT_TYPE,
+            source_view.context,
+            source_graph.SurveyPopulationCreateKernel.capabilities,
+        ),
+        (
+            source_graph.ALLOCATION_NODE,
+            "allocation",
+            source_graph.ALLOCATION_TYPE,
+            allocation_payload,
+            source_graph.SurveyPopulationAllocationKernel.capabilities,
+        ),
+        (
+            source_graph.ALLOCATION_NODE,
+            "frame_context",
+            source_graph.US_FRAME_CONTEXT_TYPE,
+            allocated_context,
+            source_graph.SurveyPopulationAllocationKernel.capabilities,
+        ),
+    )
+    if geography is not None:
+        prefix_artifacts += tuple(
+            (
+                node.id,
+                "support",
+                atomic_source.ATOMIC_SUPPORT_TYPE,
+                geography.support_payload,
+                atomic_source.AtomicSupportImportKernel.capabilities,
+            )
+            for node in geography.nodes
+            if node.kernel == atomic_source.AtomicSupportImportKernel.ref
+        )
     initial = prefix.clone_population
     _require(initial is not None, "COMPLETE_CLONE_REQUIRED")
     budget = budgets.freeze_survey_origin_budget(
         prefix.preparation,
         allocated_population=prefix.allocated_population,
         clone_population=initial,
+        geography_config=geography_config,
     )
     budget_view = budget.checked_view()
     budget_payload = budget_view.payload
@@ -446,25 +541,41 @@ def _run_survey_age_calibration(
     }
     initial_identity = budgets._population_identity(initial)
     allocation_identity = budgets._population_identity(prefix.allocated_population)
+    prefix_population_identities = {
+        name: budgets._population_identity(population)
+        for name, population in prefix_populations.items()
+    }
     prefix_budget = budget
     prefix_budget_entry = budgets._entry(prefix_budget, budgets.SamplingOriginBudget)
     kernels = prefix.kernels
     kernels.register(transport.SurveySamplingBudgetKernel(budget_payload))
     kernels.register(ages.SurveyAgeCountArtifactKernel())
     kernels.register(numerical.SurveyAgeCalibrationKernel())
+    age_nodes = (
+        transport.survey_sampling_budget_node(budget_sha256=_sha(budget_payload)),
+        ages.survey_age_count_artifact_node(
+            population=initial.version, node_id=COUNT_NODE
+        ),
+        calibration,
+    )
     graph = replace(
         prefix.compiled.graph,
-        nodes=(
-            *prefix.compiled.graph.nodes,
-            transport.survey_sampling_budget_node(budget_sha256=_sha(budget_payload)),
-            ages.survey_age_count_artifact_node(
-                population=initial.version, node_id=COUNT_NODE
-            ),
-            calibration,
-        ),
+        nodes=(*prefix.compiled.graph.nodes, *age_nodes),
     )
     compiled = compile_graph(graph)
-    _require(len(compiled.order) == 7, "EXACT_GRAPH")
+    prefix_roster = set(prefix.compiled.order)
+    age_roster = {transport.BUDGET_NODE, COUNT_NODE, numerical.CALIBRATION_NODE}
+    _require(
+        set(prefix_identities) == prefix_roster
+        and not prefix_roster & age_roster
+        and tuple(node.id for node in age_nodes)
+        == (transport.BUDGET_NODE, COUNT_NODE, numerical.CALIBRATION_NODE)
+        and set(compiled.order) == prefix_roster | age_roster
+        and len(compiled.order) == len(prefix.compiled.order) + 3
+        and tuple(name for name in compiled.order if name in prefix_roster)
+        == prefix.compiled.order,
+        "EXACT_GRAPH",
+    )
     _require(
         clone.COMBINED_CLONE_CLAIM_NODE in compiled.predecessors[transport.BUDGET_NODE],
         "OWNERSHIP_CLAIM_EDGE",
@@ -528,6 +639,7 @@ def _run_survey_age_calibration(
                 allocated_population=observed[source_graph.ALLOCATION_NODE],
                 clone_population=population,
                 candidate=budget_payload,
+                geography_config=geography_config,
             )
             receiving_budget_entry = budgets._entry(
                 budget, budgets.SamplingOriginBudget
@@ -538,13 +650,21 @@ def _run_survey_age_calibration(
                 prefix.manifest.population(node_id), population.frame
             )
         elif node_id == clone.COMBINED_CLONE_NODE:
-            actual_allocation = observed[source_graph.ALLOCATION_NODE]
+            actual_allocation = observed[
+                source_graph.ALLOCATION_NODE
+                if geography is None
+                else geography.stages[-1].node.id
+            ]
             source_graph._verify_cloned_frame(
                 actual_allocation.frame,
                 population.frame,
                 actual_allocation.design_weights["household"],
             )
             replay.same_replayed_frame(initial.frame, population.frame)
+            if geography is not None:
+                replay.same_replayed_population(prefix_populations[node_id], population)
+        elif node_id in prefix_populations:
+            replay.same_replayed_population(prefix_populations[node_id], population)
         else:
             _require(False, "UNEXPECTED_NODE")
         observed[node_id] = population
@@ -580,6 +700,7 @@ def _run_survey_age_calibration(
                 "PREFIX_RECEIPT_REPLAY",
             )
     for node_id, name, type_, payload, capabilities in (
+        *prefix_artifacts,
         (
             transport.BUDGET_NODE,
             "budget",
@@ -710,10 +831,44 @@ def _run_survey_age_calibration(
     budgets.verify_survey_origin_budget(prefix_budget)
     budgets.verify_survey_weight_only_successor(admitted)
     if activation is not None:
-        # This is the last external evidence read. The existing complete
-        # population, manifest and retained budget seals all follow it.
+        # Recheck target evidence before the optional final support read;
+        # complete population, configuration and owner seals follow both.
         age_activation.verify_survey_age_targets(
             age_source_dir, declaration=activation, registry=registry
+        )
+    if geography is not None:
+        _require(
+            atomic_source.reconstruction.AtomicSurveyReconstruction.to_bytes(
+                geography_config
+            )
+            == geography_config_payload,
+            "FINAL_GEOGRAPHY_CONFIG",
+        )
+        final_support, _support_identity = atomic_source.reconstruction._read_support(
+            geography_config
+        )
+        _require(final_support == geography.support_payload, "FINAL_GEOGRAPHY_SUPPORT")
+    _require(
+        source_owner._ISSUED.get(id(prefix.preparation)) is preparation_entry
+        and preparation_entry is not None
+        and prefix.preparation.payload == preparation_entry[1],
+        "FINAL_SOURCE_ISSUANCE",
+    )
+    source_owner._pure_final(preparation_entry[2])
+    if geography is not None:
+        _require(
+            atomic_source.reconstruction.AtomicSurveyReconstruction.to_bytes(
+                geography_config
+            )
+            == geography_config_payload
+            and budgets._population_identity(prefix.geography_population)
+            == geography_identity
+            and all(
+                budgets._population_identity(population)
+                == prefix_population_identities[name]
+                for name, population in prefix_populations.items()
+            ),
+            "FINAL_GEOGRAPHY_PREFIX",
         )
     _require(budget.payload == budget_payload, "FINAL_BUDGET_BYTES")
     _require(
@@ -748,8 +903,8 @@ def _run_survey_age_calibration(
             "FINAL_ACTIVATION_BINDING",
         )
     # No decoding, store access, source borrow or implementation helper follows
-    # this seal. It covers all seven receipts/descriptors, including scope and
-    # release flags, using expectations detached before execution.
+    # this seal. It covers the complete selected prefix and age trio, including
+    # scope and release flags, using expectations detached before execution.
     _check_manifest(manifest, compiled, expected_nodes)
     _require(
         canonical_json(result.diagnostics) == diagnostic_identity,

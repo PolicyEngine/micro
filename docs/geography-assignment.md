@@ -187,6 +187,50 @@ households become eight, every location column is inherited, all entity rows
 are copied, and each household weight is split equally across the pair.
 Subset mapping verification also passes. Receipt SHA256:
 `1bb75a5ee53edcbdd199a6d0163cbe75c32e54c80513cb3eb8d13021c3c2b1c3`.
-A separate source-only Codex review found no actionable defects. Native observed
-column qualification and geography-aware reconstruction in the survey runner
-and origin-budget verifier remain pending.
+A separate source-only Codex review found no actionable defects.
+
+The current survey path now qualifies observed state and ACS PUMA from the
+retained original-source preparation. Eleven source controls and fourteen graph
+controls passed, covering missing geography, source changes, replay and stable
+household identity across sampling rungs. These controls use invented originals
+through the actual source issuers. Their receipts are recorded in
+`experiments/us-survey-geography-source-controls-20260909.json` and
+`experiments/us-survey-geography-graph-controls-20260909.json`.
+
+`us_runtime/graph_atomic_survey_population.py` connects that observed projection
+to block assignment, geographic derivation, the integrity gate and the combined
+survey clone. It retains the raw allocation separately from the enriched
+pre-clone population, even though both share the allocation version identifier.
+The complete ten-node prefix passed five controls: fresh execution, required
+replay, full geography inheritance, support-byte mismatch and late mutation
+refusals. The test population contains six survey households before cloning and
+twelve afterward. The exact tested revisions and remaining checks are recorded
+in `experiments/us-atomic-survey-population-controls-20260909.json`.
+
+The calibration budget and age-calibration runner now consume this optional
+prefix and independently reconstruct it from the raw allocation. Eight budget
+controls pass, as does the complete thirteen-node age graph through fresh
+execution and required replay. A separate compatibility control verifies that
+the existing predictor and PUF-host qualifiers still accept the default survey
+prefix. See the corresponding `us-atomic-budget-semantic-8`,
+`us-atomic-age-v2-1`, and `us-budget-predictor-compatibility-1` records in
+`experiments/`.
+
+Replay can canonicalize the hidden backing values of missing numeric cells.
+Persistent budget identities therefore bind logical Frame values, population
+version, complete ownership, weight kinds, mass ledger and exact design-weight
+bytes. They exclude only the helper receipt's physical population stamp.
+Same-object mutation checks retain physical identity. The initial physical-stamp
+replay failure remains recorded; the corrected budget controls pass.
+
+The byte-source adapter passed thirty-six invented-source controls through the
+maintained PL, CD and PUMA parsers. This does not authorize acquisition of native
+PL archives, which also contain housing segments. Native support preparation
+will instead request only Census `P1_001N` block populations and independent
+state totals, then join CD119 and tract-to-PUMA mappings. Delaware is the first
+source control; national survey assignment requires complete admitted support
+for the fifty states and DC. No native acquisition is accepted by these tests.
+
+Publisher-qualified native block support, national and district calibration,
+and pruned export verification remain necessary for a release. Source integrity
+checks and successful invented-data runs do not establish geographic fit.

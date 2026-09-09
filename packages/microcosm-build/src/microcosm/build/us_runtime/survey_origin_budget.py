@@ -4,6 +4,8 @@ Original publisher d is never replaced. The sampling reference b=d/p and
 incoming a=s*b are different quantities. These development coefficients are
 provisional; this module grants neither graph execution nor release authority.
 Decoded bytes cannot issue a budget or a weight-only successor.
+An optional immutable geography recipe independently reconstructs the complete
+pre-clone Frame; the retained allocation always remains the raw source allocation.
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ from microcosm.graph.population import (
 
 from . import graph_combined_clone as clone
 from . import graph_survey_population as graph
+from . import survey_atomic_geography as geography
 from . import survey_population_preparation as source
 from .graph_sources import frame_column_declarations
 from .support_provenance import support_clone_index_column, support_source_id_column
@@ -124,7 +127,7 @@ def _reference(d, p, s, actual_incoming):
 
 
 def _modules():
-    return (
+    modules = (
         sys.modules[__name__],
         graph,
         clone,
@@ -134,7 +137,22 @@ def _modules():
         sys.modules[frame_column_declarations.__module__],
         sys.modules[support_source_id_column.__module__],
         sys.modules[clone.clone_us_frame_for_puf_support.__module__],
+        geography,
+        geography.blocks,
+        geography.atomic,
+        geography.atomic_graph,
+        geography.observed,
+        geography.observed_graph,
+        geography.observed.demographics,
+        geography.observed.demographics.demographic,
+        geography.observed.demographics.household,
+        geography.observed.demographics.source_csv_builtin,
+        sys.modules[geography.observed.demographics.demographic._snapshot.__module__],
+        sys.modules[geography.atomic.keyed_uniform.__module__],
+        sys.modules[geography.canonical_json.__module__],
+        sys.modules[geography.compile_graph.__module__],
     )
+    return tuple({module.__name__: module for module in modules}.values())
 
 
 def _live():
@@ -166,6 +184,45 @@ def _live():
         np.__version__,
         np.ndarray,
         np.float64,
+    )
+    result["geography_contract"] = source._runtime_marker(
+        (
+            geography.PROTOCOL,
+            geography.MAX_SUPPORT_BYTES,
+            geography.MAX_SUPPORT_EXPANDED_BYTES,
+            geography.MAX_SUPPORT_MEMBERS,
+            geography.RAW_BYTES_MAX_BYTES,
+            geography.blocks.SYSTEM,
+            geography.blocks.SOURCE,
+            tuple(sorted(geography.blocks._STATES)),
+            tuple(sorted(geography.atomic.RELATIONS)),
+            geography.atomic._U53,
+            geography.observed.PROTOCOL,
+            geography.observed.COLUMNS,
+            geography.observed.MAX_HOUSEHOLDS,
+            geography.observed.MAX_RECEIPT_BYTES,
+            geography.observed_graph.NODE,
+            geography.observed_graph.REF,
+            geography.observed_graph.PHASE,
+            geography.observed_graph.OUTPUT_COLUMNS,
+            geography.observed.demographics.PROTOCOL,
+            geography.observed.demographics.STATE_COLUMNS,
+            geography.observed.demographics.STATE_CONTRACT,
+            (
+                geography.atomic_graph.ATOMIC_SUPPORT_TYPE.name,
+                geography.atomic_graph.ATOMIC_SUPPORT_TYPE.schema_version,
+            ),
+            geography.atomic_graph._DEPENDENCIES,
+            tuple(
+                (kernel.ref, asdict(kernel.capabilities))
+                for kernel in (
+                    geography.atomic_graph.AtomicSupportImportKernel,
+                    geography.atomic_graph.AtomicAssignKernel,
+                    geography.atomic_graph.AtomicDeriveKernel,
+                    geography.atomic_graph.AtomicGeographyGateKernel,
+                )
+            ),
+        )
     )
     return result
 
@@ -217,7 +274,86 @@ def _physical_nonweight_identity(frame):
     return digest.hexdigest()
 
 
-def _initial(view, allocated, expanded):
+def _config_payload(config):
+    return (
+        None
+        if config is None
+        else geography.AtomicSurveyReconstruction.to_bytes(config)
+    )
+
+
+def _geography_binding(value, config_payload, preparation_payload):
+    """Seal fresh reconstruction values; decoded receipts never issue authority."""
+    _require(
+        type(value) is geography.AtomicSurveyGeographyReconstruction,
+        "GEOGRAPHY_RECONSTRUCTION_TYPE",
+    )
+    document = json.loads(value.receipt)
+    population_sha256 = geography._population_stamp(value.population)
+    _require(
+        value.config_sha256 == _sha(config_payload)
+        and document["protocol"] == geography.PROTOCOL
+        and document["preparation_sha256"] == _sha(preparation_payload)
+        and document["config_sha256"] == value.config_sha256
+        and document["frame_sha256"] == source._frame_identity(value.population.frame)
+        and document["population_sha256"] == population_sha256
+        and document["projection_receipt_sha256"] == _sha(value.projection_receipt)
+        and document["definition_sha256"] == _sha(value.definition)
+        and document["support_sha256"] == _sha(value.support_payload)
+        and document["publisher_provenance_established"] is False
+        and document["source_admission_issued"] is False
+        and document["population_admission_issued"] is False
+        and document["release_eligible"] is False,
+        "GEOGRAPHY_RECONSTRUCTION_SEAL",
+    )
+    # The full receipt above seals this detached object exactly. Frame-store
+    # replay can canonicalize storage beneath masked nulls, so its physical
+    # stamp cannot identify an independently reconstructed object across runs.
+    semantic_receipt = {
+        key: item for key, item in document.items() if key != "population_sha256"
+    }
+    population = value.population
+    semantic_population = {
+        "frame_sha256": document["frame_sha256"],
+        "version": population.version,
+        "owners": sorted(population.owners.items()),
+        "weight_kind": [
+            (entity, kind.value) for entity, kind in population.weight_kind.items()
+        ],
+        "mass_ledger": [asdict(record) for record in population.mass_ledger],
+        "design_weights": [
+            (entity, str(values.dtype), values.shape, values.tobytes().hex())
+            for entity, values in population.design_weights.items()
+        ],
+    }
+    return _json(
+        {
+            "config_sha256": value.config_sha256,
+            "reconstruction_semantic_sha256": _sha(_json(semantic_receipt)),
+            "projection_receipt_sha256": _sha(value.projection_receipt),
+            "definition_sha256": _sha(value.definition),
+            "support_sha256": _sha(value.support_payload),
+            "preclone_population_semantic_sha256": _sha(_json(semantic_population)),
+            "identity_scope": {
+                "reconstruction_omitted_fields": ["population_sha256"],
+                "population_fields": list(semantic_population),
+                "null_backing": "retained_in_in_process_physical_seals_only",
+            },
+            "publisher_provenance_established": False,
+        }
+    )
+
+
+def _initial(
+    view,
+    allocated,
+    expanded,
+    *,
+    preparation=None,
+    geography_config=None,
+    _with_geography_binding=False,
+):
+    _require(type(_with_geography_binding) is bool, "GEOGRAPHY_BINDING_FLAG")
     _require(
         type(allocated) is Population and type(expanded) is Population,
         "LIVE_POPULATION_REQUIRED",
@@ -237,13 +373,8 @@ def _initial(view, allocated, expanded):
         fraction=view.selection_plan.fraction,
         seed=view.selection_plan.seed,
     )
-    clone_nodes = clone.us_combined_survey_clone_nodes(
-        columns, base=graph.ALLOCATION_NODE, source_channels=("acs", "asec")
-    )
     graph._same_frame(expected, allocated.frame)
-    copied_design = graph._verify_cloned_frame(expected, expanded.frame, design)
     graph._check_design_anchors(allocated, design)
-    graph._check_design_anchors(expanded, copied_design)
     allocation_ledger = (
         _mass_record(
             view.frame, expected, nodes[1], KernelResult(receipt=receipt), "declared"
@@ -257,7 +388,27 @@ def _initial(view, allocated, expanded):
         kind=WeightKind.IMPORTANCE,
         ledger=allocation_ledger,
     )
-    owners = dict.fromkeys(cells, clone.COMBINED_CLONE_NODE)
+    geography_binding = None
+    if geography_config is not None:
+        config_payload = geography.AtomicSurveyReconstruction.to_bytes(geography_config)
+        reconstructed = geography.reconstruct_atomic_survey_geography(
+            preparation, allocated, geography_config
+        )
+        geography_binding = _geography_binding(
+            reconstructed, config_payload, view.payload
+        )
+        expected = reconstructed.population.frame
+        columns = frame_column_declarations(expected)
+    clone_nodes = clone.us_combined_survey_clone_nodes(
+        columns, base=graph.ALLOCATION_NODE, source_channels=("acs", "asec")
+    )
+    copied_design = graph._verify_cloned_frame(expected, expanded.frame, design)
+    graph._check_design_anchors(expanded, copied_design)
+    owners = {
+        (entity, str(column)): clone.COMBINED_CLONE_NODE
+        for entity in expected.entities
+        for column in expected.table(entity)
+    }
     owners.update(
         {
             (o.entity, o.column): clone.COMBINED_CLONE_CLAIM_NODE
@@ -276,10 +427,30 @@ def _initial(view, allocated, expanded):
             ),
         ),
     )
+    if geography_config is not None:
+        _require(
+            geography.AtomicSurveyReconstruction.to_bytes(geography_config)
+            == config_payload
+            and _geography_binding(reconstructed, config_payload, view.payload)
+            == geography_binding,
+            "FINAL_GEOGRAPHY_RECONSTRUCTION_SEAL",
+        )
+    # Current survey financial and diagnostic hosts consume the historical pair.
+    # Only the budget owner explicitly requests its additional reconstruction seal.
+    if _with_geography_binding:
+        return instructions, allocation, geography_binding
     return instructions, allocation
 
 
-def _document(view, allocated, expanded, instructions, allocation, producer):
+def _document(
+    view,
+    allocated,
+    expanded,
+    instructions,
+    allocation,
+    producer,
+    geography_binding=None,
+):
     before, after = (
         allocated.frame.table("household"),
         expanded.frame.table("household"),
@@ -375,6 +546,8 @@ def _document(view, allocated, expanded, instructions, allocation, producer):
         "group_count": len(instructions),
         "release_eligible": False,
     }
+    if geography_binding is not None:
+        header["atomic_geography"] = json.loads(geography_binding)
     # Stream one bounded origin record at a time; never materialize an unbounded
     # list of origin dictionaries before the transport cap is checked.
     payload = bytearray()
@@ -414,6 +587,9 @@ class _BudgetState:
     preparation_payload: bytes
     allocated_identity: tuple
     expanded_identity: tuple
+    geography_config: geography.AtomicSurveyReconstruction | None
+    geography_config_payload: bytes | None
+    geography_binding: bytes | None
 
 
 def _preparation_entry(preparation, payload, expected=None):
@@ -434,10 +610,19 @@ def _preparation_entry(preparation, payload, expected=None):
 def _final_budget_state(state):
     """Seal retained owners after helper/file I/O, with no recursive borrow.
 
-    The owner's pure check still hashes retained Frames. It does not parse or
-    reread source files, issue replacement capsules or grant decoded authority.
+    Optional support bytes are checked before the source owner's pure final
+    check. That pure check hashes retained Frames without rereading survey
+    files, issuing replacement capsules or granting decoded authority.
     """
     _producer()
+    _require(
+        _config_payload(state.geography_config) == state.geography_config_payload,
+        "FINAL_GEOGRAPHY_CONFIG_SEAL",
+    )
+    if state.geography_config is not None:
+        # Finish support I/O before the same pure owner/Population final seals.
+        # Re-reading exact pinned bytes grants no publisher provenance.
+        geography._read_support(state.geography_config)
     entry = _preparation_entry(
         state.preparation, state.preparation_payload, state.preparation_entry
     )
@@ -446,6 +631,19 @@ def _final_budget_state(state):
         _population_identity(state.allocated) == state.allocated_identity
         and _population_identity(state.expanded) == state.expanded_identity,
         "FINAL_POPULATION_SEAL",
+    )
+    _require(
+        (
+            state.geography_config is None
+            and state.geography_config_payload is None
+            and state.geography_binding is None
+        )
+        or (
+            state.geography_config is not None
+            and geography.AtomicSurveyReconstruction.to_bytes(state.geography_config)
+            == state.geography_config_payload
+        ),
+        "FINAL_GEOGRAPHY_CONFIG_SEAL",
     )
     _require(_live() == _LIVE, "FINAL_PRODUCER_SEAL")
     _preparation_entry(
@@ -456,17 +654,35 @@ def _final_budget_state(state):
 def _validate_budget(state, payload):
     _producer()
     _require(
+        _config_payload(state.geography_config) == state.geography_config_payload,
+        "INITIAL_GEOGRAPHY_CONFIG_CHANGED",
+    )
+    _require(
         _population_identity(state.allocated) == state.allocated_identity
         and _population_identity(state.expanded) == state.expanded_identity,
         "INITIAL_POPULATION_CHANGED",
     )
-    # This private retained view is only a reconstruction input. The single
-    # fresh source borrow below must authenticate it after all helper/file I/O.
+    # This private retained view is only a reconstruction input. The fresh
+    # source borrow below authenticates it after the first reconstruction.
     view = state.initial_view
     _require(view.payload == state.preparation_payload, "SOURCE_PREPARATION_CHANGED")
-    instructions, allocation = _initial(view, state.allocated, state.expanded)
+    instructions, allocation, geography_binding = _initial(
+        view,
+        state.allocated,
+        state.expanded,
+        preparation=state.preparation,
+        geography_config=state.geography_config,
+        _with_geography_binding=True,
+    )
+    _require(geography_binding == state.geography_binding, "GEOGRAPHY_RECONSTRUCTION")
     expected, constraint = _document(
-        view, state.allocated, state.expanded, instructions, allocation, _producer()
+        view,
+        state.allocated,
+        state.expanded,
+        instructions,
+        allocation,
+        _producer(),
+        geography_binding,
     )
     _require(expected == payload, "BUDGET_RECONSTRUCTION")
     final = source.AuthenticatedSurveyPopulationPreparation.checked_view(
@@ -478,7 +694,15 @@ def _validate_budget(state, payload):
         and final.selection_plan is view.selection_plan,
         "FINAL_SOURCE_SEAL",
     )
-    _initial(final, state.allocated, state.expanded)
+    _instructions, _allocation, final_geography = _initial(
+        final,
+        state.allocated,
+        state.expanded,
+        preparation=state.preparation,
+        geography_config=state.geography_config,
+        _with_geography_binding=True,
+    )
+    _require(final_geography == state.geography_binding, "FINAL_GEOGRAPHY_SEAL")
     return constraint
 
 
@@ -552,7 +776,12 @@ class CheckedSamplingOriginBudget:
 
 
 def freeze_survey_origin_budget(
-    preparation, *, allocated_population, clone_population, candidate=None
+    preparation,
+    *,
+    allocated_population,
+    clone_population,
+    candidate=None,
+    geography_config=None,
 ):
     _require(type(candidate) is bytes or candidate is None, "CANDIDATE_TYPE")
     _require(
@@ -562,10 +791,18 @@ def freeze_survey_origin_budget(
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
         "ISSUED_PREPARATION_REQUIRED",
     )
+    config_payload = _config_payload(geography_config)
     producer = _producer()
     view = source.AuthenticatedSurveyPopulationPreparation.checked_view(preparation)
     preparation_entry = _preparation_entry(preparation, view.payload)
-    instructions, allocation = _initial(view, allocated_population, clone_population)
+    instructions, allocation, geography_binding = _initial(
+        view,
+        allocated_population,
+        clone_population,
+        preparation=preparation,
+        geography_config=geography_config,
+        _with_geography_binding=True,
+    )
     state = _BudgetState(
         preparation,
         preparation_entry,
@@ -575,15 +812,32 @@ def freeze_survey_origin_budget(
         view.payload,
         _population_identity(allocated_population),
         _population_identity(clone_population),
+        geography_config,
+        config_payload,
+        geography_binding,
     )
     payload, _constraint = _document(
-        view, allocated_population, clone_population, instructions, allocation, producer
+        view,
+        allocated_population,
+        clone_population,
+        instructions,
+        allocation,
+        producer,
+        geography_binding,
     )
     final = source.AuthenticatedSurveyPopulationPreparation.checked_view(preparation)
     _require(
         final.payload == view.payload and final.frame is view.frame, "FINAL_SOURCE_SEAL"
     )
-    _initial(final, allocated_population, clone_population)
+    _instructions, _allocation, final_geography = _initial(
+        final,
+        allocated_population,
+        clone_population,
+        preparation=preparation,
+        geography_config=geography_config,
+        _with_geography_binding=True,
+    )
+    _require(final_geography == geography_binding, "FINAL_GEOGRAPHY_SEAL")
     _require(candidate is None or candidate == payload, "CANDIDATE_RECONSTRUCTION")
     result = _issue(SamplingOriginBudget, payload, state)
     entry = _entry(result, SamplingOriginBudget)
