@@ -27,6 +27,25 @@ from tools.generate_uk_target_references import (
 
 MONTHS = [f"2025-{month:02}" for month in range(4, 13)]
 FISCAL_MONTHS = MONTHS + [f"2026-{month:02}" for month in range(1, 4)]
+UC_HIERARCHY = {
+    "providers": {"dwp": {"label": "Department for Work and Pensions"}},
+    "categories": {
+        "dwp.universal_credit": {
+            "provider_id": "dwp",
+            "label": "Universal Credit",
+        }
+    },
+}
+
+
+def _uc_contract(target: dict) -> dict:
+    target["category_id"] = "dwp.universal_credit"
+    return {
+        "schema_version": 2,
+        "country": "uk",
+        "hierarchy": UC_HIERARCHY,
+        "targets": [target],
+    }
 
 
 @pytest.mark.parametrize("family_count", [1, 5])
@@ -84,7 +103,7 @@ def test_generator_and_uk_guard_count_months_separately_from_joint_cells(
             "policyengine": {"metric_name": "uc_households", "from_entity": "benunit"}
         },
     }
-    contract = {"country": "uk", "targets": [target]}
+    contract = _uc_contract(target)
     config = TargetReferenceAuthoringConfig(
         target_period=2025,
         value_operation_by_target_id=_value_operation_by_target_id(contract),
@@ -111,7 +130,7 @@ def test_generator_and_uk_guard_count_months_separately_from_joint_cells(
     )
 
 
-def test_legacy_calendar_authoring_keeps_original_resource_shape():
+def test_calendar_authoring_keeps_default_operation_in_normalized_resource():
     target = {
         "target_id": "uc.calendar",
         "family": "dwp_universal_credit",
@@ -120,7 +139,7 @@ def test_legacy_calendar_authoring_keeps_original_resource_shape():
             "policyengine": {"metric_name": "uc_households", "from_entity": "benunit"}
         },
     }
-    contract = {"country": "uk", "targets": [target]}
+    contract = _uc_contract(target)
     authored = author_target_references(
         contract,
         [_fact(month) for month in MONTHS],
@@ -130,11 +149,19 @@ def test_legacy_calendar_authoring_keeps_original_resource_shape():
         ),
     )
     resource = target_references_resource(
-        country="uk", description="Legacy", authored=authored
+        country="uk",
+        description="Normalized",
+        authored=authored,
+        hierarchy=contract["hierarchy"],
     )
     assert resource == {
+        "schema_version": 2,
         "country": "uk",
-        "description": "Legacy",
+        "description": "Normalized",
+        "hierarchy": {
+            **UC_HIERARCHY,
+            "target_categories": {"uc.calendar": "dwp.universal_credit"},
+        },
         "allowed_value_operations": [
             "identity",
             "sum",
@@ -170,29 +197,26 @@ def test_legacy_calendar_authoring_keeps_original_resource_shape():
 def test_generator_authors_explicit_cross_year_uc_window_and_preserves_model_period(
     monkeypatch,
 ):
-    contract = {
-        "country": "uk",
-        "targets": [
-            {
-                "target_id": "uc.fiscal",
-                "family": "dwp_universal_credit",
-                "value_operation": "monthly_window_average",
-                "period_match_policy": "source_window",
-                "ledger_selector": {
-                    "source_concept": "dwp.uc_benefit_units",
-                    "period_type": "month",
-                    "period_value": FISCAL_MONTHS,
-                },
-                "measurement": {"source_months": FISCAL_MONTHS},
-                "bindings": {
-                    "policyengine": {
-                        "metric_name": "uc_households",
-                        "from_entity": "benunit",
-                    }
-                },
-            }
-        ],
-    }
+    contract = _uc_contract(
+        {
+            "target_id": "uc.fiscal",
+            "family": "dwp_universal_credit",
+            "value_operation": "monthly_window_average",
+            "period_match_policy": "source_window",
+            "ledger_selector": {
+                "source_concept": "dwp.uc_benefit_units",
+                "period_type": "month",
+                "period_value": FISCAL_MONTHS,
+            },
+            "measurement": {"source_months": FISCAL_MONTHS},
+            "bindings": {
+                "policyengine": {
+                    "metric_name": "uc_households",
+                    "from_entity": "benunit",
+                }
+            },
+        }
+    )
     facts = [_fact(month, value=index) for index, month in enumerate(FISCAL_MONTHS)]
     config = TargetReferenceAuthoringConfig(
         target_period=2025,
@@ -208,7 +232,10 @@ def test_generator_authors_explicit_cross_year_uc_window_and_preserves_model_per
     assert (
         "monthly_window_average"
         in target_references_resource(
-            country="uk", description="Synthetic source window", authored=authored
+            country="uk",
+            description="Synthetic source window",
+            authored=authored,
+            hierarchy=contract["hierarchy"],
         )["allowed_value_operations"]
     )
     result = _compile(monkeypatch, facts, LedgerTargetReference(**row))
