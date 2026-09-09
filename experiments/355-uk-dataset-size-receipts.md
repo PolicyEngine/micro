@@ -631,3 +631,30 @@ Consequence for the next runs: S4 and any later size run execute on engine 2.97.
 dense solver, so their dense reference will not be bit-identical to the one P50 and P95b share (2.94.0,
 e2667da9). Comparisons across that line carry an input-and-solver difference, as the R17 comparison does.
 
+### Further evaluation legs (María, 2026-09-09 ~14:00Z: no S4 for now; evaluate the 55k datasets as far as possible)
+
+- **Admin scorecard on one engine (2.97.0, the rebased lock), four files:** P50 / P95b / R17 / enhanced FRS
+  7b0a06f0 — population 68.4 / 68.7 / 69.8 / 69.6 m; households 27.2 / 27.4 / 29.3 / 31.3 m; state pension
+  120.0 / 120.4 / 129.7 / 125.5 bn; income tax 269.0 / 269.0 / 267.9 / 293.2 bn; taxpayers 38.2 / 38.2 /
+  37.7 / 41.8 m; UC 73.9 / 74.3 / 75.8 / 75.3 bn; UC families 6.72 / 6.73 / 6.72 / 6.39 m; child benefit
+  16.4 / 16.5 / 16.5 / 16.9 bn; pension credit 6.20 / 6.22 / 6.25 / 6.19 bn; council tax 43.7 / 43.9 / 45.9
+  / 49.5 bn; poverty BHC 9.89 / 9.93 / 10.30 / 11.49 %; top-1 % share 7.47 / 7.48 / 6.70 / 6.95 %; Gini 0.350
+  / 0.351 / 0.376 / 0.376. Load-and-simulate 7 s / 8 s / 95 s / 7 s. (The incumbent leg loads under
+  2.97.0; it failed in the 2.94.0 loader.)
+- **Incumbent score (step 30):** the register problem is solved — a scoring register with the 19,419 active
+  local references is derivable from the run's own bound `local_target_registry.json` (ladder rows
+  excluded, `geography_level` mapped from `area_type`; written through `TargetRegistry.to_json`, so the
+  content hash holds). The scorer then refuses because "candidate rotated holdout declares no usable basis":
+  the rule-1 score needs the rotated holdout, which both runs skipped by ruling. It is measurable only on a
+  holdout run (S2h, 20–33 h).
+- **T6 dashboard replays** (`uk-candidate-eval/scripts/run_final_gate.sh`, the uk-data venv at
+  policyengine-uk 2.89.2, incumbent = R17): running for P50, then P95b; results appended when done.
+- **Exclusions:** the A16 register holds 51 entries, none expired on 2026-09-09; five expire 2026-10-03
+  (`ons.savings_interest_income` #866, `obr.housing_benefit` #867, the two SLC plan-2 borrower rows #868,
+  `dwp.jsa_claimants` #869 — spine gaps at initialization, not retirement candidates), five 2026-11-25, 39
+  2026-11-26, two 2026-12-08 (this PR's UC bands). Nothing was retired: the 46 `measure_excluded` national
+  rows the surface evaluator could resolve on the compact frame are still 15–95 % off with three exceptions
+  (`SINGLE_annual_payment_9_600_to_10_800` 3 %, `hmrc/state_pension_income_band_1_000_000_to_inf` 2 %,
+  `LONE_PARENT_annual_payment_18_000_to_19_200` 11 %), and a retirement decision needs the dense pool
+  measured on those rows, which no dense H5 on spine-p exists to do.
+

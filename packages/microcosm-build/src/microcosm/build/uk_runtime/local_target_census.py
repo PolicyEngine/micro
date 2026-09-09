@@ -448,11 +448,12 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
             "PIPR publishes average rent price levels, not additive rent "
-            "totals. All 361 local-authority cells remain signed deferred for "
-            "the 2025 compile: 314 are after-period, four English cells have "
-            "no matching LA id, 32 Scottish cells are represented only at "
-            "BRMA grain without a signed translation, and 11 Northern Ireland "
-            "cells are absent."
+            "totals; a bound cell composes the level into a total (see the "
+            "signed rationale). Of the 361 local-authority cells, 314 bind "
+            "for the 2025 compile and 47 remain signed deferred: four English "
+            "cells have no matching LA id, 32 Scottish cells are represented "
+            "only at BRMA grain without a signed translation, and 11 Northern "
+            "Ireland cells are absent."
         ),
     },
     {
