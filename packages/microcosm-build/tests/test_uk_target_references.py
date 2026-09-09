@@ -194,6 +194,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "calendar_year_average",
         "latest_plateau",
         "count_x_mean",
+        "monthly_window_average",
         "monthly_window_sum_average",
     ]
     assert len(names) == len(set(names))
@@ -380,7 +381,8 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
             assert pins["payment_indicator"] == "Yes"
             assert pins["child_entitlement"] == "all"
             assert selector["source_measure_id"] == "total_benefit_units"
-            assert operations[target_id] == "calendar_year_average"
+            assert operations[target_id] == "monthly_window_average"
+            assert target["period_match_policy"] == "source_window"
         elif target_id == "dwp.uc.households" or target_id.startswith(
             ("dwp.uc.households_single_", "dwp.uc.households_couple_")
         ):
@@ -673,6 +675,25 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert family_type.metadata["ledger_source_cell_count_per_month"] == "2"
 
 
+def test_paid_child_count_windows_remove_only_their_uprating_holds() -> None:
+    """A complete 2025 mean needs no December-to-annual hold (#891 review)."""
+    membership = _load_uk_resource("target_reference_membership.json")
+    holds = {row["name"]: row for row in membership["uprating_holds"]}
+    for children in ("1", "2", "3", "4", "5_or_more"):
+        name = f"dwp.uc.households_children_{children}"
+        assert name not in holds
+        candidates = membership["targets"][name]["candidates"]
+        assert len(candidates) == 1
+        assert candidates[0]["status"] == "active"
+        assert candidates[0]["matched_fact_count_in_source_window"] == 12
+    # A genuinely older stock observation retains its independent hold.
+    assert holds["isc.private_school_students"] == {
+        "name": "isc.private_school_students",
+        "from": "2024-01",
+        "to": "2025",
+    }
+
+
 def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operations() -> (
     None
 ):
@@ -685,6 +706,10 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         "dwp.uc.households_couple_no_children",
         "dwp.uc.households_couple_with_children",
     }
+    monthly_average_ids = {
+        f"dwp.uc.households_children_{children}"
+        for children in ("1", "2", "3", "4", "5_or_more")
+    }
     uc_target_ids = {
         target["target_id"]
         for target in contract["targets"]
@@ -696,9 +721,14 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         for target_id in uc_target_ids
         if operations[target_id] == "monthly_window_sum_average"
     } == monthly_sum_ids
+    assert {
+        target_id
+        for target_id in uc_target_ids
+        if operations[target_id] == "monthly_window_average"
+    } == monthly_average_ids
     assert all(
         operations[target_id] == "calendar_year_average"
-        for target_id in uc_target_ids - monthly_sum_ids
+        for target_id in uc_target_ids - monthly_sum_ids - monthly_average_ids
     )
     facts = _fixture_feed_rows()
     authored = author_target_references(

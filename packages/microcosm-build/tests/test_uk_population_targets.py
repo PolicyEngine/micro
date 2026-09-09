@@ -169,6 +169,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "sum",
         "difference",
         "calendar_year_average",
+        "monthly_window_average",
         "monthly_window_sum_average",
     ]
     assert resource["resolution_defaults"] == {
@@ -692,7 +693,8 @@ def test_paid_uc_targets_preserve_entitlement_margins_and_exact_calendar_months(
         if target["target_id"].startswith("dwp.uc.households_children_"):
             assert selector["source_measure_id"] == "total_benefit_units"
             assert selector["dimension_values"]["child_entitlement"] == "all"
-            assert target["value_operation"] == "calendar_year_average"
+            assert target["value_operation"] == "monthly_window_average"
+            assert target["period_match_policy"] == "source_window"
             assert "value_operands" not in target
         else:
             assert selector["source_measure_id"] == "benefit_units"

@@ -8,6 +8,7 @@
     "calendar_year_average",
     "latest_plateau",
     "count_x_mean",
+    "monthly_window_average",
     "monthly_window_sum_average"
   ],
   "target_references": [
@@ -4184,9 +4185,8 @@
         "measure_kind": "prepared_column",
         "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
       },
-      "value_operation": "calendar_year_average",
-      "uprating_from_period": "2025-12",
-      "uprating_to_period": 2025
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
     },
     {
       "name": "dwp.uc.households_children_2",
@@ -4232,9 +4232,8 @@
         "measure_kind": "prepared_column",
         "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
       },
-      "value_operation": "calendar_year_average",
-      "uprating_from_period": "2025-12",
-      "uprating_to_period": 2025
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
     },
     {
       "name": "dwp.uc.households_children_3",
@@ -4280,9 +4279,8 @@
         "measure_kind": "prepared_column",
         "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
       },
-      "value_operation": "calendar_year_average",
-      "uprating_from_period": "2025-12",
-      "uprating_to_period": 2025
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
     },
     {
       "name": "dwp.uc.households_children_4",
@@ -4328,9 +4326,8 @@
         "measure_kind": "prepared_column",
         "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
       },
-      "value_operation": "calendar_year_average",
-      "uprating_from_period": "2025-12",
-      "uprating_to_period": 2025
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
     },
     {
       "name": "dwp.uc.households_children_5_or_more",
@@ -4376,9 +4373,8 @@
         "measure_kind": "prepared_column",
         "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
       },
-      "value_operation": "calendar_year_average",
-      "uprating_from_period": "2025-12",
-      "uprating_to_period": 2025
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
     },
     {
       "name": "dwp.uc.households_single_no_children",
