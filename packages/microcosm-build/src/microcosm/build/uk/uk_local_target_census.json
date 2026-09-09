@@ -98,7 +98,7 @@
       "enforcement": "review_required_before_binding",
       "fence_id": "census_disclosure_control_noise",
       "fenced_fact_count": null,
-      "rule": "All three census household-count legs are disclosure-controlled (ONS/NRS cell-key perturbation; NISRA flexible-table-builder controls), so area counts carry small deliberate noise and do not add exactly across grains (measured constituency-sum vs national-total deltas at review: E&W +105, Scotland -554, NI +3). Binding treats the published counts as the target values with that noise documented \u2014 never as exact controls \u2014 and any cross-grain reconciliation applies the standing cross-grain rule declared in uk_runtime.ledger_targets: country wins, so a bound national same-concept control rescales the constituency values before the solve."
+      "rule": "All three census household-count legs are disclosure-controlled (ONS/NRS cell-key perturbation; NISRA table-builder controls). Per-area dispersion of the retired OA-ladder sums against the published cells at review: England mean 7.4 / max 29, Wales 6.4 / 15, Scotland net \u2212557 (NRS applies disclosure control per output level; same shortfall at both grains), Northern Ireland mean 7 / max 16 after the NI constituency leg moved to NISRA's published DZ2021\u2192PARLCON24 lookup (the earlier postcode inference was a mapping defect of 10 Data Zones, max 694, not perturbation). When a national same-concept control is bound, the standing cross-grain rule declared in uk_runtime.ledger_targets rescales both grains; country wins."
     },
     {
       "authority": "FRS background and methodology (private-household universe); ONS population estimates methodology (communal-establishment population); microcosm#495 scoping (cross-family review finding).",
@@ -168,12 +168,12 @@
       "adjudications": [
         "census_disclosure_control_noise"
       ],
-      "description": "Weighted household counts by area, bound to census occupied-household totals summed from the sha-pinned UK OA ladder artifact (constituency_household_targets / local_authority_household_targets). Universe-compatible with the FRS instrument: census occupied households match the survey's own household frame, so the person-universe adjudication does not bind here.",
+      "description": "Weighted household counts by area, compiled from Chronicle's sha-pinned Census 2021 and 2022 household facts. Census occupied households match the FRS household frame, so the person-universe adjudication does not bind here.",
       "family": "census_households",
       "sources": [
-        "nomis_ts041_ew_oa_households",
-        "nrs_census_2022_index",
-        "nisra_dz21_households"
+        "ons_census2021_ts041_households",
+        "nrs_census2022_uv404_households",
+        "nisra_census2021_households"
       ]
     },
     {
@@ -524,10 +524,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
-        "source_commit": "6fb700e",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "Unbanded area statistics in the pinned Ledger fact feed supply the local HMRC count targets directly and the amount targets via the signed count_x_mean construction. The feed publishes SPI target count/mean measures for 650/650 constituencies except self_employment_income_mean at E14001416 (so that one amount row is signed deferred), and for 359/361 crosswalk local authorities; E06000027 has only median SPI measures and E06000053 has no SPI local-authority target-measure rows. This remains a different surface from the 208 banded Total Income facts held fenced by the national adjudication.",
@@ -546,10 +547,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
-        "source_commit": "6fb700e",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries the PCON24 constituency population age specs for all 650 constituencies across the ONS, NRS, and NISRA publisher legs. Mid-year estimates cover the total usual-resident population \u2014 see the population_universe_private_households adjudication.",
@@ -568,10 +570,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
-        "source_commit": "6fb700e",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries local-authority population age specs for all 361 crosswalk local authorities. Covers the total usual-resident population \u2014 see the population_universe_private_households adjudication.",
@@ -588,13 +591,23 @@
         "la"
       ],
       "latest_vintage": "Census Day 2021-03-21",
-      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py (recorded in the artifact's source_files map).",
-      "product": "Census 2021 table TS041 (number of households), England and Wales, output-area grain \u2014 the E&W leg of the ladder's household counts.",
+      "ledger_fact_pin": {
+        "artifact": ".codex-work/consumer_facts_uk.jsonl",
+        "build": "build-bundle --suite uk -> build-consumer-artifact",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
+        "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
+        "source_repo": "PolicyEngine/chronicle"
+      },
+      "notes": "The pinned Ledger fact feed carries the compiled household cells.",
+      "product": "Census 2021 table TS041 (number of households), England and Wales, compiled by Chronicle to constituency and local-authority household facts.",
       "publisher": "Office for National Statistics (via Nomis)",
-      "source_id": "nomis_ts041_ew_oa_households",
-      "status": "pinned_in_ladder",
+      "source_id": "ons_census2021_ts041_households",
+      "status": "pinned_in_ledger_facts",
       "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip",
-      "verified_on": "2026-07-22"
+      "verified_on": "2026-09-09"
     },
     {
       "geographies": [
@@ -602,13 +615,23 @@
         "la"
       ],
       "latest_vintage": "Census Day 2022-03-20",
-      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py; the in-zip specification defines HouseholdCount as the 2022 Census occupied household count.",
-      "product": "Census 2022 index zip: Postcode_To_OA.csv census occupied household counts (cell-key perturbed), summed by OA2022 \u2014 the Scotland leg of the ladder's household counts.",
+      "ledger_fact_pin": {
+        "artifact": ".codex-work/consumer_facts_uk.jsonl",
+        "build": "build-bundle --suite uk -> build-consumer-artifact",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
+        "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
+        "source_repo": "PolicyEngine/chronicle"
+      },
+      "notes": "The pinned Ledger fact feed carries the compiled household cells; the source specification defines HouseholdCount as occupied households.",
+      "product": "Census 2022 index zip: Postcode_To_OA.csv census occupied household counts (cell-key perturbed), compiled by Chronicle to constituency and local-authority household facts.",
       "publisher": "National Records of Scotland",
-      "source_id": "nrs_census_2022_index",
-      "status": "pinned_in_ladder",
+      "source_id": "nrs_census2022_uv404_households",
+      "status": "pinned_in_ledger_facts",
       "url": "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip",
-      "verified_on": "2026-07-22"
+      "verified_on": "2026-09-09"
     },
     {
       "geographies": [
@@ -616,13 +639,23 @@
         "la"
       ],
       "latest_vintage": "Census Day 2021-03-21",
-      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py.",
-      "product": "Census 2021 table-builder HOUSEHOLD dataset at DZ21 grain \u2014 the NI leg of the ladder's household counts.",
+      "ledger_fact_pin": {
+        "artifact": ".codex-work/consumer_facts_uk.jsonl",
+        "build": "build-bundle --suite uk -> build-consumer-artifact",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
+        "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
+        "source_repo": "PolicyEngine/chronicle"
+      },
+      "notes": "The pinned Ledger fact feed carries the compiled household cells.",
+      "product": "Census 2021 table-builder HOUSEHOLD dataset at DZ21 grain \u2014 compiled by Chronicle to constituency and local-authority facts.",
       "publisher": "Northern Ireland Statistics and Research Agency",
-      "source_id": "nisra_dz21_households",
-      "status": "pinned_in_ladder",
+      "source_id": "nisra_census2021_households",
+      "status": "pinned_in_ledger_facts",
       "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21",
-      "verified_on": "2026-07-22"
+      "verified_on": "2026-09-09"
     },
     {
       "geographies": [
@@ -633,10 +666,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
-        "source_commit": "6fb700e",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries DWP Stat-Xplore UC household facts for 632/650 constituencies and 350/361 local authorities, plus the four constituency child-bucket specs. DWP UC official statistics in this feed cover Great Britain; the 18 Northern Ireland constituencies and 11 Northern Ireland local authorities are signed deferred. DWP counts UC claim households \u2014 see the uc_unit_vs_household_grain adjudication.",
@@ -655,10 +689,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
-        "source_commit": "6fb700e",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "Model-based estimates built from the Family Resources Survey \u2014 see the frs_model_based_target_circularity adjudication. The BHC and AHC measures are independently modelled and not directly comparable \u2014 see the ons_bhc_ahc_noncomparable adjudication. MSOA-to-local-authority aggregation is signed deferred for this run; England and Wales only.",
@@ -680,10 +715,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
-        "source_commit": "6fb700e",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries tenure specs for all 361 crosswalk local authorities across ONS Census 2021, NRS Census 2022, and NISRA Census 2021 publisher legs. Private-rent and social-rent tenure rows are additive over publisher-native subclasses and compile through the signed sum operation.",
@@ -702,10 +738,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
-        "source_commit": "6fb700e",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "PIPR publishes average rent price levels, not additive rent totals; a bound cell composes the level into a total (see the signed rationale). Of the 361 local-authority cells, 314 bind for the 2025 compile and 47 remain signed deferred: four English cells have no matching LA id, 32 Scottish cells are represented only at BRMA grain without a signed translation, and 11 Northern Ireland cells are absent.",
@@ -726,10 +763,11 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "fact_row_count": 131450,
+        "facts_sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
-        "source_commit": "6fb700e",
+        "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "source_commit": "ec7169b",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned feed record-set spec uk.local_geography.council_tax_stock.by_local_authority.v1 supplies 2,541 locally compilable band cells. After the A13 and A14 rulings, 2,058 English cells bind: bands A-G each cover 294 authorities after E06000053 and E09000001 are support-floor excluded (E09000001 Band A was already suppressed), and the entire 296-cell English Band H family is signed deferred because 84 authorities lack Band H support at K=10. All 176 Welsh A-H cells are signed deferred because the feed has no Wales country-level stock-by-band parent control; 174 have local facts and the two Band H cells W06000019 and W06000024 are absent. Scotland's 32 authorities have no VOA band-count rows and Northern Ireland's 11 LGDs use domestic rates; all 830 excluded cells are signed deferrals. The feed has no comparable 2025 LA net series across the roster, so council_tax/net is not declared.",
@@ -744,7 +782,6 @@
   "status_definitions": {
     "bound_in_code": "The household-side metric is computed by local_targets.compute_household_metrics today.",
     "documented_unpinned": "The official product exists and was verified at the recorded URL on verified_on, but no exact table, vintage, or hash is pinned; binding work pins it per family.",
-    "pinned_in_ladder": "The product is downloaded and sha-pinned per build by the UK OA ladder artifact tool, which records every source hash in the artifact metadata; target values derive from the artifact's own sums.",
     "pinned_in_ledger_facts": "The official product's target facts are present in the sha-pinned Ledger consumer fact feed recorded on the source row.",
     "review_required_before_binding": "The fence is a reviewed adjudication requirement enforced by the rowwise doctrine solve (local_rowwise.require_adjudicated_uk_local_binding): binding a family whose fences lack an in-force entry in local_binding_adjudications.json is refused before any solve runs.",
     "signed_deferred": "The official product is present or documented, but this target surface does not bind it in the current compile; the source row carries signed_reason_id and signed_rationale."

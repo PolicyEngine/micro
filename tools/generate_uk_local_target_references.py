@@ -439,6 +439,11 @@ def _area_signed_deferrals(
     for target in contract.get("targets", ()):
         if "local_authority" not in target.get("geography_levels", ()):
             continue
+        if target["target_id"] == "ons.census.households":
+            # This complete 361-cell family is the ruled per-grain uprating
+            # denominator; signing away support-floor areas would change both
+            # the denominator and B3's required closed target surface.
+            continue
         add(
             target_id=str(target["target_id"]),
             geography_level="local_authority",

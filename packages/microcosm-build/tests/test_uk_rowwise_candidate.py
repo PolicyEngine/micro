@@ -279,6 +279,89 @@ def _write_staging_h5(
     write_uk_national_frame(dataset, path)
 
 
+def _household_specs_for_ladder(ladder) -> list[TargetSpec]:
+    specs = []
+    for level, codes in (
+        ("constituency", ladder.constituency_code),
+        ("local_authority", ladder.local_authority_code),
+    ):
+        grouped = (
+            pd.DataFrame({"code": codes, "value": ladder.households})
+            .groupby("code", sort=True)["value"]
+            .sum()
+        )
+        for area_code, value in grouped.items():
+            census_year = 2022 if str(area_code).startswith("S") else 2021
+            specs.append(
+                TargetSpec(
+                    name=f"ons.census.households@{area_code}",
+                    entity="household",
+                    measure="households",
+                    value=float(value),
+                    period=2025,
+                    source="synthetic Chronicle fixture",
+                    family="census_households",
+                    metadata={
+                        "contract_target_id": "ons.census.households",
+                        "geography_level": level,
+                        "geography_id": str(area_code),
+                        "uprating_from_period": census_year,
+                        "uprating_to_period": 2025,
+                    },
+                )
+            )
+    return specs
+
+
+def _mandatory_input_flags(input_h5: Path, ladder_path: Path) -> list[str]:
+    return [
+        "--input-sha256",
+        hashlib.sha256(input_h5.read_bytes()).hexdigest(),
+        "--ladder-sha256",
+        hashlib.sha256(ladder_path.read_bytes()).hexdigest(),
+        "--ledger-facts",
+        str(ladder_path.parent / "synthetic-ledger"),
+        "--ledger-facts-sha256",
+        "1" * 64,
+        "--ledger-manifest-sha256",
+        "2" * 64,
+    ]
+
+
+def _configure_households_only_inputs(
+    builder,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    input_h5: Path,
+    ladder_path: Path,
+) -> list[str]:
+    ladder = load_uk_oa_ladder(ladder_path)
+    artifact = SimpleNamespace(
+        facts=None,
+        provenance=lambda: {
+            "facts_sha256": "1" * 64,
+            "manifest_sha256": "2" * 64,
+            "artifact_id": "synthetic-households-only-fixture",
+        },
+    )
+    joint_inputs = {
+        "artifact": artifact,
+        "calibration_year": 2025,
+        "national_registry": TargetRegistry([], country="uk"),
+        "band_edge_registry": TargetRegistry([], country="uk"),
+        "local_registry": TargetRegistry(
+            _household_specs_for_ladder(ladder), country="uk"
+        ),
+        "measure_exclusions": {},
+        "reviewed_unbound_higher_targets": {},
+    }
+    monkeypatch.setattr(builder, "_load_joint_target_inputs", lambda _args: joint_inputs)
+    return [
+        *_mandatory_input_flags(input_h5, ladder_path),
+        "--households-only",
+    ]
+
+
 def test_candidate_build_writes_calibrated_h5_and_evidence(
     monkeypatch, tmp_path
 ) -> None:
@@ -290,6 +373,9 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     output_dir = tmp_path / "candidate"
     _write_staging_h5(input_h5, households_per_region=52)
     ladder = _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
     import microcosm.build.uk_runtime.battery_bindings as battery_bindings
 
     monkeypatch.setattr(
@@ -330,8 +416,9 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
                 "2",
                 "--seed",
                 "7",
-                "--epochs",
-                "2",
+                    "--epochs",
+                    "2",
+                    *household_flags,
             ]
         )
         == 0
@@ -403,7 +490,14 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert cross_grain["empty_legs_licensed"] == []
     assert cross_grain["controls_without_lower_rows"] == []
     assert cross_grain["absence"]
-    assert manifest["ladder_target_provenance"] == ladder_target_provenance(ladder)
+    assert manifest["ladder_assignment_provenance"] == ladder_target_provenance(ladder)
+    assert manifest["identity"]["targets"]["paired_ladder_sha256"] == (
+        hashlib.sha256(ladder_path.read_bytes()).hexdigest()
+    )
+    assert manifest["identity"]["targets"]["ledger"]["artifact_id"] == (
+        "synthetic-households-only-fixture"
+    )
+    assert manifest["household_dispersion"]["countries"]
     assert manifest["gate"]["passed"] is True
     assert manifest["gate"]["phase"] == "post_calibration"
     assert manifest["gate"]["details"]
@@ -445,7 +539,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         "solve_epochs": 1500,
         "clone_count": 15,
     }
-    assert manifest["ladder_household_uprating"]["applied"] is False
+    assert manifest["census_household_uprating"]["applied"] is False
     assert manifest["solve"]["n_targets"] == 4
     assert manifest["solve"]["n_households"] == 416
     assert np.isfinite(manifest["solve"]["initial_loss"])
@@ -516,6 +610,9 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     output_dir = tmp_path / "dry-run-output"
     _write_staging_h5(input_h5)
     ladder = _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
 
     def forbidden(*_args, **_kwargs):
         pytest.fail("dry run called a solve or dataset writer")
@@ -540,7 +637,8 @@ def test_candidate_dry_run_plans_without_solve_or_write(
                 "2",
                 "--seed",
                 "7",
-                "--dry-run",
+                    "--dry-run",
+                    *household_flags,
             ]
         )
         == 0
@@ -580,7 +678,7 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     assert cross_grain["empty_legs_licensed"] == []
     assert cross_grain["controls_without_lower_rows"] == []
     assert cross_grain["absence"]
-    assert plan["ladder_target_provenance"] == ladder_target_provenance(ladder)
+    assert plan["ladder_assignment_provenance"] == ladder_target_provenance(ladder)
     assert plan["shapes"]["person"][0] == 24
     assert plan["shapes"]["benunit"][0] == 24
     assert plan["shapes"]["household"][0] == 24
@@ -603,6 +701,9 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
     output_dir = tmp_path / "dry-run-output"
     _write_staging_h5(input_h5)
     _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
 
     def compact_sampler_forbidden(*_args, **_kwargs):
         pytest.fail("rowwise spine path called the certified-compact sampler")
@@ -661,6 +762,7 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
                 "--engine-blocks",
                 "2",
                 "--dry-run",
+                *household_flags,
             ]
         )
     assert (
@@ -679,6 +781,7 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
                 "--sample-seed",
                 "578",
                 "--dry-run",
+                *household_flags,
             ]
         )
         == 0
@@ -734,6 +837,16 @@ def test_candidate_clone_count_planning_is_dry_run_only(tmp_path) -> None:
                 str(tmp_path / "out"),
                 "--candidate-clone-counts",
                 "1,2,4",
+                "--input-sha256",
+                "0" * 64,
+                "--ladder-sha256",
+                "0" * 64,
+                "--ledger-facts",
+                str(tmp_path / "ledger"),
+                "--ledger-facts-sha256",
+                "0" * 64,
+                "--ledger-manifest-sha256",
+                "0" * 64,
             ]
         )
 
@@ -1004,6 +1117,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     )
     local_registry = TargetRegistry(
         [
+            *_household_specs_for_ladder(ladder),
             TargetSpec(
                 name="ons.tenure.owned_outright@E09000001",
                 entity="household",
@@ -1023,6 +1137,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
         country="uk",
     )
     artifact = SimpleNamespace(
+        facts=None,
         provenance=lambda: {
             "facts_sha256": "1" * 64,
             "manifest_sha256": "2" * 64,
@@ -1053,6 +1168,11 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     monkeypatch.setattr(
         builder, "_load_joint_target_inputs", lambda _args: joint_inputs
     )
+    monkeypatch.setattr(builder, "load_bound_spine_sidecar", lambda *_args: {})
+    monkeypatch.setattr(
+        builder, "spine_provenance_from_sidecar", lambda *_args: {"synthetic": True}
+    )
+    joint_flags = _mandatory_input_flags(input_h5, ladder_path)
 
     constructions = []
 
@@ -1168,6 +1288,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                 "--n-clones",
                 "2",
                 "--dry-run",
+                *joint_flags,
             ]
         )
         == 0
@@ -1210,6 +1331,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                 "--epochs",
                 "2",
                 "--skip-holdout",
+                *joint_flags,
             ]
         )
         == 0
@@ -1278,7 +1400,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     assert "fanout_controls_summed" not in f100["solve"]["cross_grain"]
     assert f100["releasable"] is True
     assert f100["measure_exclusions"] == joint_inputs["measure_exclusions"]
-    assert f100["ladder_household_uprating"]["applied"] is False
+    assert f100["census_household_uprating"]["applied"] is False
     assert _spool_rows(f100_out)[0].rung == "f100"
 
     f001_out = tmp_path / "joint-f001"
@@ -1298,6 +1420,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                 "--epochs",
                 "2",
                 "--skip-holdout",
+                *joint_flags,
             ]
         )
         == 0
@@ -1326,6 +1449,9 @@ def test_candidate_refusal_records_receipt_and_reraises(
     output_dir = tmp_path / "candidate"
     _write_staging_h5(input_h5)
     _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
 
     def failing_gate(*_args, **_kwargs):
         return builder.GateResult(
@@ -1362,6 +1488,7 @@ def test_candidate_refusal_records_receipt_and_reraises(
                 "7",
                 "--epochs",
                 "2",
+                *household_flags,
             ]
         )
 
@@ -1396,6 +1523,9 @@ def test_candidate_binding_adjudication_failure_records_failed_row(
     output_dir = tmp_path / "candidate"
     _write_staging_h5(input_h5)
     _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
 
     import microcosm.build.uk_runtime.local_rowwise as local_rowwise
 
@@ -1420,6 +1550,7 @@ def test_candidate_binding_adjudication_failure_records_failed_row(
                 "7",
                 "--epochs",
                 "2",
+                *household_flags,
             ]
         )
 
@@ -1449,6 +1580,9 @@ def test_candidate_setup_failure_records_failed_row(monkeypatch, tmp_path) -> No
     output_dir = tmp_path / "candidate"
     _write_staging_h5(input_h5)
     _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
 
     def failing_ladder_load(_path):
         raise RuntimeError("ladder artifact refused to parse")
@@ -1470,6 +1604,7 @@ def test_candidate_setup_failure_records_failed_row(monkeypatch, tmp_path) -> No
                 "7",
                 "--epochs",
                 "2",
+                *household_flags,
             ]
         )
 
@@ -1488,7 +1623,7 @@ def test_candidate_setup_failure_records_failed_row(monkeypatch, tmp_path) -> No
     )
 
 
-def test_candidate_refuses_separate_assignment_and_target_ladders(
+def test_households_only_targets_come_from_compiled_chronicle_registry(
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
@@ -1513,11 +1648,23 @@ def test_candidate_refuses_separate_assignment_and_target_ladders(
         source_lineage_modulus=None,
     )
 
-    with pytest.raises(ValueError, match="same loaded"):
-        builder._build_bound_problem(
-            assignment,
-            target_ladder=target_ladder,
-        )
+    registry = TargetRegistry(
+        _household_specs_for_ladder(target_ladder), country="uk"
+    )
+    _, problem, _ = builder._build_bound_problem(
+        assignment,
+        local_registry=registry,
+    )
+
+    expected = sorted(
+        float(spec.value)
+        for spec in registry.specs
+        if spec.metadata["geography_level"] == "constituency"
+    )
+    assert sorted(problem.targets.tolist()) == expected
+    assert problem.target_frame["target_name"].str.startswith(
+        "ons.census.households@"
+    ).all()
 
 
 def test_candidate_dry_run_refuses_ladder_sidecar_collision(
@@ -1535,6 +1682,10 @@ def test_candidate_dry_run_refuses_ladder_sidecar_collision(
     output_dir.mkdir()
     temporary_ladder.replace(ladder_path)
     ladder_bytes = ladder_path.read_bytes()
+    household_flags = [
+        *_mandatory_input_flags(input_h5, ladder_path),
+        "--households-only",
+    ]
 
     with pytest.raises(ValueError, match="differ"):
         builder.main(
@@ -1546,6 +1697,7 @@ def test_candidate_dry_run_refuses_ladder_sidecar_collision(
                 "--out",
                 str(output_dir),
                 "--dry-run",
+                *household_flags,
             ]
         )
 
@@ -1608,6 +1760,8 @@ def _joint_f100_args(input_h5: Path, ladder_path: Path, output_dir: Path) -> lis
         "--epochs",
         "2",
         "--skip-holdout",
+        *_mandatory_input_flags(input_h5, ladder_path),
+        "--households-only",
     ]
 
 
@@ -1625,6 +1779,9 @@ def test_candidate_weight_ratio_failure_is_reported_and_blocks(
     )
     _write_ladder(ladder_path)
     ladder = load_uk_oa_ladder(ladder_path)
+    _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
     import microcosm.build.uk_runtime.battery_bindings as battery_bindings
 
     monkeypatch.setattr(
@@ -1682,6 +1839,9 @@ def test_candidate_block_partitions_failures_by_criticality(
         input_h5, households_per_region=200, region_masses=(4.0, 10.0, 10.0, 9.0)
     )
     _write_ladder(ladder_path)
+    _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
     registry = builder.UK_GATE_REGISTRY
     monkeypatch.setattr(
         builder,
@@ -1817,6 +1977,26 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
         )
 
 
+def test_candidate_requires_pinned_ledger_inputs(tmp_path) -> None:
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--input-sha256",
+            "0" * 64,
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--ladder-sha256",
+            "0" * 64,
+            "--out",
+            str(tmp_path / "out"),
+        ]
+    )
+    with pytest.raises(ValueError, match="mandatory"):
+        builder._validate_cli_args(args)
+
+
 def test_candidate_multi_block_engine_run_is_never_releasable(
     monkeypatch, tmp_path, capsys
 ) -> None:
@@ -1838,6 +2018,9 @@ def test_candidate_multi_block_engine_run_is_never_releasable(
     )
     _write_ladder(ladder_path)
     ladder = load_uk_oa_ladder(ladder_path)
+    _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
     import microcosm.build.uk_runtime.battery_bindings as battery_bindings
 
     monkeypatch.setattr(
@@ -1889,12 +2072,16 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
             "local_authority": tuple(sorted(set(ladder.local_authority_code))),
         },
     )
+    flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
     status = builder.main(
         [
             "--input-h5",
             str(input_h5),
             "--ladder",
             str(ladder_path),
+            *flags,
             "--out",
             str(out),
             "--n-clones",
@@ -2088,6 +2275,9 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
         str(input_h5),
         "--ladder",
         str(ladder_path),
+        *_configure_households_only_inputs(
+            builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+        ),
         "--n-clones",
         "2",
         "--dataset-households",

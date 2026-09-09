@@ -31,3 +31,8 @@ local regeneration test accepts either the default `.codex-work` files or a
 The national calibration runner refuses a feed whose facts or manifest digest
 differs from its committed pin. `--allow-unpinned-feed` is an explicit diagnostic override and
 is recorded in the run manifest; it is not a re-pin procedure.
+
+After the `ec7169b` re-pin, census household targets use the same Chronicle
+compile path as every other bound UK local family. The OA ladder now supplies
+geography assignment and diagnostic household dispersion only; it no longer
+creates calibration targets or a non-contract reconciliation surface.

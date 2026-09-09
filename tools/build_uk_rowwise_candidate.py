@@ -6,8 +6,8 @@ cloned frame, and calibrates every row in one doctrine solve. A dry run compiles
 the registries and reports analytical matrix/support evidence without running
 the policy engine, solving, or writing output files.
 
-For pre-#762 synthetic fixtures, omitting the Ledger arguments retains the
-adjudicated constituency-household compatibility path.
+The pinned Ledger arguments are mandatory; ``--households-only`` binds only
+the Chronicle census-household constituency targets from the same registry.
 """
 
 from __future__ import annotations
@@ -68,18 +68,17 @@ from microcosm.build.uk_runtime import (
     UKRowwiseDoctrineSolve,
     UKRowwiseLocalMatrix,
     UKRowwiseNationalRows,
-    apply_uk_cross_grain_reconciliation,
     build_uk_rowwise_local_matrix,
     build_uk_rowwise_local_surface_matrix,
     clone_uk_dataset_with_ladder_geography,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     compute_household_metrics,
-    constituency_household_targets,
     drop_injected_measure_inputs,
     inject_measure_inputs,
     ladder_clone_index_column,
     ladder_target_provenance,
+    ladder_vs_ledger_household_dispersion,
     load_bound_spine_sidecar,
     load_uk_local_area_crosswalk,
     load_uk_national_frame,
@@ -91,10 +90,10 @@ from microcosm.build.uk_runtime import (
     runtime_provenance,
     solve_uk_rowwise_weights_under_doctrine,
     spine_provenance_from_sidecar,
+    uk_census_household_uprating,
     uk_fit_by_family,
     uk_household_weight_kind,
     uk_ladder_area_support_summary,
-    uk_ladder_household_uprating,
     uk_ledger_households_total,
     uk_local_doctrine_with_overrides,
     uk_local_target_surface,
@@ -676,6 +675,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule,
     )
     parser.add_argument("--release-candidate", action="store_true")
+    parser.add_argument(
+        "--households-only",
+        action="store_true",
+        help="Bind only Chronicle census-household constituency targets.",
+    )
     parser.add_argument("--skip-holdout", action="store_true")
     parser.add_argument(
         "--out",
@@ -880,7 +884,9 @@ def _run_candidate(
         national_frame, _national_provenance = load_uk_national_frame(input_h5)
         calibration_year = int(load_uk_frs_release().calibration_year)
         args._calibration_year = calibration_year
-        if args.ledger_facts is not None:
+        if args.households_only:
+            args._spine_provenance = {}
+        else:
             spine_sidecar_path = input_h5.with_suffix(".build.json")
             spine_sidecar = load_bound_spine_sidecar(
                 spine_sidecar_path,
@@ -890,8 +896,6 @@ def _run_candidate(
                 spine_sidecar_path,
                 spine_sidecar,
             )
-        else:
-            args._spine_provenance = {}
         national_frame, sampling = _sample_candidate_frame(
             national_frame,
             fraction=args.sample_fraction,
@@ -924,40 +928,33 @@ def _run_candidate(
         ladder = load_uk_oa_ladder(ladder_path)
         target_provenance = ladder_target_provenance(ladder)
         joint_inputs = _load_joint_target_inputs(args)
-        if joint_inputs is not None:
-            # microcosm#762 A15: the ladder's census household counts bind at
-            # the calibration year through one national factor from the
-            # Ledger's published UK household total (fail-closed by name on a
-            # real Ledger artifact; a synthetic artifact without facts binds
-            # the rows as published and says so, which the release posture
-            # refuses).
-            facts = getattr(joint_inputs.get("artifact"), "facts", None)
-            if facts is None:
-                joint_inputs["ladder_household_uprating"] = {
-                    "applied": False,
-                    "reason": (
-                        "the joint target inputs carry no Ledger facts; ladder "
-                        "household rows bind at their census vintage."
+        facts = getattr(joint_inputs.get("artifact"), "facts", None)
+        if facts is None:
+            joint_inputs["census_household_uprating"] = {
+                "applied": False,
+                "reason": "the joint target inputs carry no Ledger facts.",
+            }
+        else:
+            joint_inputs["census_household_uprating"] = (
+                uk_census_household_uprating(
+                    joint_inputs["local_registry"],
+                    uk_ledger_households_total(
+                        facts, period=joint_inputs["calibration_year"]
                     ),
-                }
-            else:
-                joint_inputs["ladder_household_uprating"] = (
-                    uk_ladder_household_uprating(
-                        ladder,
-                        uk_ledger_households_total(
-                            facts, period=joint_inputs["calibration_year"]
-                        ),
-                        period=joint_inputs["calibration_year"],
-                    )
+                    period=joint_inputs["calibration_year"],
                 )
-            if args.release_candidate and not joint_inputs[
-                "ladder_household_uprating"
-            ].get("applied"):
-                raise SystemExit(
-                    "error: --release-candidate requires the A15 ladder household "
-                    "uprating: "
-                    + str(joint_inputs["ladder_household_uprating"].get("reason"))
-                )
+            )
+        joint_inputs["household_dispersion"] = ladder_vs_ledger_household_dispersion(
+            ladder, joint_inputs["local_registry"].specs
+        )
+        if args.release_candidate and not joint_inputs[
+            "census_household_uprating"
+        ].get("applied"):
+            raise SystemExit(
+                "error: --release-candidate requires the A15 census household "
+                "uprating: "
+                + str(joint_inputs["census_household_uprating"].get("reason"))
+            )
         doctrine, doctrine_override = uk_local_doctrine_with_overrides(
             UK_LOCAL_SOLVE_DOCTRINE,
             (
@@ -993,7 +990,7 @@ def _run_candidate(
         if state is not None:
             append_phase(state, "cloned")
 
-        if joint_inputs is not None and args.dry_run:
+        if not args.households_only and args.dry_run:
             plan = _joint_dry_run_plan(
                 args,
                 clone=clone,
@@ -1014,11 +1011,11 @@ def _run_candidate(
             print(_json_text(plan), end="")
             return 0
 
-        if joint_inputs is None:
-            print("binding census household targets...", file=sys.stderr, flush=True)
+        if args.households_only:
+            print("binding Chronicle census household targets...", file=sys.stderr, flush=True)
             household, problem, cross_grain = _build_bound_problem(
                 assignment,
-                target_ladder=ladder,
+                local_registry=joint_inputs["local_registry"],
             )
             solve_frame = clone.frame
             restore = None
@@ -1056,7 +1053,6 @@ def _run_candidate(
                 rung_surface,
             ) = _build_joint_problem(
                 assignment,
-                target_ladder=ladder,
                 local_registry=joint_inputs["local_registry"],
                 national_registry=joint_inputs["national_registry"],
                 local_metrics=local_metrics,
@@ -1065,7 +1061,9 @@ def _run_candidate(
                 reviewed_unbound_higher_targets=joint_inputs[
                     "reviewed_unbound_higher_targets"
                 ],
-                ladder_household_uprating=joint_inputs.get("ladder_household_uprating"),
+                census_household_uprating=joint_inputs.get(
+                    "census_household_uprating"
+                ),
             )
             args._rung_surface = rung_surface
         args._bound_families = tuple(bound_families)
@@ -1191,7 +1189,7 @@ def _run_candidate(
             solve,
             problem,
             national_registry=(
-                None if joint_inputs is None else joint_inputs["national_registry"]
+                None if args.households_only else joint_inputs["national_registry"]
             ),
         )
         try:
@@ -1414,9 +1412,7 @@ def _verify_requested_pin(
     artifact["pin_verified"] = True
 
 
-def _load_joint_target_inputs(args: argparse.Namespace) -> dict[str, Any] | None:
-    if args.ledger_facts is None:
-        return None
+def _load_joint_target_inputs(args: argparse.Namespace) -> dict[str, Any]:
     artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
@@ -1505,14 +1501,13 @@ def _joint_surface_registry(
 def _build_joint_problem(
     assignment: _LadderAssignment,
     *,
-    target_ladder: UkOaLadder,
     local_registry: TargetRegistry,
     national_registry: TargetRegistry,
     local_metrics: Mapping[str, pd.DataFrame],
     period: int,
     sample_fraction: float,
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]],
-    ladder_household_uprating: Mapping[str, Any] | None = None,
+    census_household_uprating: Mapping[str, Any] | None = None,
 ) -> tuple[
     pd.DataFrame,
     UKRowwiseLocalMatrix,
@@ -1520,10 +1515,6 @@ def _build_joint_problem(
     tuple[str, ...],
     dict[str, Any],
 ]:
-    if assignment.ladder is not target_ladder:
-        raise ValueError(
-            "assignment and targets must come from the same loaded UK OA ladder object."
-        )
     household = assignment.result.frame.table("household").reset_index(drop=True)
     household_index = pd.Index(household["household_id"], name="household_id")
     metrics = {
@@ -1543,11 +1534,10 @@ def _build_joint_problem(
     national_ids = _national_contract_target_ids(national_registry)
     surface, cross_grain = uk_local_target_surface(
         _joint_surface_registry(local_registry, national_registry),
-        target_ladder,
         bound_national_target_ids=national_ids,
         period=period,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
-        ladder_household_uprating=ladder_household_uprating,
+        census_household_uprating=census_household_uprating,
     )
     covered = {
         grain: set(values.astype(str).tolist()) for grain, values in assigned.items()
@@ -1621,8 +1611,10 @@ def _build_joint_problem(
         ),
     }
     rosters = {
-        "constituency": tuple(map(str, np.unique(target_ladder.constituency_code))),
-        "la": tuple(map(str, np.unique(target_ladder.local_authority_code))),
+        "constituency": tuple(
+            map(str, np.unique(assignment.ladder.constituency_code))
+        ),
+        "la": tuple(map(str, np.unique(assignment.ladder.local_authority_code))),
     }
     problem = build_uk_rowwise_local_surface_matrix(
         metrics,
@@ -1672,11 +1664,10 @@ def _joint_dry_run_plan(
             joint_inputs["local_registry"],
             national_registry,
         ),
-        ladder,
         bound_national_target_ids=_national_contract_target_ids(national_registry),
         period=joint_inputs["calibration_year"],
         reviewed_unbound_higher_targets=joint_inputs["reviewed_unbound_higher_targets"],
-        ladder_household_uprating=joint_inputs.get("ladder_household_uprating"),
+        census_household_uprating=joint_inputs.get("census_household_uprating"),
     )
     household = clone.frame.table("household")
     covered = {
@@ -1742,7 +1733,10 @@ def _joint_dry_run_plan(
         "identity": {
             "spine": dict(input_artifact),
             "ladder": dict(ladder_artifact),
-            "ledger": joint_inputs["artifact"].provenance(),
+            "targets": {
+                "ledger": joint_inputs["artifact"].provenance(),
+                "paired_ladder_sha256": str(ladder_artifact["sha256"]),
+            },
         },
         "sampling": dict(args._sampling_receipt),
         "rung_surface": {
@@ -1780,7 +1774,8 @@ def _joint_dry_run_plan(
         "parameters": _parameters(args, source_year=source_year),
         "releasable": False,
         "engine": "not_run",
-        "ladder_target_provenance": dict(target_provenance),
+        "ladder_assignment_provenance": dict(target_provenance),
+        "household_dispersion": dict(joint_inputs["household_dispersion"]),
     }
 
 
@@ -1809,14 +1804,9 @@ def _local_vintage_census(registry: TargetRegistry) -> list[dict[str, object]]:
 def _build_bound_problem(
     assignment: _LadderAssignment,
     *,
-    target_ladder: UkOaLadder,
+    local_registry: TargetRegistry,
 ) -> tuple[pd.DataFrame, UKRowwiseLocalMatrix, dict[str, Any]]:
-    """Bind the one target family, refusing separately loaded ladders."""
-
-    if assignment.ladder is not target_ladder:
-        raise ValueError(
-            "assignment and targets must come from the same loaded UK OA ladder object."
-        )
+    """Bind Chronicle census household targets at constituency grain only."""
     clone = assignment.result
     household = clone.frame.table("household").reset_index(drop=True)
     household_index = pd.Index(
@@ -1832,21 +1822,25 @@ def _build_bound_problem(
         index=household_index,
         name="constituency_code",
     )
-    targets = constituency_household_targets(target_ladder)
-    local_surface = pd.DataFrame(
+    household_specs = sorted(
+        (
+            spec
+            for spec in local_registry.specs
+            if spec.name.startswith("ons.census.households@")
+            and _spec_geography(spec)[0] == "constituency"
+        ),
+        key=lambda spec: _spec_geography(spec)[1],
+    )
+    if not household_specs:
+        raise ValueError(
+            "households-only binding requires Chronicle constituency household specs."
+        )
+    targets = pd.DataFrame(
         {
-            "grain": "constituency",
-            "geography_id": targets["code"].astype(str),
-            "target_id": "external:census_households/households",
-            "value": targets["households"].to_numpy(dtype=np.float64),
+            "code": [_spec_geography(spec)[1] for spec in household_specs],
+            "households": [float(spec.value) for spec in household_specs],
         }
     )
-    reconciled_surface, cross_grain = apply_uk_cross_grain_reconciliation(
-        local_surface,
-        BOUND_NATIONAL_TARGETS,
-    )
-    targets = targets.copy()
-    targets["households"] = reconciled_surface["value"].to_numpy(dtype=np.float64)
     problem = build_uk_rowwise_local_matrix(
         metrics,
         assigned,
@@ -1854,12 +1848,21 @@ def _build_bound_problem(
         area_type="constituency",
         code_column="code",
     )
+    problem.target_frame["target_name"] = [spec.name for spec in household_specs]
+    problem.target_frame["contract_target_id"] = "ons.census.households"
     return (
         household,
         problem,
         {
             "bound_national_targets": list(BOUND_NATIONAL_TARGETS),
-            **cross_grain,
+            "bound_higher_targets": [],
+            "inconsistencies_in_force": [],
+            "groups": [],
+            "unbound_bridges": [],
+            "empty_legs_licensed": [],
+            "controls_without_lower_rows": [],
+            "fanout_targets_not_controls": [],
+            "absence": "Households-only scope has no national controls.",
         },
     )
 
@@ -2169,7 +2172,16 @@ def _dry_run_plan(
         "bound_target_families": list(args._bound_families),
         "binding_adjudications": dict(binding_adjudications),
         "cross_grain": dict(cross_grain),
-        "ladder_target_provenance": dict(target_provenance),
+        "ladder_assignment_provenance": dict(target_provenance),
+        "household_dispersion": dict(
+            args._joint_inputs_receipt["household_dispersion"]
+        ),
+        "identity": {
+            "targets": {
+                "ledger": args._joint_inputs_receipt["artifact"].provenance(),
+                "paired_ladder_sha256": str(ladder_artifact["sha256"]),
+            }
+        },
         "inputs": {
             "dataset": dict(input_artifact),
             "ladder": dict(ladder_artifact),
@@ -2389,7 +2401,7 @@ def _manifest(
     ladder_rows = int(
         problem.target_frame["target_name"]
         .astype(str)
-        .str.startswith("external:census_households/households@")
+        .str.startswith("ons.census.households@")
         .sum()
     )
     local_rows = int(len(problem.target_frame) - ladder_rows)
@@ -2413,7 +2425,10 @@ def _manifest(
         "bound_target_families": list(args._bound_families),
         "binding_adjudications": dict(solve.binding_adjudications),
         "cross_grain": dict(cross_grain),
-        "ladder_target_provenance": dict(target_provenance),
+        "ladder_assignment_provenance": dict(target_provenance),
+        "household_dispersion": dict(
+            args._joint_inputs_receipt["household_dispersion"]
+        ),
         "parameters": _parameters(args, source_year=source_year),
         "inputs": {
             "dataset": dict(input_artifact),
@@ -2429,11 +2444,10 @@ def _manifest(
                 "layer_vintages": dict(target_provenance),
                 "matches_local_area_crosswalk_pin": True,
             },
-            **(
-                {"ledger": args._joint_inputs_receipt["artifact"].provenance()}
-                if args._joint_inputs_receipt is not None
-                else {}
-            ),
+            "targets": {
+                "ledger": args._joint_inputs_receipt["artifact"].provenance(),
+                "paired_ladder_sha256": str(ladder_artifact["sha256"]),
+            },
             "code": {"git_commit": _git_commit(), "git_dirty": _git_dirty()},
             "runtime": runtime_provenance(),
             "sampling": dict(args._sampling_receipt),
@@ -2629,8 +2643,8 @@ def _manifest(
                 else {"size_certification_present": False}
             ),
         },
-        "ladder_household_uprating": dict(
-            cross_grain.get("ladder_household_uprating")
+        "census_household_uprating": dict(
+            cross_grain.get("census_household_uprating")
             or {"applied": False, "reason": "no cross-grain receipt"}
         ),
         # The reviewed measure exclusions the national compile stood on
@@ -2895,24 +2909,6 @@ def _validate_support_summary(support: pd.DataFrame) -> None:
 
 
 def _validate_cli_args(args: argparse.Namespace) -> None:
-    ledger_values = (
-        args.ledger_facts,
-        args.ledger_facts_sha256,
-        args.ledger_manifest_sha256,
-    )
-    if any(value is not None for value in ledger_values) and not all(
-        value is not None for value in ledger_values
-    ):
-        raise ValueError(
-            "--ledger-facts, --ledger-facts-sha256, and "
-            "--ledger-manifest-sha256 must be supplied together."
-        )
-    if args.ledger_facts is not None and (
-        args.input_sha256 is None or args.ladder_sha256 is None
-    ):
-        raise ValueError(
-            "the joint registry path requires --input-sha256 and --ladder-sha256."
-        )
     if args.selection_seed is not None and args.dataset_households is None:
         raise ValueError("--selection-seed requires --dataset-households.")
     if not (0.0 < args.selection_pi_hi <= 1.0):
@@ -2936,6 +2932,22 @@ def _validate_cli_args(args: argparse.Namespace) -> None:
             raise ValueError(
                 "--dataset-households is candidate-only: size-specific matched comparison and promotion scorecard are required before release."
             )
+    # Size-selection arguments are validated first so their refusals name
+    # the size flag at fault; the pinned Ledger inputs are then mandatory.
+    ledger_values = (
+        args.ledger_facts,
+        args.ledger_facts_sha256,
+        args.ledger_manifest_sha256,
+    )
+    if not all(value is not None for value in ledger_values):
+        raise ValueError(
+            "--ledger-facts, --ledger-facts-sha256, and "
+            "--ledger-manifest-sha256 are mandatory and must be supplied together."
+        )
+    if args.input_sha256 is None or args.ladder_sha256 is None:
+        raise ValueError(
+            "the joint registry path requires --input-sha256 and --ladder-sha256."
+        )
     if args.release_candidate:
         required_release = {
             "--input-sha256": args.input_sha256,

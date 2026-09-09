@@ -180,13 +180,13 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "operation": "sum",
         "assertion_policy": "observed_only",
     }
-    assert len(resource["targets"]) == 235
+    assert len(resource["targets"]) == 236
 
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
     assert len(registry_scope) == 202
-    assert len(profile_scope) == 33
+    assert len(profile_scope) == 34
     assert target_ids[:202] == registry_scope
     assert target_ids[202:] == profile_scope
 
@@ -221,9 +221,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 33
+    assert parity["contract_target_count"] == 34
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 8
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 9
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -321,7 +321,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 235
+    assert len(target_ids) == 236
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -552,13 +552,11 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
 
     assert (
         metric_names_from_target_profile(resource, "constituency")
-        == metric_names("constituency")[:-1]
+        == metric_names("constituency")
     )
-    assert metric_names_from_target_profile(resource, "la") == tuple(
-        name for name in metric_names("la") if name != "households"
-    )
-    assert len(metric_names_from_target_profile(resource, "constituency")) == 17
-    assert len(metric_names_from_target_profile(resource, "la")) == 29
+    assert metric_names_from_target_profile(resource, "la") == metric_names("la")
+    assert len(metric_names_from_target_profile(resource, "constituency")) == 18
+    assert len(metric_names_from_target_profile(resource, "la")) == 30
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:
@@ -751,7 +749,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 235
+    assert len(targets) == 236
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

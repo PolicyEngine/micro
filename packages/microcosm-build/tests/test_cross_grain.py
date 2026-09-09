@@ -80,19 +80,19 @@ def test_exact_signature_rescales_to_country_and_receipts_without_mutation():
     ]
 
 
-def test_bridge_sums_exhaustive_higher_partition_to_one_control():
+def test_bridge_sums_exhaustive_higher_partition_to_one_contract_control():
     bridge = CrossGrainBridge(
-        "partition_vs_external",
+        "partition_vs_contract",
         concept="households",
         higher_target_ids=("part_a", "part_b"),
-        lower_side="external:census/households",
+        lower_side="contract:census_households",
     )
     surface = pd.DataFrame(
         [
             ("country", "UK", "part_a", 30.0),
             ("country", "UK", "part_b", 70.0),
-            ("constituency", "E1", "external:census/households", 30.0),
-            ("constituency", "W1", "external:census/households", 20.0),
+            ("constituency", "E1", "census_households", 30.0),
+            ("constituency", "W1", "census_households", 20.0),
         ],
         columns=["grain", "geography_id", "target_id", "value"],
     )
@@ -105,7 +105,7 @@ def test_bridge_sums_exhaustive_higher_partition_to_one_control():
     )
 
     assert reconciled["value"].tolist() == [30.0, 70.0, 60.0, 40.0]
-    assert receipt["groups"][0]["bridge_id"] == "partition_vs_external"
+    assert receipt["groups"][0]["bridge_id"] == "partition_vs_contract"
     assert receipt["groups"][0]["legs"][0]["higher_target_ids"] == [
         "part_a",
         "part_b",
@@ -228,7 +228,7 @@ def test_partially_bound_declared_partition_is_refused():
         "partition",
         "households",
         ("part_a", "part_b"),
-        "external:census/households",
+        "contract:census_households",
     )
     surface = pd.DataFrame(
         [("country", "UK", "part_a", 10.0)],
@@ -249,13 +249,13 @@ def test_reviewed_partial_partition_is_unbound_with_receipt_and_no_reconciliatio
         "partition",
         "households",
         ("part_a", "part_b", "part_c"),
-        "external:census/households",
+        "contract:census_households",
     )
     surface = pd.DataFrame(
         [
             ("country", "UK", "part_a", 10.0),
-            ("constituency", "E1", "external:census/households", 30.0),
-            ("constituency", "W1", "external:census/households", 20.0),
+            ("constituency", "E1", "census_households", 30.0),
+            ("constituency", "W1", "census_households", 20.0),
         ],
         columns=["grain", "geography_id", "target_id", "value"],
     )
@@ -295,7 +295,7 @@ def test_partial_partition_with_unreviewed_member_names_it_in_refusal():
         "partition",
         "households",
         ("part_a", "part_b", "part_c"),
-        "external:census/households",
+        "contract:census_households",
     )
     surface = pd.DataFrame(
         [("country", "UK", "part_a", 10.0)],
@@ -339,6 +339,27 @@ def test_target_matched_by_two_bridges_is_refused():
                 "local": _signature(),
             },
             _rule(bridges=bridges),
+        )
+
+
+def test_external_target_side_is_refused() -> None:
+    bridge = CrossGrainBridge(
+        "external_hatch",
+        "households",
+        ("national",),
+        "external:census/households",
+    )
+    surface = pd.DataFrame(
+        [("constituency", "E1", "local", 10.0)],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+
+    with pytest.raises(ValueError, match="forbidden external side"):
+        detect_cross_grain_inconsistencies(
+            surface,
+            (),
+            {"national": _signature(), "local": _signature()},
+            _rule(bridges=(bridge,)),
         )
 
 

@@ -126,7 +126,7 @@ def test_committed_surfaces_regenerate_from_pinned_feed(
     else:
         facts_sha256 = _LEDGER_FACT_FEED_PIN["facts_sha256"]
         manifest_sha256 = _LEDGER_FACT_FEED_PIN["manifest_sha256"]
-        expected_rows = 128_717
+        expected_rows = int(_LEDGER_FACT_FEED_PIN["fact_row_count"])
     artifact = load_ledger_consumer_artifact(
         artifact_path,
         expected_facts_sha256=facts_sha256,

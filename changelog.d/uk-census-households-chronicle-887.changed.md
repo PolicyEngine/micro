@@ -1,0 +1,1 @@
+Bind UK constituency and local-authority census household targets from the pinned Chronicle feed, and replace Northern Ireland's postcode-inferred constituency mapping with NISRA's published DZ2021-to-PARLCON24 lookup.

@@ -89,8 +89,9 @@ def metric_names(
         names.extend(LA_EXTRA_METRICS)
     # This list is append-only: adding a metric must never renumber the
     # metric indices already in the surface, because consumers address them
-    # positionally. "households" was appended under that rule and keeps its
-    # index; later families land after it rather than displacing it.
+    # positionally. Chronicle-backed "households" was appended under that
+    # rule and keeps its index; later families land after it rather than
+    # displacing it.
     names.append("households")
     if area_type == "la":
         names.extend(f"council_tax/band_{band.lower()}" for band in COUNCIL_TAX_BANDS)

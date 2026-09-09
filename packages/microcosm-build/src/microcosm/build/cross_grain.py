@@ -77,9 +77,9 @@ def detect_cross_grain_inconsistencies(
 
     ``local_frame`` is a long target surface.  It must expose ``value`` and
     ``target_id`` plus either the canonical ``grain``/``geography_id`` columns
-    or the rowwise aliases ``area_type``/``area_code``.  Contract sides may be
-    written as either ``<target id>`` or ``contract:<target id>``; external
-    sides use their declared ``external:...`` bridge name.
+    or the rowwise aliases ``area_type``/``area_code``. Contract sides may be
+    written as either ``<target id>`` or ``contract:<target id>``. External
+    target sides are forbidden: every reconciled row belongs to the contract.
 
     A partially bound declared bridge is ignored only when every missing
     higher member has a record in ``reviewed_unbound_higher_targets``.
@@ -136,7 +136,10 @@ def detect_cross_grain_inconsistencies(
             bridge = bridge_by_side.get(contract_id)
             if bridge is None:
                 bridge = bridge_by_side.get(f"contract:{contract_id}")
-        if bridge is not None and bridge.bridge_id in unbound_bridge_ids:
+        bridge_is_unbound = bool(
+            bridge is not None and bridge.bridge_id in unbound_bridge_ids
+        )
+        if bridge_is_unbound:
             bridge = None
 
         is_bound_higher = contract_id in bound_set
@@ -158,7 +161,11 @@ def detect_cross_grain_inconsistencies(
         # matters when one lower side has both a bridged control and a second,
         # exact-signature partition (the UK UC case): both controls must be
         # seen so incompatible same-grain values fail closed.
-        if contract_id is not None and contract_id in contract_signatures:
+        if (
+            not bridge_is_unbound
+            and contract_id is not None
+            and contract_id in contract_signatures
+        ):
             keys.append(
                 (
                     "signature",
@@ -586,6 +593,16 @@ def _validate_rule(rule: CrossGrainRule) -> None:
             raise ValueError(
                 f"cross-grain bridge {bridge.bridge_id!r} has no higher targets."
             )
+        external_sides = [
+            side
+            for side in (*bridge.higher_target_ids, bridge.lower_side)
+            if side.startswith("external:")
+        ]
+        if external_sides:
+            raise ValueError(
+                f"cross-grain bridge {bridge.bridge_id!r} uses forbidden "
+                f"external side(s) {external_sides}; all sides must be contract targets."
+            )
     for geography_id, legs in rule.parent_geography_legs.items():
         if not str(geography_id) or not legs or any(not str(leg) for leg in legs):
             raise ValueError(
@@ -603,11 +620,8 @@ def _bridge_by_side(rule: CrossGrainRule) -> dict[str, CrossGrainBridge]:
     for bridge in rule.bridges:
         sides = (*bridge.higher_target_ids, bridge.lower_side)
         for side in sides:
-            aliases = {side}
-            if side.startswith("contract:"):
-                aliases.add(side.removeprefix("contract:"))
-            elif not side.startswith("external:"):
-                aliases.add(f"contract:{side}")
+            canonical = side.removeprefix("contract:")
+            aliases = {canonical, f"contract:{canonical}"}
             for alias in aliases:
                 existing = result.get(alias)
                 if existing is not None and existing.bridge_id != bridge.bridge_id:
@@ -683,9 +697,12 @@ def _freeze(value: Any) -> Any:
     return value
 
 
-def _contract_target_id(side: str) -> str | None:
+def _contract_target_id(side: str) -> str:
     if side.startswith("external:"):
-        return None
+        raise ValueError(
+            f"cross-grain target side {side!r} is external; every side must "
+            "name a contract target."
+        )
     return side.removeprefix("contract:")
 
 

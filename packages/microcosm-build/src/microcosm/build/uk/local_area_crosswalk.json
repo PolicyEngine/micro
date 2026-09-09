@@ -4,9 +4,9 @@
   "kind": "uk_local_area_crosswalk",
   "description": "Identity crosswalk for UK local Ledger target references. Area ids come from the packaged OA ladder roster; facts must carry the same geography ids and the declared fact-side vintages.",
   "ladder_artifact": "build/uk/uk_oa_ladder_2021.npz",
-  "ladder_artifact_sha256": "9c6d56b90d2e975d750106b175020a54c5ec6acf42ef8909d304a9d7fc3868a7",
+  "ladder_artifact_sha256": "bed3f13d3a82eea2d1f39248b71c0abf5ba6960a446ddd9415ae1dbcb7ae07fd",
   "ladder_summary": "build/uk/ladder_summary.json",
-  "ladder_summary_sha256": "aa5cd8d900ab669a4b9e6139b12dd9494af99a61eec4333da9d73088f5de26d4",
+  "ladder_summary_sha256": "29ff1e69233db7ee49a05ef7dc3342c975330703325fe886df76c03c807ea237",
   "levels": {
     "constituency": {
       "ledger_geography_level": "constituency",

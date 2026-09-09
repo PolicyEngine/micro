@@ -48,7 +48,7 @@ def test_uk_local_area_crosswalk_pins_rosters_and_vintages() -> None:
     assert resource["country"] == "uk"
     assert resource["schema_version"] == 1
     assert resource["ladder_artifact_sha256"] == (
-        "9c6d56b90d2e975d750106b175020a54c5ec6acf42ef8909d304a9d7fc3868a7"
+        "bed3f13d3a82eea2d1f39248b71c0abf5ba6960a446ddd9415ae1dbcb7ae07fd"
     )
 
     constituency = resource["levels"]["constituency"]
