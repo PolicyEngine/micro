@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 
@@ -383,6 +384,13 @@ def _qualify_candidate(candidate, tmp_path, monkeypatch):
 def test_certification_writes_new_bundle_and_preflight_replays(
     candidate, tmp_path, monkeypatch
 ):
+    import microcosm.data.release as release_module
+
+    monkeypatch.setattr(
+        release_module,
+        "_hf_api",
+        lambda: pytest.fail("successful preflight constructed a Hub client"),
+    )
     release, parent, root = candidate
     original_report = (release / enrichment.SOURCE_ENRICHMENT_FILE).read_bytes()
     output, calls = _qualify_candidate(candidate, tmp_path, monkeypatch)
@@ -407,6 +415,124 @@ def test_certification_writes_new_bundle_and_preflight_replays(
     )
     assert len(calls) == 3  # Test, staged revalidation, then real publisher preflight.
     assert all(call["require_wheels"] for call in calls)
+
+
+def test_certified_enrichment_publishes_complete_bundle_and_root_h5(
+    candidate, tmp_path, monkeypatch
+):
+    from .test_release import FakeHub
+
+    _, parent, root = candidate
+    release, compatibility_calls = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    manifest = json.loads((release / "release_manifest.json").read_text())
+    dataset = manifest["artifacts"]["dataset"]
+    prefix = f"releases/{release.name}/"
+    release_paths = {
+        f"{prefix}{path.name}" for path in release.iterdir() if path.is_file()
+    }
+    assert f"{prefix}{dataset['path']}" not in release_paths
+    hub = FakeHub()
+    calls_before_publication = len(compatibility_calls)
+
+    pointer = publish_release(
+        release,
+        "policyengine/populace-us",
+        parent_h5=parent,
+        artifact_root=root,
+        compatibility_wheels=(tmp_path / "country.whl",),
+        api=hub,
+        notify=False,
+    )
+
+    assert len(compatibility_calls) == calls_before_publication + 1
+    assert compatibility_calls[-1] == {
+        "require_wheels": True,
+        "compatibility_wheels": (tmp_path / "country.whl",),
+    }
+    commits = [event for kind, event in hub.events if kind == "create_commit"]
+    assert [commit["revision"] for commit in commits] == [
+        f"release-staging/{release.name}",
+        "main",
+    ]
+    # Immutable staging and main promotion each upload the same bundle once.
+    # Real file collection must deduplicate contract/manifest entries and keep
+    # the H5 at the root rather than creating a second release-local copy.
+    for commit in commits:
+        paths = commit["paths"]
+        assert len(paths) == len(set(paths))
+        assert [path for path in paths if path.endswith(".h5")] == [dataset["path"]]
+        assert set(paths) - {"latest.json"} == release_paths | {dataset["path"]}
+    assert "latest.json" not in commits[0]["paths"]
+    assert commits[1]["paths"][-1] == "latest.json"
+    assert hub.tags == [{"tag": release.name, "revision": commits[0]["commit"]}]
+    assert hub.events[-1] == ("create_commit", commits[1])
+
+    expected_hashes = {
+        entry["path"] if key == "dataset" else f"{prefix}{entry['path']}": entry[
+            "sha256"
+        ]
+        for key, entry in manifest["artifacts"].items()
+    }
+    for path, expected_sha in expected_hashes.items():
+        uploaded = [content for name, content in hub.uploads if name == path]
+        assert len(uploaded) == 2  # Exactly once in each atomic commit.
+        assert all(
+            hashlib.sha256(content).hexdigest() == expected_sha for content in uploaded
+        )
+    assert hub.uploads[-1][0] == "latest.json"
+    assert sum(path == "latest.json" for path, _ in hub.uploads) == 1
+    assert json.loads(hub.uploads[-1][1]) == pointer
+    assert pointer["release_id"] == release.name
+    assert pointer["paths"] == {
+        name: f"{prefix}{name}.json"
+        for name in (
+            "build_manifest",
+            "release_manifest",
+            "calibration_diagnostics",
+            "us_source_coverage",
+        )
+    }
+
+
+def test_certified_enrichment_preflight_and_publish_reject_tag_mismatch_identically(
+    candidate, tmp_path, monkeypatch
+):
+    import microcosm.data.release as release_module
+
+    _, parent, root = candidate
+    release, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        release_module,
+        "_hf_api",
+        lambda: pytest.fail("tag mismatch constructed a Hub client"),
+    )
+    wheels = (tmp_path / "country.whl",)
+    with pytest.raises(ValueError, match="tag_name must match") as published:
+        publish_release(
+            release,
+            "policyengine/populace-us",
+            parent_h5=parent,
+            artifact_root=root,
+            compatibility_wheels=wheels,
+            tag_name="unmatched-tag",
+            notify=False,
+        )
+    with pytest.raises(type(published.value)) as preflight:
+        publish_main(
+            [
+                str(release),
+                "--parent-h5",
+                str(parent),
+                "--artifact-root",
+                str(root),
+                "--compatibility-wheel",
+                str(wheels[0]),
+                "--tag-name",
+                "unmatched-tag",
+                "--preflight-only",
+            ]
+        )
+    assert str(preflight.value) == str(published.value)
 
 
 @pytest.mark.parametrize("duplicate", ["identical", "different", "symlink"])

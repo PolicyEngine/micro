@@ -87,7 +87,9 @@ calibration evidence. It does not run calibration or relax schema 6 for ordinary
 releases. `microcosm.data.source_enrichment` validates candidates and records
 actual native-loader compatibility in a separate bundle. The regular publisher
 requires `--parent-h5` and the four tested country/Core/wrapper/calculator wheels; `--preflight-only`
-runs its real contract without publication. See
+runs the same contract and local publisher preparation (file paths, artifact
+hashes, revision/tag pins and latest-pointer eligibility), without constructing
+a Hub client or publishing. See
 [the source-enrichment runbook](docs/us-native-spm-role-source-enrichment.md).
 Root's canonical-model acceptance and publication authorization remain separate
 from this producer-native-input receipt.

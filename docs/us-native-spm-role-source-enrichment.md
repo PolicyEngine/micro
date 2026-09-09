@@ -144,10 +144,14 @@ microcosm-publish-release /path/to/certified/releases/RELEASE_ID \
 
 Certification creates a separate bundle with measured compatibility; it leaves
 the candidate H5 and source evidence unchanged. Both the preflight above and
-the real publisher invoke the source-enrichment validator and replay the H5
-and compatibility checks before constructing a Hub client. The evidence-tier
-publisher cannot be used as an escape hatch. Pending compatibility and a
-recorded dirty producer build are hard publication failures.
+the real publisher share local preparation: they invoke the source-enrichment
+validator, replay the H5 and compatibility checks, and enforce release filenames,
+root artifact paths/hashes, revision/tag pins and dataset-role/latest-pointer
+eligibility. Preflight never constructs a Hub client or performs Hub activity;
+publication constructs its client only after these checks pass. Pass the same
+tag, extra-file and latest-pointer options to preflight as to publication.
+The evidence-tier publisher cannot be used as an escape hatch. Pending
+compatibility and a recorded dirty producer build are hard publication failures.
 
 Coordinated order: build local candidate wheels, test them against the existing
 immutable candidate H5, then let root commit the clean reviewed producer and

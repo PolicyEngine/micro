@@ -1,3 +1,52 @@
+# Fable publisher follow-up — 2026-09-09
+
+## State
+
+Both bounded Fable findings are complete and verified from clean
+`acfe2b17543b90810b663cb47116226dd19f0268` in the assigned Microcosm worktree.
+Changes cover the certified synthetic publication test and shared pre-Hub
+preparation for CLI preflight/publication. The later explicit no-commit/no-push
+order overrides the standing commit instruction;
+root will commit the completed source changes.
+
+## Done
+
+Read `CLAUDE.md`, root's current handoff/review-fixes reports, and the latest
+Fable `peer-output.md` (round `001-d157467cc7ff`). Confirmed the clean starting
+revision and traced the publisher guards and CLI's contract-only preflight.
+No real data, receipts, country/wrapper environments or publication state changed.
+
+Added the qualified synthetic FakeHub success test and 11 preflight refusal
+cases across publisher file/path/hash/tag guards, source enrichment and local-area
+dataset role. The refusals all reproduced CLI preflight's false acceptance before
+the fix. Both entrypoints now use `prepare_release`, with the original pre-Hub
+guard block preserved byte-for-byte. Atomic publication and artifact collection
+remain unchanged. The H5 appears once at the root in each immutable/main commit;
+all release files precede the last main-commit operation, `latest.json`.
+
+Focused source verification: 143 passed in 20.82 seconds. Existing 27 root-H5
+duplicate/archive-pin protections passed separately and remain unchanged. Full
+repository Ruff, five changed Python files' format checks, CI inventory and
+whitespace checks pass. Broader verification passed 535 tests with two existing
+loader skips in 35.56 seconds; the environment has no country engines, and the
+second skip reports offline Hub metadata unavailable. Independent read-only
+review found no defects and confirmed all 25 original guard statements remain
+identical. Candidate H5 SHA256 was verified unchanged before and after work.
+
+## Next
+
+Source is ready for root's commit and exact Fable re-review. Final evidence and
+commands are in `MICROCOSM-FABLE-FOLLOWUP-HANDOFF.md` in this writable worktree;
+no external output filename was supplied. The native candidate SHA256
+`6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84`
+remains immutable. Root owns the exact Fable re-review and later release gates.
+
+---
+
+> Historical entries below describe earlier passes, retained on 2026-09-09.
+> Their state, test results and compatibility claims are not new evidence from
+> this Fable follow-up.
+
 # Native SPM role source enrichment — 2026-09-09
 
 ## State
