@@ -303,7 +303,7 @@
     },
     {
       "classification": "red_line_local_contract_target",
-      "concern_id": "local_contract.external:census_households/households",
+      "concern_id": "local_contract.external.census_households.households",
       "covers": [
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss"

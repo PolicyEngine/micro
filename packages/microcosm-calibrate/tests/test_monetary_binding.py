@@ -92,6 +92,7 @@ def _target(values=(2.0, 4.0), ids=(1, 2)):
         "period": target.period,
         "source": target.source,
         "family": "synthetic",
+        "hierarchy": target.hierarchy,
         "signed": False,
         "se": None,
         "tolerance": target.tolerance,

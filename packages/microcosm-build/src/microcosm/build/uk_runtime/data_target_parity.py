@@ -661,9 +661,10 @@ def _local_contract_rows() -> list[dict[str, Any]]:
         target_id = str(target["target_id"])
         covers = _local_contract_covers(target_id, levels)
         paths = ", ".join(f"uk-data {_incumbent_path(item)}" for item in covers)
+        concern_target_id = target_id.replace(":", ".").replace("/", ".")
         rows.append(
             {
-                "concern_id": f"local_contract.{target_id}",
+                "concern_id": f"local_contract.{concern_target_id}",
                 "status": "ported_local_declared",
                 "classification": "red_line_local_contract_target",
                 "covers": covers,
