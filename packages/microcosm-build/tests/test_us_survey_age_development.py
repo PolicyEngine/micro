@@ -177,6 +177,8 @@ def test_actual_invented_population_with_captured_age_profile_preserves_seven_no
     assert receipt["scope"] == "source_documented_survey_age_calibration_numbers_only"
     assert receipt["release_eligible"] is False
     assert result.diagnostics["verification"]["optimizer_rerun"] is False
+    assert result.diagnostics["options"]["iterate_selection"] == "closing_state"
+    assert result.diagnostics["options"]["iterate_selection_receipt"] == {}
     activation.verify_survey_age_targets(
         tmp_path / "age", declaration=declaration, registry=registry
     )

@@ -102,12 +102,17 @@ after and in the external postcheck. The run took 253.5 seconds and 738.7 MB pea
 RSS. Receipt:
 `d940913f918af4455dab2b9e680d55f9efc7bb922f72ff3d8fe26b0530b070f7`.
 
-A separate 16-case current seven-node age-development run passed 13 cases and
-failed three on exact diagnostic reconstruction. The checker omitted two
-solver-option fields added by the consolidated solver; its correction is being
-checked before another genuine run. Broader CI also identifies missing helpers
-and stale schema, seed and runtime classification expectations. These remain
-separate from the passing 314-case selection.
+A separate 16-case current seven-node age-development run initially passed 13
+cases and failed three on exact diagnostic reconstruction. The checker omitted
+two solver-option fields added by the consolidated solver. Reconstructing the
+grouped solver's closing-state selection and empty selection receipt fixes that
+mismatch while retaining exact whole-document comparison. All 16 tests now pass,
+including actual seven-node execution and late target/successor mutation checks,
+in 170.3 seconds at 541.9 MB peak RSS. All 469 source/control, 5,983 model-source
+and 12 resource entries matched before/after/current checks. Receipt:
+`5849dd42e914e4d8304a5d290ff451da45910e7ac9a61e76fff36468949ffe3a`.
+Broader CI's missing helpers and stale schema, seed and runtime classification
+expectations remain separate from these selected passing suites.
 
 ## Component evidence and remaining work
 

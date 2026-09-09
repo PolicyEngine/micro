@@ -146,6 +146,10 @@ def validate_survey_calibration_diagnostics(
         "method": "adam",
         "epochs": epochs,
         "learning_rate": learning_rate,
+        # This profile always uses grouped bounds, whose accepted weights are
+        # the closing state. Ungrouped Adam's best-iterate history cannot apply.
+        "iterate_selection": "closing_state",
+        "iterate_selection_receipt": {},
         "mass": "free",
         "mass_reason": None,
         "max_weight_ratio": None,
