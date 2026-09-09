@@ -741,3 +741,5 @@ Apply thirteen explicit source layers, commit each, then separately review isola
 Layer 1: SAFE-ADDITIVE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
 
 Layer 2: GRAPH-RESTORE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 3: ACCEPTED-SHARED-RESTORE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
