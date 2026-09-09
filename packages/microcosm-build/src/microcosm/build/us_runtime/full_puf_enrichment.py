@@ -68,6 +68,7 @@ class PufOutputProfile(Enum):
     FULL65 = "full65"
     PUF59 = "puf59"
     PUF55_SURVEY_SS = "puf55_survey_ss"
+    PUF55_SURVEY_SS_NO_TOTAL = "puf55_survey_ss_no_total"
 
     @property
     def predictors(self):
@@ -94,7 +95,7 @@ class PufOutputProfile(Enum):
 
     @property
     def person_outputs(self):
-        if self is PUF55_SURVEY_SS:
+        if self in (PUF55_SURVEY_SS, PUF55_SURVEY_SS_NO_TOTAL):
             return PUF55_SURVEY_SS_PERSON_OUTPUTS
         return PERSON_OUTPUTS
 
@@ -117,6 +118,7 @@ class PufOutputProfile(Enum):
 FULL65 = PufOutputProfile.FULL65
 PUF59 = PufOutputProfile.PUF59
 PUF55_SURVEY_SS = PufOutputProfile.PUF55_SURVEY_SS
+PUF55_SURVEY_SS_NO_TOTAL = PufOutputProfile.PUF55_SURVEY_SS_NO_TOTAL
 
 
 def require_puf_output_profile(profile):

@@ -155,8 +155,16 @@ The following work remains open:
    [composition acceptance](../experiments/us-atomic-financial-composition-acceptance-20260909.json).
    Native fit quality and admission of the financial result into subsequent
    calibration remain unassessed.
-2. Qualify recipient return roles and adopt an explicit Social Security
-   conditioning measurement before native PUF55 fitting. The genuine
+2. Integrate the adopted Social Security conditioning measurement and qualify
+   recipient return roles before native PUF55 fitting. Thirty-one invented
+   controls pass the authenticated filer/joint-spouse report-sum proxy, source
+   preservation, missingness and refusal checks. An incomplete selected report
+   uses a separately declared eight-predictor route; a known total uses nine.
+   The helper uses the preparation's retained modeled roles, whose relationship
+   to current-money tax-unit construction still needs explicit qualification.
+   See the [measurement decision](puf55-survey-ss-measurement-decision.md) and
+   [scoped control result](../experiments/us-puf55-survey-ss-measurement-31-controls-20260909.json).
+   Route-aware graph fitting and attachment remain pending. The genuine
    207,692-return canonical donor has already passed its 55-output projection;
    that does not establish recipient matching. Complete survey
    beneficiary/component modeling, and supply SCF loan inputs. Separate component runs passed
