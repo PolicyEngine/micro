@@ -63,6 +63,37 @@ CENSUS_PERSON_PINS = {
     2024: "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
     2025: "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
 }
+# Match the producer's education_assistance_source archive pins without making
+# the data/consumer shard depend on the build shard. A build test checks parity.
+CENSUS_ARCHIVE_PINS = {
+    2023: {
+        "income_year": 2022,
+        "official_archive_url": (
+            "https://www2.census.gov/programs-surveys/cps/datasets/2023/"
+            "march/asecpub23csv.zip"
+        ),
+        "archive_sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+        "member": "pppub23.csv",
+    },
+    2024: {
+        "income_year": 2023,
+        "official_archive_url": (
+            "https://www2.census.gov/programs-surveys/cps/datasets/2024/"
+            "march/asecpub24csv.zip"
+        ),
+        "archive_sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09",
+        "member": "pppub24.csv",
+    },
+    2025: {
+        "income_year": 2024,
+        "official_archive_url": (
+            "https://www2.census.gov/programs-surveys/cps/datasets/2025/"
+            "march/asecpub25csv.zip"
+        ),
+        "archive_sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+        "member": "pppub25.csv",
+    },
+}
 EXPECTED_COUNTS = {
     "persons_joined": 166321,
     "native_spm_units": 59900,
@@ -183,15 +214,11 @@ def _check_source_provenance(provenance: Mapping, failures: list[str]) -> None:
             failures.append(
                 f"source provenance Census {year} count reconciliation failed"
             )
-        if not str(row.get("official_archive_url", "")).startswith(
-            "https://www2.census.gov/"
-        ):
-            failures.append(
-                f"source provenance Census {year} requires official archive"
-            )
-        archive_sha = row.get("archive_sha256")
-        if not isinstance(archive_sha, str) or not _SHA256_RE.fullmatch(archive_sha):
-            failures.append(f"source provenance Census {year} requires archive SHA256")
+        for field, expected in CENSUS_ARCHIVE_PINS[year].items():
+            if row.get(field) != expected:
+                failures.append(
+                    f"source provenance Census {year} pinned archive {field} differs"
+                )
 
 
 def validate_source_enrichment_candidate(
@@ -286,6 +313,17 @@ def validate_source_enrichment_candidate(
     ):
         failures.append("source enrichment dataset.filename must be a bare H5 filename")
         filename = None
+    if filename:
+        release_local_h5 = release_dir / filename
+        if release_local_h5.exists() or release_local_h5.is_symlink():
+            # The publisher treats release-local files as release-dir uploads
+            # and suppresses their root uploads, even when the bytes match.
+            # Reject ambiguity before compatibility imports or Hub activity.
+            failures.append(
+                f"source enrichment rejects release-local H5 {filename}; "
+                "the native dataset must exist only in artifact_root"
+            )
+            raise ReleaseContractError(release_dir, failures)
     candidate = Path(artifact_root) / filename if artifact_root and filename else None
     if parent_h5 is None or candidate is None:
         failures.append(

@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime.spm_role_source import (
+    ASEC_SPM_ROLE_SOURCES,
     EVIDENCE_SPM_ROLE,
     AsecSpmRoleSource,
     derive_spm_role_source,
@@ -15,6 +16,34 @@ from microcosm.build.us_runtime.spm_role_source import (
 )
 
 pytest.importorskip("tables")
+
+
+def test_release_contract_pins_match_actual_source_acquisition():
+    from microcosm.build.us_runtime.education_assistance_source import (
+        ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
+    )
+    from microcosm.data.source_enrichment import CENSUS_ARCHIVE_PINS, CENSUS_PERSON_PINS
+
+    assert (
+        set(CENSUS_ARCHIVE_PINS)
+        == set(CENSUS_PERSON_PINS)
+        == {pin.survey_year for pin in ASEC_EDUCATION_ASSISTANCE_ARCHIVES.values()}
+    )
+    for income_year, pin in ASEC_EDUCATION_ASSISTANCE_ARCHIVES.items():
+        assert CENSUS_PERSON_PINS[pin.survey_year] == pin.member_sha256
+        assert CENSUS_ARCHIVE_PINS[pin.survey_year] == {
+            "income_year": income_year,
+            "official_archive_url": pin.zip_url,
+            "archive_sha256": pin.zip_sha256,
+            "member": pin.member,
+        }
+        role = ASEC_SPM_ROLE_SOURCES[income_year]
+        assert role.survey_year == pin.survey_year
+        assert role.csv_sha256 == pin.member_sha256
+        assert role.income_year == income_year
+        assert role.official_archive_url == pin.zip_url
+        assert role.archive_sha256 == pin.zip_sha256
+        assert role.member == pin.member
 
 
 def _digest(path):

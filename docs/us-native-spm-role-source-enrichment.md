@@ -21,6 +21,9 @@ separately reviewed contract; there is no caller-supplied legacy-schema waiver.
 `spm_role_source.py` reuses Microcosm's existing Census ASEC archive/member
 pins from `education_assistance_source.py`. The complete source person CSVs
 are `pppub23.csv`, `pppub24.csv`, and `pppub25.csv` (income years 2022–2024).
+The release gate independently checks each survey year's exact archive SHA256,
+official URL, person member and income year, alongside its existing CSV pin.
+Rehashing provenance and enclosing manifests cannot authorize another archive.
 The source role is:
 
 ```python
@@ -64,6 +67,10 @@ The generated three-column evidence CSV must also match independently reviewed
 SHA256 `22b5968d90fecfeef7614583e493fe10cc16bda8b5be82e6f49a5bc2102d3ce5`.
 The CSV is never used to derive the role. Parent and source evidence are copied
 unchanged into the release bundle; H5 and evidence files are read-only on exit.
+The H5 belongs only in `artifact_root`, for upload at its manifest-declared root
+path. A same-named entry in the release directory is rejected before compatibility
+probing or Hub client activity, including identical copies and symlinks: either
+would otherwise change the publisher's upload destination.
 
 ## Build and validate a local candidate
 

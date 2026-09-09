@@ -1,5 +1,41 @@
 # Native SPM role source enrichment — 2026-09-09
 
+## State
+
+Completed the bounded independent-review fixes for draft PR #894 at
+`63c8982459317c072ef748e4e642238939b32ede`. No commits, pushes or publication
+are authorized in this pass; the existing native H5 remains immutable.
+
+## Done
+
+Rejected release-local duplicate H5 entries before compatibility or Hub activity,
+and pinned each Census year's archive SHA256/URL/member/income year. Added 27
+duplicate/resealing regressions and acquisition pin parity; the first 24 cases
+failed before enforcement. All 381 relevant tests pass. The actual candidate
+passes the tightened contract and exhaustive H5 comparison; SHA256 remains
+`6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84`.
+Ruff, CI inventory and whitespace checks pass; separate code review found no
+concrete remaining P1/P2 defect.
+
+The corrected actual wrapper wheel passes the final-source four-wheel probe:
+30 native-input checks plus all six entity weight checks. Neither external
+publication nor canonical numerical acceptance is attested. Exact commands,
+diagnostic identities and changed files are recorded in
+`MICRO-CANONICAL-SPM-REVIEW-FIXES.md` and `MICRO-CANONICAL-SPM-HANDOFF.md`.
+
+## Next
+
+Root independently re-reviews and commits these changes, completes exact Fable
+and PR CI gates, creates fresh receipts from clean source, and supplies external
+package/numerical acceptance before any authorized HF publication or promotion.
+Existing candidate receipts remain unchanged. Earlier test evidence is retained
+below.
+
+---
+
+> Earlier implementation status below predates the independent review fixes and
+> corrected wrapper wheel; the State/Done/Next entries above are current.
+
 Source implementation prepared for a draft PR. The candidate was built locally;
 no new H5, release tag, calibration or production deployment was published.
 This journal records development evidence; check GitHub for current PR state.

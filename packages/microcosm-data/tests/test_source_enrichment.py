@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 
 import h5py
 import numpy as np
@@ -75,7 +76,6 @@ def candidate(tmp_path, monkeypatch):
         "classification_changed_units_vs_age_only": 1,
     }
     monkeypatch.setattr(enrichment, "EXPECTED_COUNTS", counts)
-    monkeypatch.setattr(enrichment, "CENSUS_PERSON_PINS", {2025: "a" * 64})
     evidence = release / enrichment.SOURCE_EVIDENCE_FILE
     evidence.write_text(
         "person_id,person_spm_unit_id,is_spm_independence_role\n1,1,False\n2,1,True\n3,2,True\n"
@@ -95,12 +95,12 @@ def candidate(tmp_path, monkeypatch):
         "evidence_column": enrichment.EVIDENCE_COLUMN,
         "source_checks": [
             {
-                "survey_year": 2025,
-                "csv_sha256": "a" * 64,
+                "survey_year": year,
+                "csv_sha256": csv_sha,
                 "adult_child_person_count_mismatch_units": 0,
-                "official_archive_url": "https://www2.census.gov/test.zip",
-                "archive_sha256": "b" * 64,
+                **enrichment.CENSUS_ARCHIVE_PINS[year],
             }
+            for year, csv_sha in enrichment.CENSUS_PERSON_PINS.items()
         ],
     }
     _write(release / enrichment.SOURCE_PROVENANCE_FILE, provenance)
@@ -343,9 +343,7 @@ def test_unknown_release_type_cannot_fall_back_to_calibration(candidate):
         validate_release_dir(release)
 
 
-def test_certification_writes_new_bundle_and_preflight_replays(
-    candidate, tmp_path, monkeypatch
-):
+def _qualify_candidate(candidate, tmp_path, monkeypatch):
     from importlib import metadata
 
     release, parent, root = candidate
@@ -371,7 +369,6 @@ def test_certification_writes_new_bundle_and_preflight_replays(
         enrichment, "_check_producer_source_identity", lambda code: None
     )
     output = tmp_path / "certified" / release.name
-    original_report = (release / enrichment.SOURCE_ENRICHMENT_FILE).read_bytes()
     result = enrichment.certify_source_enrichment(
         release,
         output,
@@ -380,6 +377,15 @@ def test_certification_writes_new_bundle_and_preflight_replays(
         compatibility_wheels=(tmp_path / "country.whl",),
     )
     assert result == output
+    return output, calls
+
+
+def test_certification_writes_new_bundle_and_preflight_replays(
+    candidate, tmp_path, monkeypatch
+):
+    release, parent, root = candidate
+    original_report = (release / enrichment.SOURCE_ENRICHMENT_FILE).read_bytes()
+    output, calls = _qualify_candidate(candidate, tmp_path, monkeypatch)
     assert (release / enrichment.SOURCE_ENRICHMENT_FILE).read_bytes() == original_report
     assert (output / enrichment.SOURCE_EVIDENCE_FILE).read_bytes() == (
         release / enrichment.SOURCE_EVIDENCE_FILE
@@ -401,6 +407,111 @@ def test_certification_writes_new_bundle_and_preflight_replays(
     )
     assert len(calls) == 3  # Test, staged revalidation, then real publisher preflight.
     assert all(call["require_wheels"] for call in calls)
+
+
+@pytest.mark.parametrize("duplicate", ["identical", "different", "symlink"])
+@pytest.mark.parametrize(
+    "entrypoint", ["candidate", "preflight", "publisher", "publisher_existing_client"]
+)
+def test_release_local_h5_duplicate_is_rejected_before_hub_activity(
+    candidate, tmp_path, monkeypatch, duplicate, entrypoint
+):
+    import microcosm.data.release as release_module
+
+    _, parent, root = candidate
+    release, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    # The unduplicated fixture passes the full gate: pending compatibility or
+    # synthetic source identity must not accidentally account for rejection.
+    validate_release_dir(release, parent_h5=parent, artifact_root=root)
+    h5 = root / "populace_us_2024.h5"
+    local = release / h5.name
+    if duplicate == "symlink":
+        local.symlink_to(h5)
+    else:
+        shutil.copyfile(h5, local)
+        if duplicate == "different":
+            with h5py.File(local, "r+") as handle:
+                row = handle["person/table"][0]
+                row["person_weight"] += 1
+                handle["person/table"][0] = row
+    monkeypatch.setattr(
+        release_module,
+        "_hf_api",
+        lambda: pytest.fail("duplicate reached Hub client construction"),
+    )
+
+    class NoHubActivity:
+        def __getattr__(self, name):
+            pytest.fail(f"duplicate accessed supplied Hub client: {name}")
+
+    monkeypatch.setattr(
+        enrichment,
+        "run_native_loader_compatibility",
+        lambda *a, **kw: pytest.fail("duplicate reached compatibility probing"),
+    )
+    with pytest.raises(ReleaseContractError, match="release-local H5"):
+        if entrypoint == "candidate":
+            _validate((release, parent, root))
+        elif entrypoint == "preflight":
+            publish_main(
+                [
+                    str(release),
+                    "--parent-h5",
+                    str(parent),
+                    "--artifact-root",
+                    str(root),
+                    "--preflight-only",
+                ]
+            )
+        else:
+            publish_release(
+                release,
+                "policyengine/populace-us",
+                parent_h5=parent,
+                artifact_root=root,
+                notify=False,
+                api=NoHubActivity()
+                if entrypoint == "publisher_existing_client"
+                else None,
+            )
+
+
+@pytest.mark.parametrize("year", [2023, 2024, 2025])
+@pytest.mark.parametrize(
+    "field", ["archive_sha256", "official_archive_url", "member", "income_year"]
+)
+def test_resealed_provenance_rejects_archive_identity_from_another_year(
+    candidate, year, field
+):
+    other_year = 2023 if year != 2023 else 2024
+    replacement = enrichment.CENSUS_ARCHIVE_PINS[other_year][field]
+    _assert_resealed_archive_rejected(candidate, year, field, replacement)
+
+
+@pytest.mark.parametrize("year", [2023, 2024, 2025])
+def test_resealed_provenance_rejects_unpinned_archive_sha(candidate, year):
+    _assert_resealed_archive_rejected(candidate, year, "archive_sha256", "0" * 64)
+
+
+def _assert_resealed_archive_rejected(candidate, year, field, replacement):
+    assert _validate(candidate)["compatibility"]["status"] == "pending"
+    release, _, _ = candidate
+    provenance_path = release / enrichment.SOURCE_PROVENANCE_FILE
+    provenance = json.loads(provenance_path.read_text())
+    row = next(row for row in provenance["source_checks"] if row["survey_year"] == year)
+    row[field] = replacement
+    _write(provenance_path, provenance)
+    report_path = release / enrichment.SOURCE_ENRICHMENT_FILE
+    report = json.loads(report_path.read_text())
+    report["source"]["provenance_sha256"] = enrichment.sha256_file(provenance_path)
+    report["reconciliation"] = provenance
+    _write(report_path, report)
+    _refresh(release, provenance_path.name)
+    _refresh(release, report_path.name)
+    with pytest.raises(
+        ReleaseContractError, match=f"Census {year} pinned archive {field} differs"
+    ):
+        _validate(candidate)
 
 
 def test_native_compatibility_requires_wheels_for_all_runtime_packages():

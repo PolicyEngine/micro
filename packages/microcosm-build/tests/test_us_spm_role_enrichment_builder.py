@@ -93,14 +93,12 @@ def inputs(tmp_path, monkeypatch):
         "evidence_column": contract.EVIDENCE_COLUMN,
         "source_checks": [
             {
-                "income_year": 2024,
                 "survey_year": 2025,
                 "csv_sha256": "a" * 64,
                 "persons": 3,
                 "units": 2,
                 "adult_child_person_count_mismatch_units": 0,
-                "official_archive_url": "https://www2.census.gov/fixture.zip",
-                "archive_sha256": "b" * 64,
+                **contract.CENSUS_ARCHIVE_PINS[2025],
             }
         ],
     }
