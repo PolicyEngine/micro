@@ -172,18 +172,18 @@ spine pool and target matrix exist. Supply all three selection options together:
 ```bash
 uv run python tools/calibrate_uk_national_dataset.py \
   <required calibration inputs and outputs> \
-  --exact-k <household-count> \
+  --exact-k <household-count-or-N> \
   --exact-k-pi-hi 0.95 \
-  --exact-k-seed 17
+  --seed 17
 ```
 
 For `K` below the input household count, calibration learns inclusion
 probabilities on the complete pool, draws a seeded fixed-size Sampford support,
 normalizes the selected input weights by their inclusion probabilities, and
 refits ordinary calibration on exactly `K` households. For `K` equal to the
-input count, it keeps the full support and still refits the weights. The build
-record includes the requested count, realized count, seed, selection receipt,
-and refit-baseline diagnostics.
+input count—or when the command receives `--exact-k N`—it keeps the full support
+and still refits the weights. The build record includes the requested count,
+realized count, seed, selection receipt, and refit-baseline diagnostics.
 
 An authenticated staging transport check completed on 2026-09-09 using the
 earlier source-family-count interface. It uploaded only the five version 2 JSON

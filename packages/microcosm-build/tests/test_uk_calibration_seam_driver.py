@@ -126,24 +126,30 @@ def test_driver_refuses_bad_sha_and_path_alias(tmp_path: Path):
         driver._parse_args(args)
 
 
-def test_driver_accepts_exact_k_selection_options(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("2", 2), ("N", "N")],
+)
+def test_driver_accepts_us_exact_k_command_syntax(
+    tmp_path: Path, value: str, expected: int | str
+) -> None:
     driver = _load_driver_module()
 
     parsed = driver._parse_args(
         _args(tmp_path)
         + [
             "--exact-k",
-            "2",
+            value,
             "--exact-k-pi-hi",
             "0.95",
-            "--exact-k-seed",
+            "--seed",
             "17",
         ]
     )
 
-    assert parsed.exact_k == 2
+    assert parsed.exact_k == expected
     assert parsed.exact_k_pi_hi == 0.95
-    assert parsed.exact_k_seed == 17
+    assert parsed.seed == 17
 
 
 @pytest.mark.parametrize(
@@ -151,13 +157,13 @@ def test_driver_accepts_exact_k_selection_options(tmp_path: Path) -> None:
     [
         ["--exact-k", "2"],
         ["--exact-k-pi-hi", "0.95"],
-        ["--exact-k-seed", "17"],
+        ["--seed", "17"],
         [
             "--exact-k",
             "0",
             "--exact-k-pi-hi",
             "0.95",
-            "--exact-k-seed",
+            "--seed",
             "17",
         ],
         [
@@ -165,7 +171,7 @@ def test_driver_accepts_exact_k_selection_options(tmp_path: Path) -> None:
             "2",
             "--exact-k-pi-hi",
             "1.1",
-            "--exact-k-seed",
+            "--seed",
             "17",
         ],
         [
@@ -173,7 +179,7 @@ def test_driver_accepts_exact_k_selection_options(tmp_path: Path) -> None:
             "2",
             "--exact-k-pi-hi",
             "0.95",
-            "--exact-k-seed",
+            "--seed",
             "-1",
         ],
     ],
@@ -185,6 +191,26 @@ def test_driver_refuses_incomplete_or_invalid_exact_k_options(
 
     with pytest.raises(SystemExit):
         driver._parse_args(_args(tmp_path) + extra)
+
+
+def test_driver_resolves_exact_k_n_to_complete_input_count(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    driver = _load_driver_module()
+    input_path = tmp_path / "input.h5"
+    frame = SimpleNamespace(n=lambda entity: 37 if entity == "household" else 0)
+    calls: list[Path] = []
+
+    def fake_load(path: Path):
+        calls.append(path)
+        return frame, object()
+
+    monkeypatch.setattr(driver, "load_uk_national_frame", fake_load)
+
+    assert driver._resolve_exact_k("N", input_h5=input_path) == 37
+    assert calls == [input_path]
+    assert driver._resolve_exact_k(20, input_h5=input_path) == 20
+    assert calls == [input_path]
 
 
 def test_driver_refuses_feed_outside_the_committed_pin_without_override():
@@ -205,8 +231,17 @@ def test_driver_refuses_feed_outside_the_committed_pin_without_override():
 
 
 @pytest.mark.parametrize("allow_unpinned_feed", [False, True])
+@pytest.mark.parametrize(
+    ("exact_k_value", "expected_exact_k"),
+    [("2", 2), ("N", 4)],
+)
 def test_driver_threads_registry_exclusions_resolver_and_overrides(
-    monkeypatch, tmp_path, capsys, allow_unpinned_feed
+    monkeypatch,
+    tmp_path,
+    capsys,
+    allow_unpinned_feed,
+    exact_k_value,
+    expected_exact_k,
 ):
     driver = _load_driver_module()
     calls = []
@@ -248,6 +283,11 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(
             self.kwargs = kwargs
 
     monkeypatch.setattr(driver, "UKMeasureResolver", FakeResolver)
+    monkeypatch.setattr(
+        driver,
+        "load_uk_national_frame",
+        lambda path: (SimpleNamespace(n=lambda entity: 4), object()),
+    )
 
     def fake_run(**kwargs):
         calls.append(kwargs)
@@ -274,10 +314,10 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(
             "--epochs",
             "128",
             "--exact-k",
-            "2",
+            exact_k_value,
             "--exact-k-pi-hi",
             "0.95",
-            "--exact-k-seed",
+            "--seed",
             "17",
             *extra,
         ]
@@ -318,7 +358,7 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(
         "last_error_code": None,
         "opt_out_reason": "--no-staging",
     }
-    assert call["exact_k"] == 2
+    assert call["exact_k"] == expected_exact_k
     assert call["exact_k_pi_hi"] == 0.95
     assert call["exact_k_seed"] == 17
     assert "uk_target_fit" in capsys.readouterr().out

@@ -48,6 +48,7 @@ from microcosm.build.uk_runtime.national_chronicle_feed import (
     load_uk_national_chronicle_feed,
 )
 from microcosm.build.uk_runtime.national_doctrine import uk_doctrine_with_overrides
+from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
 from microcosm.calibrate import TargetRegistry
 
@@ -124,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
                 "error: --input-h5 sha mismatch: "
                 f"measured {measured_input_sha}, pinned {args.input_sha256}"
             )
+        exact_k = _resolve_exact_k(args.exact_k, input_h5=args.input_h5)
         resolver = UKMeasureResolver(
             simulation_source=args.input_h5,
             scratch_dir=args.staging_h5.parent,
@@ -165,9 +167,9 @@ def main(argv: list[str] | None = None) -> int:
             ),
             event_callback=event_callback if telemetry is not None else None,
             staging_delivery=_staging_delivery(args, telemetry),
-            exact_k=args.exact_k,
+            exact_k=exact_k,
             exact_k_pi_hi=args.exact_k_pi_hi,
-            exact_k_seed=args.exact_k_seed,
+            exact_k_seed=args.seed,
         )
         build_record_sha256 = result.build_record_sha256
         build_record = dict(result.build_record)
@@ -228,10 +230,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--target-loss-cap", type=float)
     parser.add_argument(
         "--exact-k",
-        type=int,
+        type=_parse_exact_k,
         help=(
-            "Select exactly K households from the complete input pool, then "
-            "refit ordinary calibration weights on that support."
+            "Select exactly K households, or N for the complete input pool, "
+            "then refit ordinary calibration weights on that support."
         ),
     )
     parser.add_argument(
@@ -240,9 +242,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Certainty threshold for the fixed-size Sampford selection.",
     )
     parser.add_argument(
-        "--exact-k-seed",
+        "--seed",
         type=int,
-        help="Explicit non-negative seed for exact-K support selection.",
+        help="Explicit non-negative seed required for exact-K selection.",
     )
     add_uk_staging_arguments(parser)
     args = parser.parse_args(argv)
@@ -271,21 +273,20 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "certification producer; the seam runs under a staging or dev "
             "release id"
         )
-    exact_k_values = (args.exact_k, args.exact_k_pi_hi, args.exact_k_seed)
+    exact_k_values = (args.exact_k, args.exact_k_pi_hi, args.seed)
     if any(value is not None for value in exact_k_values):
         if any(value is None for value in exact_k_values):
             parser.error(
-                "--exact-k, --exact-k-pi-hi, and --exact-k-seed must be "
-                "provided together"
+                "--exact-k, --exact-k-pi-hi, and --seed must be provided together"
             )
-        if args.exact_k < 1:
-            parser.error("--exact-k must be a positive integer")
+        if args.exact_k != "N" and args.exact_k < 1:
+            parser.error("--exact-k must be N or a positive integer")
         if not math.isfinite(args.exact_k_pi_hi) or not (
             0.0 <= args.exact_k_pi_hi <= 1.0
         ):
             parser.error("--exact-k-pi-hi must be finite and in [0, 1]")
-        if args.exact_k_seed < 0:
-            parser.error("--exact-k-seed must be a non-negative integer")
+        if args.seed < 0:
+            parser.error("--seed must be a non-negative integer")
     _validate_distinct_paths(
         {
             "--input-h5": args.input_h5,
@@ -359,6 +360,26 @@ def _sha256(value: str) -> str:
     if not _SHA256.fullmatch(value):
         raise argparse.ArgumentTypeError("expected a lowercase SHA-256 digest")
     return value
+
+
+def _parse_exact_k(value: str) -> int | str:
+    if value == "N":
+        return value
+    try:
+        return int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "--exact-k must be N or a positive integer"
+        ) from None
+
+
+def _resolve_exact_k(value: int | str | None, *, input_h5: Path) -> int | None:
+    if value is None or isinstance(value, int):
+        return value
+    if value != "N":  # pragma: no cover - parser contract
+        raise ValueError(f"unsupported exact-K value {value!r}")
+    frame, _provenance = load_uk_national_frame(input_h5)
+    return int(frame.n("household"))
 
 
 def _sha256_file(path: Path) -> str:
