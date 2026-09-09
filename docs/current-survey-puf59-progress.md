@@ -27,3 +27,16 @@ The new canonical59-to-PUF55 donor adapter also passes the maintained invented-s
 The genuine seven-node survey age-development run now passes at the unchanged 1/1000 sampling fraction. It prepares 1,584 households and 3,464 people (ACS: 1,529 households/3,324 people; ASEC: 55/140), then retains 3,168 household records and 6,928 person records after the support clone. Export/readback, final source-owner and target checks completed under the frozen `a9895d8a5` source; the final manifest was written only after those checks. All 473 source/control/runtime and 12 code-resource postchecks agree, with no unexpected access refusals. The run took 4,268.8 seconds and peaked at 8.26 GB RSS. Receipt SHA256: `2aa76b5daca7bb0df1ac85d4db23d6b5482073d31d437418d46442ef01b002ca`. This run does not include the subsequent Social Security, PUF55 or atomic-geography integration.
 
 This is accepted native age-development evidence, not a national or congressional-district release, native enrichment fit-quality result or country-engine result. Complete enrichment, geography, calibration and release-export acceptance remain pending.
+
+The PUF55 profile now also passes three invented whole-Population attachment
+controls. They execute all 55 fitted outcomes through the actual graph, typed
+artifact loader and materialized population verifier, followed by Frame storage
+and required replay. Every non-owned field, Social Security bit pattern and
+unknown cell, membership, design anchor and household weight remains intact.
+Two negative cases reject changed Social Security values and unknown-to-zero
+conversions even when predictor matrices remain identical. The run took 21.03
+seconds at 631.3 MB peak RSS; receipt SHA256:
+`ad8519d867279ebce9ee78bf8f495f3799afb45ec1b3fcda1be649f8a129af30`.
+All 482 source/control, 5,983 model-source and 12 code-resource postchecks agree,
+with no skips or unexpected access refusals. Native recipient qualification,
+measurement comparability and actual survey attachment remain pending.
