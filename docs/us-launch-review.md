@@ -14,10 +14,12 @@ exports. Enrichment clones inherit their household's assigned location. The PUF
 operator acts on the combined survey frame. A separate ASEC–PUF base is not the
 intended architecture.
 
-Block-first assignment is a required change, not completed functionality in this
-branch. The existing geography operator chooses a joint tract/district cell.
-The US and UK assignment contracts, existing implementation and remaining graph
-work are distinguished in [Geography assignment](geography-assignment.md).
+The optional ten-node survey prefix now assigns a block before cloning, and its
+thirteen-node age-calibration extension passes cold execution and required
+replay on invented originals. Native support and national/CD acceptance remain
+pending. The earlier joint tract/district operator is a separate path. See
+[Geography assignment](geography-assignment.md) for the country contracts,
+implementation and source boundaries.
 
 | Area | Main source entry points | What to review |
 | --- | --- | --- |
@@ -26,7 +28,7 @@ work are distinguished in [Geography assignment](geography-assignment.md).
 | Combined survey and clone | `us_runtime/{graph_composed_population,graph_survey_population,graph_combined_clone}.py` | ACS and ASEC composition before the clone; native versus detail channels |
 | Enrichment | `us_runtime/{full_puf_enrichment,graph_full_puf_enrichment,graph_current_survey_puf_transfer}.py` | Target ordering, conditioning, observed-value preservation and complete replay |
 | Conditional models | `packages/microcosm-fit/src/microcosm/fit/{qrf_target,graph_legacy_train,graph_legacy_apply_matrix}.py` | Reusable model artifacts, deterministic draws and target regimes |
-| Geography | `us_runtime/{puma_ladder,puma_ladder_sources,graph_geography}.py` | Existing joint-cell implementation; pending block assignment, versioned projections and source/PUMA preservation |
+| Geography | `atomic_geography.py`; `us_runtime/{atomic_block_support,atomic_block_api_sources,survey_atomic_geography,graph_atomic_survey_population}.py` | Block-first assignment, observed-source constraints, versioned mappings and clone inheritance; the older joint-cell operator remains separate |
 | Survey mass and calibration | `us_runtime/{survey_origin_budget,graph_survey_budget,graph_survey_calibration}.py`; `packages/microcosm-calibrate/src/microcosm/calibrate/{group_bounds,solve}.py` | Original survey mass, grouped bounds, fixed support and existing ungrouped solver behavior |
 | Compatibility | `packages/microcosm-build/src/microcosm/build/{frame_checkpoint,us_runtime/__init__}.py` | Current-main APIs, checkpoint metadata and existing country consumers |
 
@@ -141,10 +143,14 @@ from the benchmark's accepted baseline.
 
 The following work remains open:
 
-1. Finish current survey predictors and demographic graph bindings, then connect
-   them to the genuine combined survey population.
-2. Project the genuine canonical59 donor into the explicit 55-output profile,
-   bind the survey Social Security total as predictor nine, complete survey
+1. Connect the accepted source-qualified demographic financial model to the
+   atomic survey prefix and genuine combined survey population. Three opted-in
+   financial controls and two existing default-path fit/replay controls pass;
+   native fit quality remains unassessed. The composed runner is in progress.
+2. Qualify recipient return roles and adopt an explicit Social Security
+   conditioning measurement before native PUF55 fitting. The genuine
+   207,692-return canonical donor has already passed its 55-output projection;
+   that does not establish recipient matching. Complete survey
    beneficiary/component modeling, and supply SCF loan inputs. Separate component runs passed
    128 profile/compatibility controls and 26 current-survey predictor controls;
    see [the implementation status](current-survey-puf59-progress.md) and
@@ -171,6 +177,13 @@ The following work remains open:
 
 These are active workstreams. No release, merge or deployment is implied by this
 draft, and the source changes do not relax the outstanding acceptance checks.
+
+The population-only Census API adapter passes thirty-five invented controls.
+The first native Delaware acquisition obtained only P1_001N block/state responses
+and CD119/PUMA mapping bytes from the fixed Census endpoints. Those bytes are
+awaiting maintained source normalization; successful download is not source or
+population acceptance. Delaware-only support must not enter the national survey
+graph. Complete support for the fifty states and DC is required first.
 
 ## Related reviews
 
