@@ -658,3 +658,11 @@ e2667da9). Comparisons across that line carry an input-and-solver difference, as
   `LONE_PARENT_annual_payment_18_000_to_19_200` 11 %), and a retirement decision needs the dense pool
   measured on those rows, which no dense H5 on spine-p exists to do.
 
+- **T6 dashboard replays (`run_final_gate.sh`, uk-data venv at policyengine-uk 2.89.2, R17's dense H5 as the
+  comparison file): not measurable on this machine.** For both candidates the candidate legs ran (P95b
+  childcare baseline: Tax-Free Childcare £0.97bn, UC childcare element £2.11bn net / £9.18bn gross,
+  entitlements £5.45bn, total £8.67bn; the autumn-budget generator completed the candidate side) and every
+  comparison leg on the 792,690-row dense file died: the vendored `uk-budget-data generate` failed on it and
+  the RF-UC and childcare scripts were killed by the OS (out of memory, 26 GB machine). Roll-up "review" on
+  all three. A T6 against the default enhanced-FRS snapshot (a9e52499) would fit; not run.
+
