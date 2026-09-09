@@ -782,7 +782,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 235
+    assert len(targets) == 236
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

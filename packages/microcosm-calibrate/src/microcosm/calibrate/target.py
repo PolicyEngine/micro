@@ -25,8 +25,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from microcosm.frame import Frame
 from microcosm.calibrate.hierarchy import CalibrationHierarchy
+from microcosm.frame import Frame
 
 __all__ = ["Target", "TargetSet"]
 

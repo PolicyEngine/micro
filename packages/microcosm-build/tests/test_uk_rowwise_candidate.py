@@ -1183,7 +1183,10 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                 name="ons.tenure.owned_outright@E09000001",
                 entity="household",
                 measure="tenure/owned_outright",
-                value=1.0,
+                # The stub marks every household in this local authority as
+                # owned outright, so this target is identical to its declared
+                # Chronicle household-count target.
+                value=4.0 / 3.0,
                 period=2025,
                 source="synthetic local fact fixture",
                 family="ons",

@@ -95,11 +95,6 @@ from microcosm.calibrate.exact_k import (  # noqa: E402 - after the compat gate
     assert_exact_k_support,
     select_exact_k,
 )
-from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
-    CalibrationProblem,
-    SkippedTarget,
-    build_constraint_matrix,
-)
 from microcosm.calibrate.hierarchy import (  # noqa: E402 - after compat gate
     CalibrationHierarchy,
     CalibrationHierarchySeed,
@@ -107,6 +102,11 @@ from microcosm.calibrate.hierarchy import (  # noqa: E402 - after compat gate
     HierarchyDimension,
     HierarchyGeography,
     HierarchyNode,
+)
+from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
+    CalibrationProblem,
+    SkippedTarget,
+    build_constraint_matrix,
 )
 from microcosm.calibrate.monetary_binding import (  # noqa: E402 - after compat gate
     MonetaryBindingIntegrityError,

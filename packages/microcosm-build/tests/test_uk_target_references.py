@@ -40,6 +40,8 @@ from microcosm.calibrate.score import score_targets
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from tools.generate_uk_local_target_references import (
     LOCAL_GEOGRAPHY_LEVELS,
+)
+from tools.generate_uk_local_target_references import (
     _filter_contract_by_geography_levels as _filter_local_contract,
 )
 from tools.generate_uk_target_references import (
