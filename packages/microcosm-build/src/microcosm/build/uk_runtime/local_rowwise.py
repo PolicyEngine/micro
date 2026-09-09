@@ -24,6 +24,7 @@ import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -1052,12 +1053,24 @@ def solve_uk_rowwise_weights_under_doctrine(
     seed: int = 0,
     selection_seed: int | None = None,
     selection_pi_hi: float = 1.0,
+    size_checkpoint_dir: Path | None = None,
+    resume_size_checkpoint: Path | None = None,
+    checkpoint_identity: Mapping[str, Any] | None = None,
 ) -> UKRowwiseDoctrineSolve:
     """Solve rowwise household weights under the reviewed doctrine.
 
     ``selection_seed`` (default ``seed``) seeds only the size selection —
     the informed L0 search, the exact-count draw and the refit — so two
     selections can be compared on one pool and one dense reference.
+
+    ``size_checkpoint_dir`` persists the dense solve and the informed L0
+    search of a ``dataset_households`` solve before the exact-count draw
+    (:mod:`microcosm.build.uk_runtime.size_checkpoint`), stamped with
+    ``checkpoint_identity``; ``resume_size_checkpoint`` restores such a
+    checkpoint instead of solving and searching again, refusing when the
+    identity, the pool or the target surface differ. The draw's threshold
+    (``selection_pi_hi``) may differ from the one the search stopped on; the
+    size receipt records both.
 
     Structurally knob-free like before the ``calibrate()`` migration: no
     per-target parameters and no doctrine parameter — the bounds always come
@@ -1171,22 +1184,40 @@ def solve_uk_rowwise_weights_under_doctrine(
         grain_labels,
         rule=target_weight_rule,
     )
-    result = calibrate(
-        frame,
-        target_set,
-        weight_entity="household",
-        epochs=epochs,
-        learning_rate=learning_rate,
-        mass=CONSERVE_MASS if conserve_mass else FREE_MASS,
-        mass_reason=None if conserve_mass else mass_reason,
-        max_weight_ratio=doctrine.max_weight_ratio,
-        target_records=target_records,
-        l0_lambda=l0_lambda,
-        budget_iters=budget_iters,
-        seed=seed,
-        target_loss_weights=target_loss_weights,
-        target_loss_cap=doctrine.target_loss_cap,
-    )
+    if (size_checkpoint_dir is not None or resume_size_checkpoint is not None) and (
+        dataset_households is None
+    ):
+        raise ValueError("size checkpoints apply to a dataset_households solve.")
+    if size_checkpoint_dir is not None and resume_size_checkpoint is not None:
+        raise ValueError("a resumed solve does not write a second checkpoint.")
+    restored = None
+    if resume_size_checkpoint is not None:
+        from microcosm.build.uk_runtime.size_checkpoint import load_uk_size_checkpoint
+
+        restored = load_uk_size_checkpoint(
+            resume_size_checkpoint,
+            frame=frame,
+            target_set=target_set,
+            identity={} if checkpoint_identity is None else checkpoint_identity,
+        )
+        result = restored.dense
+    else:
+        result = calibrate(
+            frame,
+            target_set,
+            weight_entity="household",
+            epochs=epochs,
+            learning_rate=learning_rate,
+            mass=CONSERVE_MASS if conserve_mass else FREE_MASS,
+            mass_reason=None if conserve_mass else mass_reason,
+            max_weight_ratio=doctrine.max_weight_ratio,
+            target_records=target_records,
+            l0_lambda=l0_lambda,
+            budget_iters=budget_iters,
+            seed=seed,
+            target_loss_weights=target_loss_weights,
+            target_loss_cap=doctrine.target_loss_cap,
+        )
     selected_support = None
     size_receipt = None
     dense_result = None
@@ -1195,21 +1226,60 @@ def solve_uk_rowwise_weights_under_doctrine(
             raise ValueError(
                 "dataset_households requires an unpruned dense reference solve."
             )
-        from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+        from microcosm.build.uk_runtime.dataset_size import (
+            refit_uk_dataset_size,
+            select_uk_dataset_size,
+        )
 
+        size_seed = seed if selection_seed is None else selection_seed
+        checkpoint_receipt: dict[str, Any] | None = None
+        if restored is not None:
+            size_selection = restored.selection
+            checkpoint_receipt = {"resumed_from": restored.receipt}
+        else:
+            size_selection = select_uk_dataset_size(
+                frame,
+                result,
+                households=dataset_households,
+                epochs=epochs,
+                learning_rate=learning_rate,
+                seed=size_seed,
+                pi_hi=selection_pi_hi,
+            )
+            if size_checkpoint_dir is not None:
+                from microcosm.build.uk_runtime.size_checkpoint import (
+                    write_uk_size_checkpoint,
+                )
+
+                checkpoint_receipt = {
+                    "written": write_uk_size_checkpoint(
+                        size_checkpoint_dir,
+                        frame=frame,
+                        dense=result,
+                        selection=size_selection,
+                        identity=(
+                            {} if checkpoint_identity is None else checkpoint_identity
+                        ),
+                    )
+                }
         sized = refit_uk_dataset_size(
             frame,
             result,
             households=dataset_households,
             epochs=epochs,
             learning_rate=learning_rate,
-            seed=seed if selection_seed is None else selection_seed,
+            seed=size_seed,
             pi_hi=selection_pi_hi,
+            selection=size_selection,
         )
         dense_result = result
         result = sized.result
         selected_support = sized.support
-        size_receipt = sized.receipt
+        size_receipt = dict(sized.receipt)
+        # At this level "reused" means restored from a checkpoint: the solve
+        # always hands the refit the selection it just searched or restored.
+        size_receipt["selection_reused"] = restored is not None
+        size_receipt["checkpoint"] = checkpoint_receipt
     evidence = _doctrine_solve_evidence(
         result,
         target_set=target_set,

@@ -1368,8 +1368,12 @@ def test_selection_feasibility_measures_boundary_mass_and_the_ways_out():
     # Promoting the 0.9 gate to a certainty (pi_hi <= 0.9) leaves a draw of 4
     # over four equal 0.2 gates: feasible; 0.99 and above are not.
     assert report["pi_hi_scan"]["0.99"]["feasible"] is False
+    assert report["pi_hi_scan"]["0.99"]["reason"] == "boundary_mass_short"
     assert report["pi_hi_scan"]["0.9"]["feasible"] is True
+    assert report["pi_hi_scan"]["0.9"]["reason"] == "feasible"
     assert report["smallest_feasible_pi_hi_on_grid"] == 0.9
+    assert report["requested_pi_hi_verdict"] == "boundary_mass_short"
+    assert report["budget_search"] is None
     assert report["gates_above"]["0.5"] == 3
     assert report["budget_search_n_nonzero"] == 7
     assert report["selection_l0_lambda"] == 0.5
@@ -1417,6 +1421,14 @@ def test_size_refit_pi_hi_promotes_learned_certainties_and_is_recorded():
     )
     assert receipt["selection_feasibility"]["requested_pi_hi"] == 0.5
     assert receipt["selection_feasibility"]["feasible_at_requested_pi_hi"] is True
+    # The budget search stopped on the draw's own feasibility at the requested
+    # threshold and recorded every probe (microcosm#355, S2 refusal).
+    search = receipt["selection_budget_search"]
+    assert search["feasible_draw_pi_hi"] == 0.5
+    assert search["selected_feasible"] is True
+    assert search["stopped_on"] == "acceptable_within_tolerance"
+    assert search["probes"][-1]["verdict"] == "feasible"
+    assert receipt["selection_feasibility"]["budget_search"] is search
     # Certainties at 0.5 can only grow relative to the exact-one set.
     assert (
         receipt["selection_receipt"]["certainty_count"] >= receipt["protected_carriers"]
@@ -1610,4 +1622,226 @@ def test_size_refuses_budget_smaller_than_protected_carriers():
     with pytest.raises(ValueError, match="3 protected target carriers"):
         refit_uk_dataset_size(
             frame, dense, households=2, epochs=1, learning_rate=0.02, seed=7
+        )
+
+
+def _size_problem():
+    metrics = pd.DataFrame({"households": [1.0, 1.0, 1.0]}, index=[101, 102, 103])
+    return build_uk_rowwise_local_matrix(
+        metrics,
+        _assigned(),
+        pd.DataFrame({"code": ["E001", "S001"], "households": [2.0, 1.0]}),
+    )
+
+
+def test_size_selection_can_be_searched_once_and_drawn_from_again():
+    from microcosm.build.uk_runtime.dataset_size import (
+        refit_uk_dataset_size,
+        select_uk_dataset_size,
+    )
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=2,
+    )
+    one_shot = refit_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7, pi_hi=0.5
+    )
+    selection = select_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7, pi_hi=0.5
+    )
+    assert selection.search_pi_hi == 0.5
+    assert selection.selection.l0_lambda == one_shot.receipt["selection_l0_lambda"]
+    reused = refit_uk_dataset_size(
+        frame,
+        dense,
+        households=2,
+        epochs=2,
+        learning_rate=0.02,
+        seed=7,
+        pi_hi=0.5,
+        selection=selection,
+    )
+    np.testing.assert_array_equal(reused.support, one_shot.support)
+    np.testing.assert_array_equal(reused.result.weights, one_shot.result.weights)
+    assert one_shot.receipt["selection_reused"] is False
+    assert reused.receipt["selection_reused"] is True
+    assert reused.receipt["selection_search_pi_hi"] == 0.5
+    # A different draw threshold on the same search is allowed and recorded.
+    redrawn = refit_uk_dataset_size(
+        frame,
+        dense,
+        households=2,
+        epochs=2,
+        learning_rate=0.02,
+        seed=7,
+        pi_hi=1.0,
+        selection=selection,
+    )
+    assert redrawn.receipt["selection_pi_hi"] == 1.0
+    assert redrawn.receipt["selection_search_pi_hi"] == 0.5
+    assert redrawn.receipt["selection_feasibility"]["search_pi_hi"] == 0.5
+    # Different search inputs refuse by name.
+    with pytest.raises(ValueError, match="epochs: selection 2 != 3"):
+        refit_uk_dataset_size(
+            frame,
+            dense,
+            households=2,
+            epochs=3,
+            learning_rate=0.02,
+            seed=7,
+            selection=selection,
+        )
+    with pytest.raises(ValueError, match="full-pool"):
+        select_uk_dataset_size(
+            frame, dense, households=3, epochs=2, learning_rate=0.02, seed=7
+        )
+
+
+def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
+    from microcosm.build.uk_runtime.size_checkpoint import (
+        SIZE_CHECKPOINT_ARRAYS_FILENAME,
+        SIZE_CHECKPOINT_MANIFEST_FILENAME,
+        load_uk_size_checkpoint,
+    )
+
+    frame = _clone_frame()
+    problem = _size_problem()
+    identity = {"input_sha256": "abc", "seed": 7, "epochs": 2, "households": 2}
+    common = dict(
+        bound_families=["census_households/constituency"],
+        dataset_households=2,
+        epochs=2,
+        seed=7,
+    )
+    checkpoint_dir = tmp_path / "run-a"
+    first = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        selection_pi_hi=0.5,
+        size_checkpoint_dir=checkpoint_dir,
+        checkpoint_identity=identity,
+        **common,
+    )
+    assert (checkpoint_dir / SIZE_CHECKPOINT_ARRAYS_FILENAME).is_file()
+    manifest = json.loads(
+        (checkpoint_dir / SIZE_CHECKPOINT_MANIFEST_FILENAME).read_text()
+    )
+    assert manifest["identity"] == identity
+    assert manifest["selection"]["search_pi_hi"] == 0.5
+    assert manifest["pool"]["households"] == 3
+    written = first.size_receipt["checkpoint"]["written"]
+    assert written["stage"] == "before_exact_count_draw"
+    assert written["arrays_sha256"] == manifest["arrays_sha256"]
+
+    # Resume: no dense solve, no search; the draw and refit reproduce the run.
+    resumed = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        selection_pi_hi=0.5,
+        resume_size_checkpoint=checkpoint_dir,
+        checkpoint_identity=identity,
+        **common,
+    )
+    np.testing.assert_array_equal(resumed.selected_support, first.selected_support)
+    np.testing.assert_array_equal(resumed.weights, first.weights)
+    assert resumed.final_loss == first.final_loss
+    assert resumed.dense_reference is not None
+    assert resumed.dense_reference.final_loss == first.dense_reference.final_loss
+    np.testing.assert_array_equal(
+        resumed.dense_reference.weights, first.dense_reference.weights
+    )
+    assert resumed.size_receipt["selection_reused"] is True
+    assert resumed.size_receipt["checkpoint"]["resumed_from"]["identity"] == identity
+    assert (
+        resumed.size_receipt["selection_l0_lambda"]
+        == (first.size_receipt["selection_l0_lambda"])
+    )
+    # Another draw threshold on the same checkpoint is a candidate knob, recorded.
+    redrawn = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        selection_pi_hi=1.0,
+        resume_size_checkpoint=checkpoint_dir,
+        checkpoint_identity=identity,
+        **common,
+    )
+    assert redrawn.size_receipt["selection_pi_hi"] == 1.0
+    assert redrawn.size_receipt["selection_search_pi_hi"] == 0.5
+
+    # Identity, pool and surface drift refuse by name.
+    with pytest.raises(ValueError, match="epochs: checkpoint 2 != run 3"):
+        solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            problem,
+            resume_size_checkpoint=checkpoint_dir,
+            checkpoint_identity={**identity, "epochs": 3},
+            **common,
+        )
+    with pytest.raises(ValueError, match="absent in checkpoint"):
+        solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            problem,
+            resume_size_checkpoint=checkpoint_dir,
+            checkpoint_identity={**identity, "ladder_sha256": "x"},
+            **common,
+        )
+    from microcosm.build.uk_runtime.local_rowwise import _rowwise_target_set
+
+    other_pool = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2, 3],
+                "person_household_id": [101, 102, 104],
+                "person_benunit_id": [11, 12, 13],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [11, 12, 13]}),
+        household=pd.DataFrame(
+            {"household_id": [101, 102, 104], "household_weight": [1.0, 1.0, 1.0]}
+        ),
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+    )
+    with pytest.raises(ValueError, match="pool differs"):
+        load_uk_size_checkpoint(
+            checkpoint_dir,
+            frame=other_pool,
+            target_set=_rowwise_target_set(problem),
+            identity=identity,
+        )
+    drifted = build_uk_rowwise_local_matrix(
+        pd.DataFrame({"households": [1.0, 1.0, 1.0]}, index=[101, 102, 103]),
+        _assigned(),
+        pd.DataFrame({"code": ["E001", "S001"], "households": [2.5, 1.0]}),
+    )
+    with pytest.raises(ValueError, match="target surface differs"):
+        solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            drifted,
+            resume_size_checkpoint=checkpoint_dir,
+            checkpoint_identity=identity,
+            **common,
+        )
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            problem,
+            size_checkpoint_dir=checkpoint_dir,
+            checkpoint_identity=identity,
+            **common,
+        )
+    with pytest.raises(ValueError, match="dataset_households"):
+        solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            problem,
+            bound_families=["census_households/constituency"],
+            epochs=2,
+            seed=7,
+            size_checkpoint_dir=tmp_path / "no-size",
         )

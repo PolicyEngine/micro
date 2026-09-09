@@ -2012,3 +2012,143 @@ def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
     )
     with pytest.raises(ValueError, match="candidate-only"):
         builder._validate_cli_args(args)
+
+
+def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
+    monkeypatch, tmp_path
+):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    from microcosm.build.uk_runtime.size_checkpoint import (
+        SIZE_CHECKPOINT_ARRAYS_FILENAME,
+        SIZE_CHECKPOINT_MANIFEST_FILENAME,
+    )
+
+    input_h5 = tmp_path / "spine.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    _write_staging_h5(input_h5, households_per_region=52)
+    ladder = _write_ladder(ladder_path)
+    import microcosm.build.uk_runtime.battery_bindings as bindings
+
+    monkeypatch.setattr(
+        bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+    common = [
+        "--input-h5",
+        str(input_h5),
+        "--ladder",
+        str(ladder_path),
+        "--n-clones",
+        "2",
+        "--dataset-households",
+        "300",
+        "--epochs",
+        "2",
+        "--skip-holdout",
+        "--seed",
+        "7",
+    ]
+    first = tmp_path / "first"
+    status = builder.main([*common, "--out", str(first), "--selection-pi-hi", "0.5"])
+    assert status in (0, 1)
+    assert (first / SIZE_CHECKPOINT_ARRAYS_FILENAME).is_file()
+    checkpoint = json.loads((first / SIZE_CHECKPOINT_MANIFEST_FILENAME).read_text())
+    assert checkpoint["selection"]["households"] == 300
+    assert checkpoint["selection"]["search_pi_hi"] == 0.5
+    assert checkpoint["identity"]["dataset_households"] == 300
+    assert checkpoint["identity"]["epochs"] == 2
+    manifest = json.loads((first / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["parameters"]["size_checkpoint"] is True
+    assert manifest["parameters"]["resume_size_checkpoint"] is None
+    written = manifest["solve"]["dataset_size"]["checkpoint"]["written"]
+    assert written["arrays_sha256"] == checkpoint["arrays_sha256"]
+    assert manifest["solve"]["dataset_size"]["selection_reused"] is False
+    rows = _spool_rows(first)
+    assert len(rows) == 1
+    assert "size_selection_checkpointed" in rows[0].phases_reached
+
+    # Resume on the same inputs: no dense solve, no search, same draw and refit.
+    second = tmp_path / "second"
+    status = builder.main(
+        [
+            *common,
+            "--out",
+            str(second),
+            "--selection-pi-hi",
+            "0.5",
+            "--resume-size-checkpoint",
+            str(first),
+        ]
+    )
+    assert status in (0, 1)
+    assert not (second / SIZE_CHECKPOINT_ARRAYS_FILENAME).exists()
+    resumed = json.loads((second / builder.MANIFEST_FILENAME).read_text())
+    assert resumed["parameters"]["size_checkpoint"] is False
+    assert resumed["parameters"]["resume_size_checkpoint"] == str(first.resolve())
+    size = resumed["solve"]["dataset_size"]
+    assert size["selection_reused"] is True
+    assert size["selection_search_pi_hi"] == 0.5
+    assert (
+        size["checkpoint"]["resumed_from"]["arrays_sha256"]
+        == (checkpoint["arrays_sha256"])
+    )
+    assert size["dense_loss"] == manifest["solve"]["dataset_size"]["dense_loss"]
+    assert (
+        size["selection_l0_lambda"]
+        == (manifest["solve"]["dataset_size"]["selection_l0_lambda"])
+    )
+    first_selection = pd.read_csv(first / builder.DATASET_SIZE_SELECTION_FILENAME)
+    second_selection = pd.read_csv(second / builder.DATASET_SIZE_SELECTION_FILENAME)
+    pd.testing.assert_frame_equal(first_selection, second_selection)
+    assert "size_selection_resumed" in _spool_rows(second)[0].phases_reached
+
+    # Another threshold re-draws from the same checkpoint and records both.
+    third = tmp_path / "third"
+    status = builder.main(
+        [
+            *common,
+            "--out",
+            str(third),
+            "--selection-pi-hi",
+            "1.0",
+            "--resume-size-checkpoint",
+            str(first),
+        ]
+    )
+    assert status in (0, 1)
+    redrawn = json.loads((third / builder.MANIFEST_FILENAME).read_text())
+    assert redrawn["solve"]["dataset_size"]["selection_pi_hi"] == 1.0
+    assert redrawn["solve"]["dataset_size"]["selection_search_pi_hi"] == 0.5
+
+    # A resume whose inputs differ refuses by name, before any solve.
+    different_epochs = list(common)
+    different_epochs[different_epochs.index("--epochs") + 1] = "3"
+    with pytest.raises(ValueError, match="epochs: checkpoint 2 != run 3"):
+        builder.main(
+            [
+                *different_epochs,
+                "--out",
+                str(tmp_path / "fourth"),
+                "--resume-size-checkpoint",
+                str(first),
+            ]
+        )
+    with pytest.raises(ValueError, match="requires --dataset-households"):
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(tmp_path / "fifth"),
+                "--resume-size-checkpoint",
+                str(first),
+            ]
+        )

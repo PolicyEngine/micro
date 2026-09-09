@@ -13,6 +13,7 @@ from microcosm.calibrate import (
     TargetSet,
     assert_exact_k_support,
     calibrate,
+    exact_k_design_feasibility,
     refit_l0_selection,
     select_exact_k,
 )
@@ -30,30 +31,28 @@ class UKDatasetSize:
     receipt: dict[str, object]
 
 
-def refit_uk_dataset_size(
-    frame: Frame,
-    dense: CalibrationResult,
-    *,
-    households: int,
-    epochs: int,
-    learning_rate: float,
-    seed: int,
-    pi_hi: float = 1.0,
-) -> UKDatasetSize:
-    """Run informed L0, a fixed-size draw, and refit under the dense doctrine.
+@dataclass(frozen=True)
+class UKSizeSelection:
+    """The informed L0 search a size draw starts from.
 
-    Freeze the already compiled household contributions, including engine
-    measures that depend on the full population. Re-evaluating those formulas
-    on a subset would change the target system. Target values, order, loss
-    weights, cap and stretch bound remain those of the dense solve.
-
-    ``pi_hi`` is the exact-count draw's certainty threshold: gates whose
-    learned open probability reaches it are taken with certainty and only the
-    rest are drawn. The default ``1.0`` keeps exactly the protected carriers
-    as certainties; a lower threshold (the US exact-k ladder runs 0.95)
-    promotes learned near-certain gates and is a reviewed candidate-run
-    setting recorded in the size receipt, never a release default.
+    Kept apart from the draw and the refit so a run can checkpoint the dense
+    solve and this search before the exact-count draw: a draw refusal then
+    costs a re-draw, not the hours the pool solve took (microcosm#355, S2
+    2026-09-08). ``search_pi_hi`` is the certainty threshold the budget
+    search stopped on; a later draw may use another threshold, recorded
+    beside it in the size receipt.
     """
+
+    selection: CalibrationResult
+    protected: np.ndarray
+    households: int
+    epochs: int
+    learning_rate: float
+    seed: int
+    search_pi_hi: float
+
+
+def _check_size_inputs(frame: Frame, dense: CalibrationResult, households: int) -> int:
     n = frame.n("household")
     if (
         isinstance(households, bool)
@@ -77,18 +76,56 @@ def refit_uk_dataset_size(
         raise ValueError(
             "size selection requires an aligned, fully compiled dense solve."
         )
+    return n
+
+
+def _check_pi_hi(pi_hi: object) -> float:
+    if not isinstance(pi_hi, float | int) or isinstance(pi_hi, bool):
+        raise ValueError("pi_hi must be a number in (0, 1].")
+    value = float(pi_hi)
+    if not (0.0 < value <= 1.0):
+        raise ValueError("pi_hi must be a number in (0, 1].")
+    return value
+
+
+def _solver_common(
+    dense: CalibrationResult, *, epochs: int, learning_rate: float, seed: int
+) -> dict[str, Any]:
+    return dict(
+        weight_entity="household",
+        epochs=epochs,
+        learning_rate=learning_rate,
+        mass=dense.options["mass"],
+        max_weight_ratio=dense.options["max_weight_ratio"],
+        seed=seed,
+        target_loss_weights=dense.target_loss_weights,
+        target_loss_scales=dense.target_loss_scales,
+        target_loss_cap=dense.target_loss_cap,
+    )
+
+
+def select_uk_dataset_size(
+    frame: Frame,
+    dense: CalibrationResult,
+    *,
+    households: int,
+    epochs: int,
+    learning_rate: float,
+    seed: int,
+    pi_hi: float = 1.0,
+) -> UKSizeSelection:
+    """Run the informed L0 budget search for an exact-count draw of ``households``.
+
+    Refuses by name any nonzero target no pool household supports, protects
+    each remaining target's largest carrier, and searches the L0 penalty on
+    the gates' open-probability mass until a draw of ``households`` at
+    ``pi_hi`` is feasible on the learned probabilities (or the probe budget
+    is spent; then the draw refuses with the measurement).
+    """
+    n = _check_size_inputs(frame, dense, households)
+    pi_hi = _check_pi_hi(pi_hi)
     if households == n:
-        return UKDatasetSize(
-            dense,
-            np.arange(n),
-            {
-                "method": "full_pool",
-                "requested_households": n,
-                "realized_households": n,
-                "pool_households": n,
-                "seed": seed,
-            },
-        )
+        raise ValueError("a full-pool size needs no selection.")
     problem = dense.problem
     unsupported = unsupported_nonzero_targets(problem)
     if unsupported:
@@ -109,20 +146,12 @@ def refit_uk_dataset_size(
         raise ValueError(
             f"requested {households} households cannot retain {int(init.protected.sum())} protected target carriers."
         )
-    common = dict(
-        weight_entity="household",
-        epochs=epochs,
-        learning_rate=learning_rate,
-        mass=dense.options["mass"],
-        max_weight_ratio=dense.options["max_weight_ratio"],
-        seed=seed,
-        target_loss_weights=dense.target_loss_weights,
-        target_loss_scales=dense.target_loss_scales,
-        target_loss_cap=dense.target_loss_cap,
-    )
     # The exact-count draw can only draw from the gates' open-probability
     # mass, so the budget search targets that mass, not the count of
-    # not-fully-closed gates (microcosm#355 ruling 2026-09-08).
+    # not-fully-closed gates (microcosm#355 ruling 2026-09-08), and it stops
+    # only on a probe whose gates make the draw at ``pi_hi`` feasible: the
+    # draw's inequality is one-sided, the budget band is not, and S2 (2026-09-08)
+    # landed 166 rows under the request inside the band and was refused.
     selection = calibrate(
         frame,
         TargetSet(problem.targets),
@@ -130,26 +159,122 @@ def refit_uk_dataset_size(
         gate_initialization=init,
         mass_reason=dense.options["mass_reason"],
         budget_basis=BUDGET_BASIS_OPEN_PROBABILITY_MASS,
-        **common,
+        feasible_draw_pi_hi=pi_hi,
+        **_solver_common(dense, epochs=epochs, learning_rate=learning_rate, seed=seed),
     )
-    probabilities = selection.gate_open_probabilities
-    if probabilities is None:
+    if selection.gate_open_probabilities is None:
         raise RuntimeError("informed L0 returned no selection probabilities.")
-    if not isinstance(pi_hi, float | int) or isinstance(pi_hi, bool):
-        raise ValueError("pi_hi must be a number in (0, 1].")
-    pi_hi = float(pi_hi)
-    if not (0.0 < pi_hi <= 1.0):
-        raise ValueError("pi_hi must be a number in (0, 1].")
-    # Exact-one certainties are protected by the gates themselves. At the
-    # default pi_hi=1.0 no learned boundary score is promoted; a lower
-    # threshold promotes near-certain gates and is recorded in the receipt.
+    return UKSizeSelection(
+        selection=selection,
+        protected=np.asarray(init.protected, dtype=bool),
+        households=households,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        seed=seed,
+        search_pi_hi=pi_hi,
+    )
+
+
+def refit_uk_dataset_size(
+    frame: Frame,
+    dense: CalibrationResult,
+    *,
+    households: int,
+    epochs: int,
+    learning_rate: float,
+    seed: int,
+    pi_hi: float = 1.0,
+    selection: UKSizeSelection | None = None,
+) -> UKDatasetSize:
+    """Run informed L0, a fixed-size draw, and refit under the dense doctrine.
+
+    Freeze the already compiled household contributions, including engine
+    measures that depend on the full population. Re-evaluating those formulas
+    on a subset would change the target system. Target values, order, loss
+    weights, cap and stretch bound remain those of the dense solve.
+
+    ``pi_hi`` is the exact-count draw's certainty threshold: gates whose
+    learned open probability reaches it are taken with certainty and only the
+    rest are drawn. The default ``1.0`` keeps exactly the protected carriers
+    as certainties; a lower threshold (the US exact-k ladder runs 0.95)
+    promotes learned near-certain gates and is a reviewed candidate-run
+    setting recorded in the size receipt, never a release default.
+
+    ``selection`` skips the informed L0 search and draws from an existing
+    :class:`UKSizeSelection` (a checkpoint restored by
+    :mod:`microcosm.build.uk_runtime.size_checkpoint`); it must have been
+    searched for the same size, epochs, learning rate and seed on this pool.
+    """
+    n = _check_size_inputs(frame, dense, households)
+    pi_hi = _check_pi_hi(pi_hi)
+    if households == n:
+        return UKDatasetSize(
+            dense,
+            np.arange(n),
+            {
+                "method": "full_pool",
+                "requested_households": n,
+                "realized_households": n,
+                "pool_households": n,
+                "seed": seed,
+            },
+        )
+    problem = dense.problem
+    if selection is None:
+        selection = select_uk_dataset_size(
+            frame,
+            dense,
+            households=households,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            seed=seed,
+            pi_hi=pi_hi,
+        )
+        reused = False
+    else:
+        reused = True
+        expected = {
+            "households": households,
+            "epochs": epochs,
+            "learning_rate": learning_rate,
+            "seed": seed,
+        }
+        mismatched = sorted(
+            f"{key}: selection {getattr(selection, key)!r} != {value!r}"
+            for key, value in expected.items()
+            if getattr(selection, key) != value
+        )
+        probabilities_given = selection.selection.gate_open_probabilities
+        if (
+            probabilities_given is None
+            or len(probabilities_given) != n
+            or len(selection.protected) != n
+            or len(selection.selection.weights) != n
+            or selection.selection.l0_lambda <= 0.0
+        ):
+            mismatched.append("pool: the selection was not searched on this pool")
+        if mismatched:
+            raise ValueError(
+                "cannot draw from a selection searched for different inputs: "
+                + "; ".join(mismatched)
+                + "."
+            )
+    init_protected = selection.protected
+    common = _solver_common(
+        dense, epochs=epochs, learning_rate=learning_rate, seed=seed
+    )
+    probabilities = selection.selection.gate_open_probabilities
+    assert probabilities is not None
+    search_result = selection.selection
     feasibility = selection_feasibility(
         probabilities,
         households,
-        protected=init.protected,
-        n_nonzero=int(selection.n_nonzero),
-        l0_lambda=float(selection.l0_lambda),
+        protected=init_protected,
+        n_nonzero=int(search_result.n_nonzero),
+        l0_lambda=float(search_result.l0_lambda),
         requested_pi_hi=pi_hi,
+        budget_search=search_result.options.get("budget_search"),
+        search_pi_hi=selection.search_pi_hi,
     )
     try:
         support, sampling, q = select_exact_k(
@@ -163,13 +288,13 @@ def refit_uk_dataset_size(
             f"{json.dumps(feasibility, sort_keys=True)}"
         ) from error
     support = assert_exact_k_support(support, households, pool_size=n)
-    if not np.isin(np.flatnonzero(init.protected), support).all():
+    if not np.isin(np.flatnonzero(init_protected), support).all():
         raise RuntimeError("exact-count selection lost a protected carrier.")
     frozen = _frozen_targets(frame, dense, support)
     refit = refit_l0_selection(
         frame,
         frozen,
-        selection,
+        search_result,
         support=support,
         k=households,
         support_inclusion_probabilities=q,
@@ -195,12 +320,15 @@ def refit_uk_dataset_size(
             "realized_households": households,
             "pool_households": n,
             "seed": seed,
-            "protected_carriers": int(init.protected.sum()),
+            "protected_carriers": int(init_protected.sum()),
             "selection_receipt": sampling,
             "selection_pi_hi": pi_hi,
+            "selection_search_pi_hi": selection.search_pi_hi,
+            "selection_reused": reused,
             "selection_budget_basis": BUDGET_BASIS_OPEN_PROBABILITY_MASS,
+            "selection_budget_search": search_result.options.get("budget_search"),
             "selection_feasibility": feasibility,
-            "selection_l0_lambda": selection.l0_lambda,
+            "selection_l0_lambda": search_result.l0_lambda,
             "selection_epochs": epochs,
             "refit_epochs": epochs,
             "pool_row_indices": support.tolist(),
@@ -254,6 +382,8 @@ def selection_feasibility(
     n_nonzero: int,
     l0_lambda: float,
     requested_pi_hi: float = 1.0,
+    budget_search: dict[str, object] | None = None,
+    search_pi_hi: float | None = None,
 ) -> dict[str, object]:
     """Measure whether an exact-count draw is feasible on these gate probabilities.
 
@@ -267,6 +397,10 @@ def selection_feasibility(
     smallest certainty threshold on a fixed grid that makes the design
     feasible, and the largest household count feasible at ``pi_hi=1.0`` — so
     the refusal is a ruling with numbers, never a silent clamp.
+    Every verdict comes from :func:`exact_k_design_feasibility`, the draw's own
+    inequality, so the scan and the draw can never disagree. ``budget_search``
+    is the search receipt (probes, the verdict each stopped on) when the
+    selection was searched with a feasibility-aware stop.
     """
 
     pi = np.asarray(probabilities, dtype=np.float64)
@@ -279,9 +413,8 @@ def selection_feasibility(
     m = int(households) - int(certainty.sum())
     boundary_mass = float(positive.sum()) if positive.size else 0.0
     boundary_max = float(positive.max()) if positive.size else 0.0
-    feasible = m <= 0 or (
-        positive.size >= m and boundary_max * m <= boundary_mass * (1.0 + 1e-12)
-    )
+    at_one = exact_k_design_feasibility(pi, int(households), 1.0)
+    feasible = bool(at_one["feasible"])
     max_feasible_k = (
         int(certainty.sum()) + int(np.floor(boundary_mass / boundary_max))
         if boundary_max > 0.0
@@ -290,23 +423,15 @@ def selection_feasibility(
     scan: dict[str, object] = {}
     smallest_feasible_pi_hi: float | None = 1.0 if feasible else None
     for threshold in _FEASIBILITY_PI_HI_GRID:
-        certain_t = pi >= threshold
-        c_t = int(certain_t.sum())
-        m_t = int(households) - c_t
-        boundary_t = pi[~certain_t]
-        positive_t = boundary_t[boundary_t > 0.0]
-        mass_t = float(positive_t.sum()) if positive_t.size else 0.0
-        max_t = float(positive_t.max()) if positive_t.size else 0.0
-        ok = m_t >= 0 and (
-            m_t == 0
-            or (positive_t.size >= m_t and max_t * m_t <= mass_t * (1.0 + 1e-12))
-        )
+        design = exact_k_design_feasibility(pi, int(households), threshold)
+        ok = bool(design["feasible"])
         scan[f"{threshold:g}"] = {
-            "certainties": c_t,
-            "boundary_draw": m_t,
-            "boundary_mass": mass_t,
-            "boundary_max": max_t,
-            "feasible": bool(ok),
+            "certainties": int(design["certainty_count"]),
+            "boundary_draw": int(design["boundary_draw"]),
+            "boundary_mass": float(design["boundary_mass"]),
+            "boundary_max": float(design["boundary_max"]),
+            "feasible": ok,
+            "reason": str(design["reason"]),
         }
         if ok and smallest_feasible_pi_hi is None:
             smallest_feasible_pi_hi = threshold
@@ -315,11 +440,14 @@ def selection_feasibility(
         if pi.size
         else {}
     )
-    requested = _feasible_at(pi, int(households), float(requested_pi_hi))
+    requested = exact_k_design_feasibility(pi, int(households), float(requested_pi_hi))
     return {
         "requested_households": int(households),
         "requested_pi_hi": float(requested_pi_hi),
-        "feasible_at_requested_pi_hi": bool(requested),
+        "feasible_at_requested_pi_hi": bool(requested["feasible"]),
+        "requested_pi_hi_verdict": str(requested["reason"]),
+        "search_pi_hi": search_pi_hi,
+        "budget_search": budget_search,
         "pool_households": int(pi.size),
         "protected_carriers": int(protected_mask.sum()),
         "certainties_at_pi_hi_1": int(certainty.sum()),
@@ -343,17 +471,7 @@ def selection_feasibility(
 
 
 def _feasible_at(pi: np.ndarray, households: int, threshold: float) -> bool:
-    certain = pi >= threshold
-    draw = households - int(certain.sum())
-    if draw < 0:
-        return False
-    if draw == 0:
-        return True
-    boundary = pi[~certain]
-    positive = boundary[boundary > 0.0]
-    if positive.size < draw:
-        return False
-    return bool(float(positive.max()) * draw <= float(positive.sum()) * (1.0 + 1e-12))
+    return bool(exact_k_design_feasibility(pi, households, threshold)["feasible"])
 
 
 def _frozen_targets(

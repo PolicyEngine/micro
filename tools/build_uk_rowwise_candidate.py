@@ -479,6 +479,45 @@ def _pin_from_artifact(info: Mapping[str, Any]) -> dict[str, object]:
     }
 
 
+def _size_checkpoint_identity(
+    args: argparse.Namespace,
+    *,
+    pins: Mapping[str, Mapping[str, object]],
+    source_year: int,
+) -> dict[str, object]:
+    """Everything a size checkpoint must share with the run that resumes it.
+
+    The pool (spine, ladder, clones, seed, sampling), the target surface
+    (ledger digests, year, rule, engine blocks) and the solve settings the
+    checkpointed dense solve and search were made with. The draw threshold is
+    deliberately absent: re-drawing at another threshold is the point.
+    """
+    return {
+        "dataset_pin": dict(pins["dataset"]),
+        "ladder_pin": dict(pins["ladder"]),
+        "ledger_facts_sha256": args.ledger_facts_sha256,
+        "ledger_manifest_sha256": args.ledger_manifest_sha256,
+        "seed": int(args.seed),
+        "selection_seed": int(
+            args.seed if args.selection_seed is None else args.selection_seed
+        ),
+        "n_clones": int(args.n_clones),
+        "dataset_households": args.dataset_households,
+        "epochs": int(args.epochs),
+        "learning_rate": float(args.learning_rate),
+        "sample_fraction": float(args.sample_fraction),
+        "sample_seed": int(args.sample_seed),
+        "source_year": int(source_year),
+        "source_lineage_modulus": args.source_lineage_modulus,
+        "calibration_year": getattr(args, "_calibration_year", None),
+        "target_weight_rule": args.target_weight_rule,
+        "engine_blocks": int(args.engine_blocks),
+        "measure_exclusions": (
+            None if args.measure_exclusions is None else str(args.measure_exclusions)
+        ),
+    }
+
+
 def _candidate_identity_digest(
     *,
     pins: dict[str, dict[str, object]],
@@ -630,6 +669,28 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "only the protected carriers certain; a lower value promotes learned "
             "near-certain gates (the US exact-k ladder runs 0.95). Candidate-only; "
             "recorded in the size receipt. Requires --dataset-households."
+        ),
+    )
+    parser.add_argument(
+        "--no-size-checkpoint",
+        action="store_true",
+        help=(
+            "Do not persist the dense solve and the informed L0 search before the "
+            "exact-count draw. By default a --dataset-households run writes "
+            "size_selection_checkpoint.{npz,json} into --out so a draw refusal "
+            "costs a re-draw, not the pool solve (microcosm#355)."
+        ),
+    )
+    parser.add_argument(
+        "--resume-size-checkpoint",
+        type=Path,
+        help=(
+            "Directory holding a size_selection_checkpoint written by an earlier "
+            "--dataset-households run on the same inputs: the pool and the target "
+            "surface are re-derived and verified, the dense solve and the search "
+            "are restored, and the run continues at the exact-count draw "
+            "(--selection-pi-hi may differ; both thresholds are recorded). "
+            "Requires --dataset-households and the same seeds, epochs and pins."
         ),
     )
     parser.add_argument(
@@ -1007,6 +1068,25 @@ def _run_candidate(
             file=sys.stderr,
             flush=True,
         )
+        checkpoint_identity = _size_checkpoint_identity(
+            args, pins=pins, source_year=source_year
+        )
+        resume_checkpoint = (
+            None
+            if args.resume_size_checkpoint is None
+            else args.resume_size_checkpoint.expanduser().resolve()
+        )
+        write_checkpoint = (
+            args.dataset_households is not None
+            and not args.no_size_checkpoint
+            and resume_checkpoint is None
+        )
+        if resume_checkpoint is not None:
+            print(
+                f"resuming the size selection from {resume_checkpoint}...",
+                file=sys.stderr,
+                flush=True,
+            )
         solve = solve_uk_rowwise_weights_under_doctrine(
             solve_frame,
             problem,
@@ -1024,8 +1104,23 @@ def _run_candidate(
             seed=args.seed,
             selection_seed=args.selection_seed,
             selection_pi_hi=args.selection_pi_hi,
+            size_checkpoint_dir=out_dir if write_checkpoint else None,
+            resume_size_checkpoint=resume_checkpoint,
+            checkpoint_identity=checkpoint_identity,
         )
         _validate_solve_result(solve, problem=problem)
+        if solve.size_receipt is not None and solve.size_receipt.get("checkpoint"):
+            checkpoint = solve.size_receipt["checkpoint"]
+            if "written" in checkpoint:
+                append_phase(state, "size_selection_checkpointed")
+                print(
+                    "size selection checkpoint written to "
+                    f"{checkpoint['written']['directory']}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            elif "resumed_from" in checkpoint:
+                append_phase(state, "size_selection_resumed")
         append_phase(state, "solved")
 
         # The kernel minted the calibration mass record inside calibrate() (the
@@ -2512,6 +2607,14 @@ def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]
         "selection_pi_hi": None
         if args.dataset_households is None
         else float(args.selection_pi_hi),
+        "size_checkpoint": bool(
+            args.dataset_households is not None
+            and not args.no_size_checkpoint
+            and args.resume_size_checkpoint is None
+        ),
+        "resume_size_checkpoint": None
+        if args.resume_size_checkpoint is None
+        else str(args.resume_size_checkpoint.expanduser().resolve()),
         "source_year": source_year,
         "source_lineage_modulus": args.source_lineage_modulus,
         "sample_fraction": float(args.sample_fraction),
@@ -2748,6 +2851,16 @@ def _validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError("--selection-pi-hi must be in (0, 1].")
     if args.selection_pi_hi != 1.0 and args.dataset_households is None:
         raise ValueError("--selection-pi-hi requires --dataset-households.")
+    if args.no_size_checkpoint and args.dataset_households is None:
+        raise ValueError("--no-size-checkpoint requires --dataset-households.")
+    if args.resume_size_checkpoint is not None:
+        if args.dataset_households is None:
+            raise ValueError("--resume-size-checkpoint requires --dataset-households.")
+        if args.no_size_checkpoint:
+            raise ValueError(
+                "--resume-size-checkpoint already implies no new checkpoint; "
+                "drop --no-size-checkpoint."
+            )
     if args.dataset_households is not None:
         if args.dataset_households <= 0:
             raise ValueError("--dataset-households must be positive.")

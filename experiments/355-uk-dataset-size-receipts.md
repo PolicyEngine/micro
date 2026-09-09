@@ -367,3 +367,58 @@ Options put to María (2026-09-09): (B) rerun S2 at `--selection-pi-hi 0.5`, no 
 solve and the search are seeded and deterministic, so this run's scan is the feasibility evidence for
 the rerun (expected, not yet verified at scale); (A) the feasibility-aware stopping rule, then rerun at
 0.95; (C) the pre-draw checkpoint, independent of A/B.
+
+### Ruling (María, 2026-09-09) and the two fixes
+
+**Ruling:** launch the 55,000 run at `--selection-pi-hi 0.5` now, build both fixes in parallel, and
+launch the full 0.95 run on the fixed code as soon as it is ready, without a further go.
+
+**P50 = `spine-p/f100-k15-h55000-e2000-p50-s42`** launched 2026-09-08 23:13Z from the clean tree at
+e80112a4 (engine 2.94.0, spine-p ae83e307…, ladder 9c6d56b9…, feed 6fb700e), chained on S2's failed row
+d5a33c11…, `--dataset-households 55000 --epochs 2000 --selection-pi-hi 0.5 --skip-holdout`. The draw's
+feasibility at 0.5 on this pool is the S2 scan (405 boundary draws × 0.463 ≤ 266 mass; 54,595
+certainties), which the seeded search should reproduce. Driven by `355-dataset-size/chain-p50-p95.sh`:
+when P50 exits, the chain waits for `355-dataset-size/READY-p95` (a git ref), fast-forwards
+`populace-877` onto it, and launches `f100-k15-h55000-e2000-p95b-s42` at 0.95 chained on P50's row. One
+K=15 solve at a time (26 GB machine).
+
+**Fix A — the search stops on the draw's own feasibility** (built on branch `uk-355-fixes`, worktree
+`populace-877-fix`, while P50 ran). `exact_k_design_feasibility(pi, k, pi_hi)` in
+`microcosm.calibrate.exact_k` is the draw's inequality without the draw (verdicts `feasible`,
+`certainties_exceed_k`, `boundary_short_of_draw`, `boundary_mass_short`; 120 random polarised designs
+agree with `select_exact_k` on every one). `calibrate(..., feasible_draw_pi_hi=h)` (mass basis only)
+makes `_search_l0_lambda_for_budget` accept a probe only when the draw at `h` is feasible on its gate
+probabilities, steers an infeasible probe like a count miss (short mass → smaller penalty, surplus
+certainties → larger), prefers feasible probes when choosing the best run, and records every probe under
+`options["budget_search"]` (`probes[]`, `selected_feasible`, `stopped_on`). The size selection passes its
+`pi_hi`; the receipt carries `selection_budget_search`, and the feasibility scan carries each threshold's
+verdict and `search_pi_hi`. A synthetic S2 (stub optimiser, 1,000 gates, budget 500: first probe 485 open,
+inside the band, undrawable at 0.95) now continues to a drawable probe in five evaluations where the plain
+mass basis stopped at the first; when nothing is drawable within the budget the closest run is still
+returned and the draw refuses with its measurement. The feasibility scan and `_feasible_at` now use the
+same helper, so the scan and the draw can never disagree.
+
+**Fix C — checkpoint before the draw.** `refit_uk_dataset_size` is split into `select_uk_dataset_size`
+(unsupported-row refusal, protected carriers, the search) and the draw + refit, which accepts an existing
+`UKSizeSelection`. `uk_runtime/size_checkpoint.py` writes `size_selection_checkpoint.{npz,json}` (dense
+weights and trajectory, initial weights, loss weights and scales, the selection's weights, gate
+probabilities and trajectory, the protected mask; identity of the pool by household-id digest, of the
+target surface by names + values digest, of the solve settings and input pins by the caller's identity
+mapping, the options incl. the search receipt) and `load_uk_size_checkpoint` re-derives both results on the
+resumed run's freshly compiled pool through the new `microcosm.calibrate.rebuild_calibration_result`
+(compile, place weights under the recorded mass policy, rebuild diagnostics, recompute the closing loss and
+refuse if it disagrees), refusing by name on identity, pool or surface drift. The doctrine solve takes
+`size_checkpoint_dir` / `resume_size_checkpoint` / `checkpoint_identity`; the driver writes the
+checkpoint into `--out` by default on size runs (`--no-size-checkpoint` opts out), `--resume-size-checkpoint
+DIR` continues at the draw (`--selection-pi-hi` may differ; `selection_pi_hi` and
+`selection_search_pi_hi` both recorded; `selection_reused` true), Logbook phases
+`size_selection_checkpointed` / `size_selection_resumed`, manifest `parameters.size_checkpoint`,
+`parameters.resume_size_checkpoint`, `solve.dataset_size.checkpoint.{written|resumed_from}`. Tests: a
+synthetic run checkpoints, resumes byte-equal (support, weights, dense reference, selection CSV), re-draws
+at another threshold, and refuses a changed epoch, a foreign pool, a moved surface, an overwrite.
+
+`solve.py` and `exact_k.py` are attested: bundle digests am 09f6fffe… / be cbbabdbb… / uk d123633c…,
+seed protocol 6174167d…, seed map 892435cc…, loader golden vector b556379f…, US spec digest 47038847…
+(multispine pool-tool test), the regenerated US coverage report, the H1 calibrate parity fixture
+(regenerated on the authoring platform, `fit.qrf` platform map reverted).
+

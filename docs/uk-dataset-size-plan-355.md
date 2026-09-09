@@ -93,6 +93,34 @@ Never reduce `--n-clones` to request a smaller output. Full builds still need
 the dense build's peak memory and add L0/refit work; the reduction is in the
 exported dataset's storage and downstream loading/simulation footprint.
 
+### The search stops on the draw's own feasibility; the solve is checkpointed before the draw (2026-09-09)
+
+S2 on spine-p (55,000 at `--selection-pi-hi 0.95`, 2,000 epochs) was refused at the
+exact-count draw after 4.8 hours. The mass-basis budget search had stopped inside its
+±5% band at an open mass of 54,834, 166 rows *under* the request; the draw's
+condition is one-sided (roughly "open mass at least the request", exactly
+`(k − certainties) × max(boundary π) ≤ Σ boundary π`), and with near-binary gates the
+tail below 0.95 held 291 rows of mass for 437 places. Two changes follow:
+
+- The size selection's search now stops only on a probe whose gate probabilities
+  admit the draw at the requested threshold (`calibrate(..., feasible_draw_pi_hi=…)`
+  on the mass basis; verdicts from `exact_k_design_feasibility`, the draw's own
+  inequality). An infeasible probe steers the bisection like a count miss (short
+  boundary mass → smaller penalty, surplus certainties → larger). Every probe and the
+  reason the search stopped are recorded under `selection_budget_search` in the size
+  receipt; if no probe is drawable within the ten-probe budget the closest run is
+  still returned and the draw refuses with its measurement, as before.
+- A size run writes `size_selection_checkpoint.{npz,json}` into `--out` after the
+  dense solve and the search, before the draw (the dense weights and trajectory, the
+  selection's weights, gate probabilities and search receipt, the protected-carrier
+  mask, and the identity of the pool, the target surface and the solve settings).
+  `--resume-size-checkpoint DIR` re-derives the pool and the surface, verifies that
+  identity, rebuilds both results through `rebuild_calibration_result`, and continues
+  at the draw; `--selection-pi-hi` may differ from the threshold the search stopped
+  on and both are recorded (`selection_pi_hi`, `selection_search_pi_hi`). A draw
+  refusal therefore costs a re-draw, not the pool solve. `--no-size-checkpoint`
+  opts out. The checkpoint is candidate evidence, never a release input.
+
 ## Certification and publication still required
 
 The implementation produces **candidates**, not a new certified UK default.

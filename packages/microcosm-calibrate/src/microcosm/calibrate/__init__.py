@@ -93,6 +93,7 @@ from microcosm.calibrate.diagnostics import (  # noqa: E402 - after the compat g
 )
 from microcosm.calibrate.exact_k import (  # noqa: E402 - after the compat gate
     assert_exact_k_support,
+    exact_k_design_feasibility,
     select_exact_k,
 )
 from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
@@ -121,6 +122,7 @@ from microcosm.calibrate.solve import (  # noqa: E402 - after the compat gate
     calibrate_l0_refit,
     default_target_loss_scales,
     effective_sample_size,
+    rebuild_calibration_result,
     refit_l0_selection,
     relative_error_loss,
 )
@@ -153,8 +155,10 @@ __all__ = [
     "calibrate",
     "calibrate_l0_refit",
     "assert_exact_k_support",
+    "exact_k_design_feasibility",
     "default_target_loss_scales",
     "effective_sample_size",
+    "rebuild_calibration_result",
     "refit_l0_selection",
     "diagnostics_payload",
     "past_cap_census",
