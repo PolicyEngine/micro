@@ -763,3 +763,12 @@ Layer 11: PLACEMENT-ADDITIONS.patch applied; all declared postimages and preserv
 Layer 12: ORDINARY-CLOSURE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
 
 Layer 13: INTEGRATION-REGRESSIONS.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+### State
+All thirteen source layers staged and committed; behavioral qualification pending.
+
+### Done
+Per-layer pins and actual commit messages checked; store/current-main preservation retained.
+
+### Next
+Root reviews exact ordinary guard/source/resource admissions before execution. Full65 findings and survey/SCF lanes remain separately owned. No remote action is authorized.
