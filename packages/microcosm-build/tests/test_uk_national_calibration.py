@@ -116,7 +116,7 @@ def _frame() -> Frame:
             "benunit": pd.DataFrame(
                 {"benunit_id": ids, "universal_credit": [1.0, 1.0, 0.0, 0.0]}
             ),
-            "household": pd.DataFrame({"household_id": ids}),
+            "household": pd.DataFrame({"household_id": ids, "region": "LONDON"}),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.full(4, 10.0), WeightKind.DESIGN)},
@@ -167,23 +167,24 @@ class StubMeasureResolver:
 
 
 class StubCrosstabResolver:
-    """Supplies the household-grain affected flag, as production does.
+    """Supply separate prepared benefit-unit flags and affected-child counts.
 
-    ``uc_is_child_limit_affected`` is person-native in policyengine-uk, and
-    the Frame's global column-uniqueness rule forbids the same name on two
-    entity tables — so the household-grain flag can only ever arrive as a
-    table-scoped adapter injection. That is the production route, and it is
-    the route exercised here.
+    The national stage must inject both measurements temporarily, materialize
+    the target count, then remove the scratch inputs from the returned frame.
     """
 
     contract_targets = None
+    measures = {
+        "uc_tcl_affected_benunit_proxy": np.array([True, False, True]),
+        "uc_tcl_affected_child_count_proxy": np.array([2.0, 0.0, 3.0]),
+    }
 
     def knows(self, entity, variable):
-        return (entity, variable) == ("household", "uc_is_child_limit_affected")
+        return entity == "benunit" and variable in self.measures
 
     def compute(self, entity, variable):
-        assert (entity, variable) == ("household", "uc_is_child_limit_affected")
-        return np.array([1.0, 0.0, 1.0]), "stub_any_collapse_person_to_household"
+        assert self.knows(entity, variable)
+        return self.measures[variable].copy(), "stub_benunit_tcl_measure"
 
     def receipt(self):
         return {"provider": "stub_crosstab_flag"}
@@ -205,7 +206,9 @@ def _nested_frame() -> Frame:
                     "universal_credit": [1.0, 0.0, 1.0, 1.0],
                 }
             ),
-            "household": pd.DataFrame({"household_id": np.arange(3, dtype="int64")}),
+            "household": pd.DataFrame(
+                {"household_id": np.arange(3, dtype="int64"), "region": "LONDON"}
+            ),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.array([10.0, 20.0, 30.0]), WeightKind.DESIGN)},
@@ -267,6 +270,7 @@ def _materialization_binding_frame(
     household = pd.DataFrame(
         {
             "household_id": np.arange(3, dtype="int64"),
+            "region": "LONDON",
             "esa_income": [10.0, 20.0, 0.0],
             "esa_contrib": [1.0, 2.0, 0.0],
         }
@@ -544,17 +548,16 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
     # The binding classes produce the right prepared values on the adapter…
     adapter = UKFrameTargetAdapter(_materialization_binding_frame())
     # The same table-scoped injection the resolution loop performs.
-    adapter.tables["household"]["uc_is_child_limit_affected"] = np.array(
-        [1.0, 0.0, 1.0]
-    )
+    for variable, values in resolver.measures.items():
+        adapter.tables["benunit"][variable] = values.copy()
     materialize_uk_ledger_targets(adapter, registry, period=2025)
     materialized = {
         ("benunit", "dwp/uc/households"): [1.0, 0.0, 1.0],
         ("household", "obr/esa"): [11.0, 22.0, 0.0],
         ("person", "hmrc/cgt_taxpayers"): [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
-        # Counts of flagged children, reduced from the person rows — not the
-        # household indicator [1.0, 0.0, 1.0] a same-grain boolean read gives.
-        ("household", "dwp/uc/two_child_limit/children_affected"): [2.0, 0.0, 3.0],
+        # The prepared affected-child counts stay distinct from the claim
+        # indicator [1.0, 0.0, 1.0] and legacy person-native entitlement flags.
+        ("benunit", "dwp/uc/two_child_limit/children_affected"): [2.0, 0.0, 3.0],
         ("person", "hmrc/salary_sacrifice_it_relief_basic_rate"): [
             1.0,
             2.0,

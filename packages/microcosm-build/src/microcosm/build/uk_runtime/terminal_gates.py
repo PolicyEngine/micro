@@ -207,6 +207,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.is_before_universal_credit_qualifying_young_person_terminal_date",
     "person.is_in_non_advanced_education",
     "person.is_parent",
+    "person.is_uc_claimant",
     "person.legacy_jobseeker_proxy",
     "person.outpatient_visits",
     "person.pension_contributions_via_salary_sacrifice",
