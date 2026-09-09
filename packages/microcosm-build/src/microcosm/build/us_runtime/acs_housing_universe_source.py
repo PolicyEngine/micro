@@ -898,7 +898,9 @@ def prepare_acs_housing_population(source_dir, *, snapshot_root, serialnos=None)
                 "full_source_frame_before_selection": serialnos is None,
                 "full_source_lexical_projection": True,
                 "native_selection_before_person_accumulation": serialnos is not None,
-                "selection_kind": "all" if serialnos is None else "engineering_exact_keys",
+                "selection_kind": "all"
+                if serialnos is None
+                else "engineering_exact_keys",
                 "requested_serialnos": serialnos,
                 "full_source_inclusion_probability": None,
                 "pre_promotion_frame_sha256": before,

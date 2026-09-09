@@ -3,6 +3,7 @@
 import hashlib
 
 import pytest
+
 from microcosm.build.us_runtime import survey_population_preparation as owner
 
 

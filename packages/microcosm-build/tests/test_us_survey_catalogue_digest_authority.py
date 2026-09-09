@@ -4,8 +4,9 @@ import sys
 from types import SimpleNamespace
 
 import pytest
-from microcosm.build.us_runtime import survey_population_preparation as owner
 from test_us_survey_population_preparation import fixture
+
+from microcosm.build.us_runtime import survey_population_preparation as owner
 
 
 def _must_not_execute(*_args, **_kwargs):

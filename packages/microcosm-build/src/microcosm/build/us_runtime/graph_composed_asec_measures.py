@@ -85,6 +85,8 @@ from .graph_composed_asec_binding import (
 )
 from .graph_composed_contracts import (
     LEAVES_NODE as LEAVES_NODE,
+)
+from .graph_composed_contracts import (
     REPORTED_INCOME_NODE as REPORTED_INCOME_NODE,
 )
 from .graph_composed_population import (

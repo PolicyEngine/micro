@@ -12,6 +12,7 @@ from collections.abc import Mapping
 
 import numpy as np
 import pandas as pd
+
 from microcosm.fit import _graph_legacy_qrf as codec
 from microcosm.fit.model_input import encode_recipient_matrix
 from microcosm.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights

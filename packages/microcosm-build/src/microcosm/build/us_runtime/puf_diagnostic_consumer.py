@@ -11,6 +11,7 @@ from collections.abc import Mapping
 
 import numpy as np
 import pandas as pd
+
 from microcosm.fit import _graph_legacy_qrf as codec
 from microcosm.fit import model_input
 

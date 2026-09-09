@@ -8,7 +8,6 @@ import pytest
 
 from microcosm.build import us_runtime as facade
 
-
 # Derived independently from __all__ in pinned B 2ebca68e, F eba103bb and
 # J 6f6087cb. Hash preimage is UTF-8 newline-joined sorted unique export names.
 _UNION_SHA256 = "213ae67eab1640925fade5075a10eae62d7f219b15c1c04090a9feac8c692aa3"

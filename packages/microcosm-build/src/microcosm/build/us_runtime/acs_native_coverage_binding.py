@@ -207,13 +207,25 @@ def _preflight(paths, serialnos=None):
         # Preserve the whole-source route and its pre-construction row ceiling.
         for role, path in paths.items():
             inventories[role], _empty = coverage._inventory(path, role, frozenset())
-            _require(sum(m["rows"] for m in inventories[role]) <= MAX_SOURCE_ROWS, "SOURCE_ROW_BUDGET")
+            _require(
+                sum(m["rows"] for m in inventories[role]) <= MAX_SOURCE_ROWS,
+                "SOURCE_ROW_BUDGET",
+            )
             if role == "person":
-                _require(sum(m["rows"] for m in inventories[role]) <= coverage.literal.MAX_SELECTED_ROWS, "NATIVE_ROW_BUDGET")
+                _require(
+                    sum(m["rows"] for m in inventories[role])
+                    <= coverage.literal.MAX_SELECTED_ROWS,
+                    "NATIVE_ROW_BUDGET",
+                )
         return inventories, None
     selected = frozenset(serialnos)
-    inventories["household"], households = coverage._inventory(paths["household"], "household", selected)
-    _require(sum(m["rows"] for m in inventories["household"]) <= MAX_SOURCE_ROWS, "SOURCE_ROW_BUDGET")
+    inventories["household"], households = coverage._inventory(
+        paths["household"], "household", selected
+    )
+    _require(
+        sum(m["rows"] for m in inventories["household"]) <= MAX_SOURCE_ROWS,
+        "SOURCE_ROW_BUDGET",
+    )
     _require(set(households) == selected, "SELECTION_UNKNOWN")
     _require(all(0 <= n <= 20 for n in households.values()), "SELECTED_NP")
     expected_rows = sum(households.values())
@@ -221,8 +233,13 @@ def _preflight(paths, serialnos=None):
     _require(expected_rows <= coverage.literal.MAX_SELECTED_ROWS, "NATIVE_ROW_BUDGET")
     # _inventory bounds the actual selected row/body accumulation, independently
     # of reported NP. Every source member is still streamed and hashed.
-    inventories["person"], roster = coverage._inventory(paths["person"], "person", selected)
-    _require(sum(m["rows"] for m in inventories["person"]) <= MAX_SOURCE_ROWS, "SOURCE_ROW_BUDGET")
+    inventories["person"], roster = coverage._inventory(
+        paths["person"], "person", selected
+    )
+    _require(
+        sum(m["rows"] for m in inventories["person"]) <= MAX_SOURCE_ROWS,
+        "SOURCE_ROW_BUDGET",
+    )
     counts = dict.fromkeys(selected, 0)
     for serial, _line in roster:
         counts[serial] += 1
@@ -398,7 +415,9 @@ def verify_acs_native_coverage(issuance, frame=None):
         raise ACSNativeCoverageBindingError("NATIVE_VERIFICATION_REFUSED") from None
 
 
-def issue_acs_native_coverage(source_dir, *, snapshot_root, serialnos=None, candidate_path=None):
+def issue_acs_native_coverage(
+    source_dir, *, snapshot_root, serialnos=None, candidate_path=None
+):
     """Run real closed owners with optional exact engineering household selection.
 
     The complete selected roster is bounded before native construction. Full
@@ -410,8 +429,12 @@ def issue_acs_native_coverage(source_dir, *, snapshot_root, serialnos=None, cand
         # Snapshot path-like inputs once too, before producer/capture work.
         source_dir = Path(source_dir).absolute()
         snapshot_root = Path(snapshot_root).absolute()
-        candidate_path = None if candidate_path is None else Path(candidate_path).absolute()
-        coverage._json(serialnos, min(MAX_EVIDENCE_BYTES, housing.ACS_HU_RECEIPT_MAX_BYTES))
+        candidate_path = (
+            None if candidate_path is None else Path(candidate_path).absolute()
+        )
+        coverage._json(
+            serialnos, min(MAX_EVIDENCE_BYTES, housing.ACS_HU_RECEIPT_MAX_BYTES)
+        )
         pins = housing._pins()
         archives = _archives(pins)
         _require(sum(p[3] for p in pins) <= MAX_ARCHIVE_BYTES, "ARCHIVE_BUDGET")
@@ -428,15 +451,23 @@ def issue_acs_native_coverage(source_dir, *, snapshot_root, serialnos=None, cand
                 private, snapshot_root=roots[0], serialnos=serialnos
             )
             _verify_prepared_frame(prepared)
-            _require(prepared.receipt["format"] == "microcosm.acs_housing_preparation.v2", "PREPARATION_PROTOCOL")
-            _require(prepared.receipt["requested_serialnos"] == (None if serialnos is None else list(serialnos)), "PREPARATION_SELECTION")
+            _require(
+                prepared.receipt["format"] == "microcosm.acs_housing_preparation.v2",
+                "PREPARATION_PROTOCOL",
+            )
+            _require(
+                prepared.receipt["requested_serialnos"]
+                == (None if serialnos is None else list(serialnos)),
+                "PREPARATION_SELECTION",
+            )
             keys, _roster_sha = coverage._native_roster(prepared.frame)
             if selected_roster is not None:
                 households, roster = selected_roster
                 _require(
                     {s: n for s, n in households.items() if n > 0}
                     == keys.groupby("SERIALNO").size().to_dict()
-                    and set(roster) == set(zip(keys.SERIALNO, keys.SPORDER, strict=True)),
+                    and set(roster)
+                    == set(zip(keys.SERIALNO, keys.SPORDER, strict=True)),
                     "SELECTED_NATIVE_ROSTER",
                 )
             literal = coverage.load_authenticated_acs_person_coverage(
@@ -479,10 +510,20 @@ def issue_acs_native_coverage(source_dir, *, snapshot_root, serialnos=None, cand
                     "requested_serialnos": serialnos,
                     "complete_selected_roster": True,
                     "person_rows": prepared.frame.n("person"),
-                    "raw_person_keys_sha256": coverage._sha(coverage._json(sorted(zip(keys.SERIALNO, map(int, keys.SPORDER), strict=True)), coverage.MAX_BODY_BYTES)),
-                    "vacant_serialnos": None if selected_roster is None else sorted(s for s, n in selected_roster[0].items() if n == 0),
+                    "raw_person_keys_sha256": coverage._sha(
+                        coverage._json(
+                            sorted(
+                                zip(keys.SERIALNO, map(int, keys.SPORDER), strict=True)
+                            ),
+                            coverage.MAX_BODY_BYTES,
+                        )
+                    ),
+                    "vacant_serialnos": None
+                    if selected_roster is None
+                    else sorted(s for s, n in selected_roster[0].items() if n == 0),
                     "vacancy_status": "source_record_without_population_rows",
-                    "before_person_accumulation_and_unit_assignment": serialnos is not None,
+                    "before_person_accumulation_and_unit_assignment": serialnos
+                    is not None,
                     "full_source_inclusion_probability": None,
                     "representative_sample": False,
                 },
@@ -509,7 +550,9 @@ def issue_acs_native_coverage(source_dir, *, snapshot_root, serialnos=None, cand
                     "kind": "design",
                     "source": "WGTP; single-person PWGTP for WGTP=0 GQ placeholders",
                     "renormalized": False,
-                    "original_weight_literals_projection_sha256": coverage._sha(prepared.source.projection_json),
+                    "original_weight_literals_projection_sha256": coverage._sha(
+                        prepared.source.projection_json
+                    ),
                     "weight_sha256": coverage._sha(
                         prepared.frame.weights_for("household").values.tobytes()
                     ),

@@ -782,3 +782,9 @@ Root preflight found seven JSON source definitions declared by the ordinary guar
 State: exact accepted two-file correction staged; successor57 integration execution pending.
 Done: verified clean84243 preimages, exact r2 postimages, fixed store/current-main sources and frozen36 evidence.
 Next: root admits the separate exact-allowlist57-case guard and final source identities before execution; no new resources.
+
+## Source review publication — 2026-09-09
+
+The user explicitly authorized pushing the current source work and creating PRs for Anthony to review. This supersedes earlier source-only local restrictions for source publication; it does not authorize a data release, merge or deployment.
+
+Integration controls passed 36 cases; the exact replay correction subsequently passed all 57 cases at dfa7f872cd3eba3c42adf5758cde8b3ca38f3d17. Source/control, model-declaration and resource hashes matched externally after both runs. A final formatting/import cleanup and explicit test-observer loop binding are included for CI; no release result is claimed. See docs/us-launch-review.md for current scope, evidence and related PRs.

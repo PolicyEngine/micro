@@ -217,7 +217,9 @@ def load_acs_pums_tables(
 
     serialnos = AcsPumsSource.snapshot_serialnos(serialnos)
     if serialnos is not None and source.max_households is not None:
-        raise ValueError("ACS exact serialnos and max_households are ambiguous together.")
+        raise ValueError(
+            "ACS exact serialnos and max_households are ambiguous together."
+        )
     if chunksize <= 0:
         raise ValueError("chunksize must be positive.")
     household, household_members = _read_archive(
@@ -250,9 +252,7 @@ def load_acs_pums_tables(
     if serialnos is not None:
         if not set(serialnos) <= all_household_serials:
             raise ValueError("ACS exact selection contains absent household keys.")
-        weights = pd.to_numeric(household.WGTP, errors="coerce").to_numpy(
-            dtype=float
-        )
+        weights = pd.to_numeric(household.WGTP, errors="coerce").to_numpy(dtype=float)
         if not np.isfinite(weights).all() or (weights < 0).any():
             raise ValueError("ACS WGTP must be finite and nonnegative.")
         _validate_amount_columns(
@@ -262,7 +262,9 @@ def load_acs_pums_tables(
             drop=True
         )
         if household.NP.sum() > MAX_EXACT_PERSON_ROWS:
-            raise ValueError("ACS selected complete roster exceeds native person budget.")
+            raise ValueError(
+                "ACS selected complete roster exceeds native person budget."
+            )
     if source.max_households is not None and len(household) > source.max_households:
         household = _smoke_household_selection(household, source.max_households)
     selected_serials = frozenset(household["SERIALNO"].tolist())
@@ -526,9 +528,9 @@ def _validate_source_chunk(person, roster):
 
 
 def _validate_source_roster(household, roster):
-    for serial, count, kind in household[
-        ["SERIALNO", "NP", "TYPEHUGQ"]
-    ].itertuples(index=False, name=None):
+    for serial, count, kind in household[["SERIALNO", "NP", "TYPEHUGQ"]].itertuples(
+        index=False, name=None
+    ):
         state = dict.get(roster, serial)
         if (len(state[0]) if state else 0) != int(count):
             raise ValueError("ACS NP/person row-count mismatch in complete source.")

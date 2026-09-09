@@ -3,6 +3,7 @@
 import hashlib
 
 import pytest
+
 from microcosm.build.us_runtime import survey_population_preparation as owner
 
 chunks = owner._catalogue_chunks
@@ -37,7 +38,7 @@ def _raw(value):
         ),
         (
             ((("é", '"\\\n', "\x00", "😀", "z", -1, ()),), ()),
-            '[[["é","\\"\\\\\\n","\\u0000","😀","z",-1,[]]],[]]'.encode("utf-8"),
+            '[[["é","\\"\\\\\\n","\\u0000","😀","z",-1,[]]],[]]'.encode(),
         ),
     ],
 )

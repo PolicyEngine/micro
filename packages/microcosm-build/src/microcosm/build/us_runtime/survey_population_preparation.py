@@ -26,6 +26,7 @@ from types import FunctionType
 
 import numpy as np
 import pandas as pd
+
 from microcosm.build import survey_domain_sample
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.graph import population as graph_population
@@ -146,6 +147,7 @@ def _catalogue_fast_path(value):
                         return False
     return True
 
+
 def _catalogue_chunks(value):
     # Decide for the whole value before encoding. Unexpected shapes retain
     # the generic encoder's full-depth scalar pass and error precedence.
@@ -171,11 +173,13 @@ def _catalogue_chunks(value):
         yield "]"
     yield "]"
 
+
 def _catalogue_digest(value):
     digest = hashlib.sha256()
     for chunk in _catalogue_chunks(value):
         digest.update(chunk.encode("utf-8"))
     return digest.hexdigest()
+
 
 def _value(value):
     if isinstance(value, Enum):

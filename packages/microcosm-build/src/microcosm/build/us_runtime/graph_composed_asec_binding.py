@@ -98,8 +98,12 @@ from .graph_asec_income import (
 from .graph_asec_prepared import PreparedGraphError, _artifact, _same_producer
 from .graph_composed_contracts import (
     BIND_NODE as BIND_NODE,
-    US_COMPOSED_ASEC_BINDING_TYPE as US_COMPOSED_ASEC_BINDING_TYPE,
+)
+from .graph_composed_contracts import (
     US_COMPOSED_ASEC_ARM_ROWS_TYPE as US_COMPOSED_ASEC_ARM_ROWS_TYPE,
+)
+from .graph_composed_contracts import (
+    US_COMPOSED_ASEC_BINDING_TYPE as US_COMPOSED_ASEC_BINDING_TYPE,
 )
 from .graph_composed_population import (
     CREATE_NODE,

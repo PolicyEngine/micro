@@ -11,6 +11,10 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 import pytest
+from test_us_graph_survey_population import authenticated_arguments
+from test_us_puf_detail_transfer import host as legacy_host
+from test_us_survey_population_preparation import fixture as source_fixture
+
 from microcosm.build.us_runtime import asec_current_money as money
 from microcosm.build.us_runtime import graph_combined_clone as clone
 from microcosm.build.us_runtime import graph_puf_diagnostic_consumer as bridge
@@ -26,9 +30,6 @@ from microcosm.fit.model_input import decode_recipient_matrix
 from microcosm.frame import Frame, Weights
 from microcosm.graph import NodeRejected, compile_graph, executor, run_graph
 from microcosm.graph.keys import opaque_artifact_key
-from test_us_graph_survey_population import authenticated_arguments
-from test_us_puf_detail_transfer import host as legacy_host
-from test_us_survey_population_preparation import fixture as source_fixture
 
 
 def _copy_frame(frame):
@@ -355,8 +356,8 @@ def test_actual_current_sources_cold_and_replayed_host(tmp_path, monkeypatch):
             kernels=live.kernels,
             sources=live.sources,
             resume=resume,
-            _population_observer=lambda name, population: observed.__setitem__(
-                name, population
+            _population_observer=lambda name, population, observed=observed: (
+                observed.__setitem__(name, population)
             ),
         )
         actual = []
