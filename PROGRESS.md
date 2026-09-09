@@ -753,3 +753,5 @@ Layer 6: J-GRAPH-COMPATIBILITY.patch applied; all declared postimages and preser
 Layer 7: F-CATALOGUE-OPTIMIZATION.patch applied; all declared postimages and preservation hashes verified. No tests executed.
 
 Layer 8: GRAPH-ATTACHMENT-METADATA.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 9: F-JOINT-GEOGRAPHY-GATE.patch applied; all declared postimages and preservation hashes verified. No tests executed.

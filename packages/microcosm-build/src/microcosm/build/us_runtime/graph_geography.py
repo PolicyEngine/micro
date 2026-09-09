@@ -1,8 +1,9 @@
 """Declared lookup import, household assignment, and geography validation.
 
-The existing PUMA operator keeps native ACS PUMAs and uses its legacy seeded
-draw order for missing PUMAs, districts and counties. Reference import and the
-post-assignment gate are separate graph nodes. No target values are fitted here.
+The PUMA operator keeps native ACS PUMAs and draws a supported joint tract/CD
+cell for each household; county derives from that tract. Reference import and
+the assignment-integrity and joint-support gates are separate graph nodes.
+No target values are fitted here.
 """
 
 from __future__ import annotations
@@ -61,6 +62,7 @@ from .puma_ladder import (
     decode_us_puma_ladder,
     us_puma_ladder_assignment_summary,
     us_puma_ladder_gate,
+    us_puma_ladder_joint_support_gate,
 )
 
 US_PUMA_LOOKUP_TYPE = ArtifactType("microcosm.us.puma_ladder_npz", 1)
@@ -178,7 +180,7 @@ class USGeographyAssignKernel(_USGeographyKernel):
             "assign_tract": False,
         }:
             raise ValueError(
-                "US geography requires the declared legacy seed and county/CD contract."
+                "US geography requires the declared seed and joint county/CD contract."
             )
         artifact = context.artifacts.get("frame_context")
         if artifact is None or artifact.type != US_FRAME_CONTEXT_TYPE:
@@ -278,10 +280,19 @@ class USGeographyGateKernel(_USGeographyKernel):
             context.weights["household"].values,
             assign_tract=False,
         )
+        ladder, _ = _lookups(
+            context.artifacts["ladder"].payload, context.artifacts["crosswalk"].payload
+        )
+        joint_gate = us_puma_ladder_joint_support_gate(
+            context.tables["household"],
+            ladder,
+            assign_tract=False,
+            expected_congressional_district_vintage=CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+        )
         return KernelResult(
             receipt={
-                "outcome": "pass" if gate.passed else "fail",
-                "evidence": GateReport((gate,)).to_manifest(),
+                "outcome": "pass" if gate.passed and joint_gate.passed else "fail",
+                "evidence": GateReport((gate, joint_gate)).to_manifest(),
                 "scope": "geography_assignment_integrity",
             }
         )
@@ -366,6 +377,10 @@ def us_geography_nodes(
             population=boundary,
             inputs=(Slice("household", ("state_fips", *US_PUMA_LADDER_COLUMNS)),),
             params={"phase": GEOGRAPHY_PHASE},
+            artifact_inputs=(
+                ArtifactInput("ladder", lookup, "ladder", US_PUMA_LOOKUP_TYPE),
+                ArtifactInput("crosswalk", lookup, "crosswalk", US_CD_CROSSWALK_TYPE),
+            ),
         ),
     )
 
