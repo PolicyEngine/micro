@@ -38,6 +38,12 @@ PUF59_PREDICTORS = (
     "puf_2015_capped_return_size",
     *PREDICTORS[2:],
 )
+SURVEY_SS_TOTAL_PREDICTOR = "puf_conditioning_social_security_total"
+SURVEY_SS_COMPONENTS = tuple(support.PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS)
+PUF55_SURVEY_SS_PREDICTORS = (*PUF59_PREDICTORS, SURVEY_SS_TOTAL_PREDICTOR)
+PUF55_SURVEY_SS_PERSON_OUTPUTS = tuple(
+    target for target in PERSON_OUTPUTS if target not in SURVEY_SS_COMPONENTS
+)
 
 
 # Compatibility constants above continue to describe FULL65. PUF59 keeps the
@@ -61,9 +67,12 @@ class PufOutputProfile(Enum):
 
     FULL65 = "full65"
     PUF59 = "puf59"
+    PUF55_SURVEY_SS = "puf55_survey_ss"
 
     @property
     def predictors(self):
+        if self is PUF55_SURVEY_SS:
+            return PUF55_SURVEY_SS_PREDICTORS
         return PREDICTORS if self is FULL65 else PUF59_PREDICTORS
 
     @property
@@ -71,6 +80,8 @@ class PufOutputProfile(Enum):
         # Independently measured source leaves, never derived here from generic
         # filing status or actual recipient membership. The six monetary
         # predictors retain their original ordered canonical arithmetic aliases.
+        if self is PUF55_SURVEY_SS:
+            return (*self.predictors[:2], SURVEY_SS_TOTAL_PREDICTOR)
         return () if self is FULL65 else self.predictors[:2]
 
     @property
@@ -83,6 +94,8 @@ class PufOutputProfile(Enum):
 
     @property
     def person_outputs(self):
+        if self is PUF55_SURVEY_SS:
+            return PUF55_SURVEY_SS_PERSON_OUTPUTS
         return PERSON_OUTPUTS
 
     @property
@@ -98,11 +111,12 @@ class PufOutputProfile(Enum):
         # Legacy kernel parameter schemas are exact: phase carries the profile
         # identity into every train/apply key and receipt without widening them.
         # FULL65 retains its existing declarations and cache identities.
-        return PHASE if self is FULL65 else PHASE + ".puf59"
+        return PHASE if self is FULL65 else PHASE + "." + self.value
 
 
 FULL65 = PufOutputProfile.FULL65
 PUF59 = PufOutputProfile.PUF59
+PUF55_SURVEY_SS = PufOutputProfile.PUF55_SURVEY_SS
 
 
 def require_puf_output_profile(profile):
@@ -159,9 +173,10 @@ def _profile_source_values(table, *, profile):
     """
     if not profile.source_predictors:
         return ()
-    status, size = (
+    measured = tuple(
         _numeric(table[column], label=column) for column in profile.source_predictors
     )
+    status, size = measured[:2]
     _require(
         bool(np.isin(status, [1, 2, 3, 4]).all()), "PUF_PROFILE_FILING_STATUS_DOMAIN"
     )
@@ -169,7 +184,9 @@ def _profile_source_values(table, *, profile):
         bool(((size >= 1) & (size == np.floor(size))).all()),
         "PUF_PROFILE_RETURN_SIZE_DOMAIN",
     )
-    return status, size
+    if profile is PUF55_SURVEY_SS:
+        _require(bool((measured[2] >= 0).all()), "PUF_PROFILE_SOCIAL_SECURITY_DOMAIN")
+    return measured
 
 
 def _ids(values, label):
@@ -239,7 +256,7 @@ def canonical_full_puf_donor(
     )
     return_capacity_column = (
         profile.donor_auxiliary_columns[0]
-        if profile is PUF59
+        if profile.donor_auxiliary_columns
         else "tax_unit_person_count"
     )
     tcols = (
@@ -296,7 +313,7 @@ def canonical_full_puf_donor(
         _require(
             bool(((count >= 1) & (count == np.floor(count))).all()),
             "PUF_PERSON_INCIDENCE_CAPACITY_DOMAIN"
-            if profile is PUF59
+            if profile.donor_auxiliary_columns
             else "PUF_PERSON_COUNT_DOMAIN",
         )
     donor = pd.DataFrame(index=tax_unit.index)
@@ -342,7 +359,7 @@ def canonical_full_puf_donor(
     # component alone represents the predictor. FULL65 keeps its historical
     # ordinary-component alias for compatibility with accepted prior evidence.
     schedule_c = donor.self_employment_income_before_lsr.to_numpy()
-    if profile is PUF59:
+    if profile is not FULL65:
         schedule_c = (
             schedule_c + donor.sstb_self_employment_income_before_lsr.to_numpy()
         )
@@ -361,9 +378,11 @@ def canonical_full_puf_donor(
     # PUF59 first two features are already source-measured. Never label generic
     # status/membership arithmetic as the PUF2015 disclosure measurement.
     if profile.source_predictors:
+        measured = _profile_source_values(tax_unit, profile=profile)
         feature_values = (
-            *_profile_source_values(tax_unit, profile=profile),
+            *measured[:2],
             *feature_values[2:],
+            *measured[2:],
         )
     for name, values in zip(profile.predictors, feature_values, strict=True):
         donor[name] = _numeric(values, label=name)

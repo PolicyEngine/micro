@@ -3,9 +3,10 @@
 The source-report Social Security total precedes PUF enrichment. The current
 qualifier verifies the original observations and preserves their limits; it
 does not fit a completion model, assign individual beneficiaries, or certify a
-population. The intended PUF successor has 55 outputs and uses the retained
-total as a ninth conditioning input. Historical full65 and PUF59 behavior is
-unchanged until a caller explicitly selects that successor.
+population. The explicit `PUF55_SURVEY_SS` profile has 55 outputs and uses an
+upstream-qualified tax-unit total as its ninth conditioning input. Historical
+full65 and PUF59 behavior is unchanged. The new profile's native source and
+whole-population attachment integration remain pending.
 
 ## Source measurements
 
@@ -71,4 +72,4 @@ code resources were unchanged before, after and in the external postcheck.
 The run completed in 67.6 seconds with 428.9 MB peak RSS. Receipt SHA256:
 `2b9d8e45cec11a6ebda2ccc01c5f12374e794ec0c006ba6525f082fd6454049b`.
 These controls are not native-source execution, a fitted component model,
-PUF55 integration, policy-engine validation or release acceptance.
+native PUF55 integration, policy-engine validation or release acceptance.
