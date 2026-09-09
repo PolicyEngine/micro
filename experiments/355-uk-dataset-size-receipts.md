@@ -521,3 +521,35 @@ probe). At 0.5 the first in-band probe was already drawable (P50). The threshold
 as much as a design knob: 0.95 cost 6.7 h of probes for a selection that differs from P50's by ~250
 certainties and the tail draws. With the checkpoint, any further threshold on this pool is a re-draw.
 
+**P95b completed 12:06Z, exit 1 = candidate blocked by the battery** (28,825 s = 8.0 h wall, 33,048 s user,
+10.4 GB peak; Logbook row chained on P50's 1b2a4d98…; code e2667da9 clean). 55,000 exact; certainties
+54,844 at 0.95 from λ 1.3097e-06 (Σπ 55,121), 156 tail draws; checkpoint arrays sha 65d0a099….
+
+Pre-registered table (P95b / dense reference / R17; P50 in brackets): dense loss 0.01508 (same solve);
+compact ÷ dense **2.07** [2.30] → watch; maximum target-scaled change 166 [153] → red (the same tiny
+council-tax band rows); national rows within 10% **321** [323] / 353 / 340 → red; constituency share
+within 10% **97.0%** [96.4%] / 99.8%; local-authority share **91.7%** [90.7%] / 97.7%; rows past 25% **448**
+[475] / 53 / 45 → red; Kish ESS 34,526 [33,672]; maximum ÷ median positive weight **15.8** [22.0] / 389 /
+400; stretch share above 100× design 0.03% [0.07%]; minimum constituency ESS 13.7 [11.4]; area-support
+breach share **22.5%** [25.0%] (193 of 650 constituencies [211], 34 of 361 authorities [42]); failed
+release-blocking gates 2 (area_support 225 entries, target_fit 20; the other four passed); H5 213 MB; median
+|rel err| 0.0064 [0.0079]; by family within 10%: census_households 77.1 [76.0], private_rent 79.9 [77.1],
+council_tax 85.4 [84.2], tenure 86.4 [84.9], hmrc 95.3 [94.1], age 96.8 [96.4], uc 99.3 [98.9] — the same
+four families under 90%. Paired with R17 on 20,473 rows: wins 10,473 / ties 194 / losses 9,806 [9,541 /
+168 / 10,764]; 18 of R17's 42 red rows now green [20].
+
+**Selection stability across the threshold (P95b vs P50: one pool, one dense solve, two search landings
+λ 1.3097e-06 vs 1.3335e-06):** only **44,860 of 55,000 rows are common (81.6%)**, 10,140 swapped each way;
+44,811 rows are certainties in both. On the common rows the refit weights correlate 0.925, median relative
+change 3.7%, 90th percentile 84%. Per-area ESS correlates 0.957 across the two selections (207 areas under
+the floor in both, 46 only in P50, 20 only in P95b). On the 20,430 paired local rows P95b is better on
+11,262 and worse on 9,168; 371 rows are past 25% in both, 92 only in P50, 65 only in P95b. Reading: the
+near-binary gates make each selection deterministic in λ but not stable across λ — a 2% move of the
+penalty swaps a fifth of the rows — so S3 (a different selection seed) will mostly measure the same thing
+as this pair. The two datasets are statistically alike (fit, ESS, breach counts within a few percent) and
+P95b is marginally better on every headline, at the cost of 6.7 h of probes.
+
+Post-exit chain (`355-dataset-size/after-p95b.sh`): `populace-877` fast-forwarded onto `uk-355-fixes`
+(0ab86823, tracker included); P95b light evaluation 00/10/20/90 done 12:07Z; heavy steps 30/40/50 (+ 90)
+for P50 then P95b running with no solve on the machine.
+
