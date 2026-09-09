@@ -127,6 +127,20 @@ Thus these named rows alone do not establish an unavoidable conflict; the
 remaining objective/constraint audit must examine the wider system and the
 concentration of any feasible redistribution.
 
+Across the wider system, all 364 supported rows are infeasible at 5%, and
+the remaining 363 are still infeasible after omitting OBR CGT. Lone-parent
+fit within 5% becomes feasible when the other 362 rows may deviate by 25%.
+A further witness preserves total household weight and limits each weight
+to ±25% of its current value, intersected with the existing prior caps.
+It reaches a 0.75% lone-parent shortfall; household ESS changes from 14,050
+to 13,791 and original-source ESS from 5,062 to 4,993. However, its OBR
+income-tax estimate falls 14.05% and total NI falls 9.87% from current
+estimates; income tax reaches its permitted −25% target boundary. The two
+zero UC rows and OBR CGT are omitted only from these declared diagnostic
+subsets, with no production target changes. No ESS constraint or
+calibration-loss optimization is imposed, and no witness weights are
+exported or proposed for release.
+
 The terminal gate refuses export: both unsupported payment bands remain at
 −100%, and five old fit exemptions are now within the permitted bound and
 flagged as stale. No calibrated H5 or passing calibration build record is
