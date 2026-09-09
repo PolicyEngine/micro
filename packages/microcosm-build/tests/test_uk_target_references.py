@@ -253,11 +253,6 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
             expected_metadata["uk_uc_expected_source_months"] = json.dumps(
                 source_months, separators=(",", ":")
             )
-        diagnostic_variable_id = OBR_DIAGNOSTIC_VARIABLE_BY_TARGET_ID.get(
-            contract_target_id
-        )
-        if diagnostic_variable_id is not None:
-            expected_metadata["diagnostic_variable_id"] = diagnostic_variable_id
         assert reference["metadata"] == expected_metadata
         category_id = target["category_id"]
         category = resource["hierarchy"]["categories"][category_id]
