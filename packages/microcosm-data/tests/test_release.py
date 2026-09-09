@@ -1798,3 +1798,46 @@ def test_cli_valid_preflight_performs_no_publication_or_notification(
         == 0
     )
     assert json.loads(capsys.readouterr().out) == {"valid": True, "published": False}
+
+
+@pytest.mark.parametrize("evidence", [False, True])
+@pytest.mark.parametrize("release_type", [None, "calibration"])
+@pytest.mark.parametrize("argument", ["parent_h5", "compatibility_wheels", "both"])
+def test_non_enrichment_publisher_refuses_enrichment_only_arguments(
+    hub, release_dir, artifact_root, monkeypatch, release_type, argument, evidence
+):
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if release_type is not None:
+        manifest["release_type"] = release_type
+        manifest_path.write_text(json.dumps(manifest))
+    kwargs = {"artifact_root": artifact_root, "evidence": evidence}
+    cli_args = [str(release_dir), "--artifact-root", str(artifact_root)]
+    if evidence:
+        cli_args.append("--evidence")
+    if argument in ("parent_h5", "both"):
+        kwargs["parent_h5"] = artifact_root / "populace_us_2024.h5"
+        cli_args.extend(["--parent-h5", str(kwargs["parent_h5"])])
+    if argument in ("compatibility_wheels", "both"):
+        kwargs["compatibility_wheels"] = (artifact_root / "unrelated.whl",)
+        cli_args.extend(
+            ["--compatibility-wheel", str(kwargs["compatibility_wheels"][0])]
+        )
+
+    def no_hub(*args, **kwargs):
+        pytest.fail("non-enrichment arguments must fail before Hub activity")
+
+    monkeypatch.setattr(release_module, "_hf_api", no_hub)
+    monkeypatch.setattr(hub, "repo_info", no_hub)
+    monkeypatch.setattr(hub, "hf_hub_download", no_hub)
+    message = "require a source_enrichment release"
+    with pytest.raises(ValueError, match=message):
+        release_module.prepare_release(release_dir, **kwargs)
+    with pytest.raises(ValueError, match=message):
+        publish_release(release_dir, "policyengine/populace-us", api=hub, **kwargs)
+    with pytest.raises(ValueError, match=message):
+        publish_cli.main(cli_args)
+    with pytest.raises(ValueError, match=message):
+        publish_cli.main([*cli_args, "--preflight-only"])
+    assert hub.events == []
+    assert hub.uploads == []

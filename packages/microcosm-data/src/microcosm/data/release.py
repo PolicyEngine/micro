@@ -194,6 +194,20 @@ def prepare_release(
     Publication must prepare again so preflight cannot authorize stale inputs.
     """
     release_dir = Path(release_dir)
+    if parent_h5 is not None or compatibility_wheels:
+        from microcosm.data.source_enrichment import SOURCE_ENRICHMENT_RELEASE_TYPE
+
+        manifest_path = release_dir / "release_manifest.json"
+        manifest = (
+            json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+        )
+        if (
+            not isinstance(manifest, Mapping)
+            or manifest.get("release_type") != SOURCE_ENRICHMENT_RELEASE_TYPE
+        ):
+            raise ValueError(
+                "parent_h5 and compatibility_wheels require a source_enrichment release."
+            )
     if evidence:
         validate_evidence_release_dir(release_dir)
     elif parent_h5 is not None or compatibility_wheels:

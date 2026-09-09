@@ -355,3 +355,138 @@ def test_producer_rejects_imported_code_from_another_checkout(monkeypatch):
     monkeypatch.setattr(builder, "derive_spm_role_source", foreign_derivation)
     with pytest.raises(ValueError, match="execute this checkout"):
         builder._producer_identity()
+
+
+def test_real_builder_manifest_certifies_prepares_and_publishes(
+    inputs, tmp_path, monkeypatch
+):
+    """Exercise the emitted manifest; synthetic source/runtime probes stay local."""
+    from importlib import import_module
+
+    from microcosm.data import release as publisher
+
+    fake_hub = import_module("packages.microcosm-data.tests.test_release").FakeHub
+    _build(inputs)
+    candidate_release = _release(inputs)
+    artifact_root = inputs.output / "artifacts"
+    dataset = artifact_root / "populace_us_2024.h5"
+    original_files = {
+        path.name: path.read_bytes()
+        for path in candidate_release.iterdir()
+        if path.is_file()
+    }
+    manifest = json.loads(original_files["release_manifest.json"])
+    assert manifest["default_datasets"] == {"national": "populace_us_2024"}
+    assert manifest["artifacts"]["build_manifest"]["kind"] == "evidence"
+    assert manifest["artifacts"]["build_manifest"]["path"] == "build_manifest.json"
+    assert manifest["artifacts"]["populace_us_2024"]["kind"] == "microdata"
+
+    # Source derivation/producer identity and wheel probes have their own tests.
+    # These seams keep this builder-to-publisher test independent of microdata,
+    # installed country packages and a clean developer checkout.
+    wheels = tuple(tmp_path / f"{name}.whl" for name in contract.COMPATIBILITY_PACKAGES)
+    compatibility_calls = []
+    receipt = {
+        "status": "passed",
+        "dataset_sha256": file_sha256(dataset),
+        "packages": {
+            "policyengine-us": {"version": "1.999.0"},
+            "policyengine-core": {"version": "3.99.0"},
+            "policyengine": {"version": "5.99.0"},
+            "spm-calculator": {"version": "1.0.0"},
+        },
+    }
+
+    def probe(path, *, require_wheels, compatibility_wheels):
+        assert Path(path) == dataset
+        assert require_wheels is True
+        assert compatibility_wheels == wheels
+        compatibility_calls.append(path)
+        return receipt
+
+    def check_synthetic_producer(code):
+        assert code == inputs.code
+
+    monkeypatch.setattr(contract, "run_native_loader_compatibility", probe)
+    monkeypatch.setattr(
+        contract, "_check_producer_source_identity", check_synthetic_producer
+    )
+    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("must use FakeHub"))
+    certified = contract.certify_source_enrichment(
+        candidate_release,
+        tmp_path / "certified" / inputs.release_id,
+        parent_h5=inputs.parent,
+        artifact_root=artifact_root,
+        compatibility_wheels=wheels,
+    )
+    assert original_files == {
+        path.name: path.read_bytes()
+        for path in candidate_release.iterdir()
+        if path.is_file()
+    }
+    prepared = publisher.prepare_release(
+        certified,
+        parent_h5=inputs.parent,
+        artifact_root=artifact_root,
+        compatibility_wheels=wheels,
+    )
+    assert prepared.filenames.count("build_manifest.json") == 1
+    assert "populace_us_2024.h5" not in prepared.filenames
+    assert prepared.root_artifacts == {"populace_us_2024.h5": file_sha256(dataset)}
+    hub = fake_hub()
+    pointer = publisher.publish_release(
+        certified,
+        "policyengine/populace-us",
+        parent_h5=inputs.parent,
+        artifact_root=artifact_root,
+        compatibility_wheels=wheels,
+        api=hub,
+        notify=False,
+        updated_at="2026-09-09T00:00:00+00:00",
+    )
+    assert (
+        len(compatibility_calls) == 4
+    )  # Certification, its replay, preflight, publish.
+    manifest = json.loads((certified / "release_manifest.json").read_text())
+    prefix = f"releases/{inputs.release_id}/"
+    expected_hashes = {
+        entry["path"]
+        if entry["kind"] == "microdata"
+        else prefix + entry["path"]: entry["sha256"]
+        for entry in manifest["artifacts"].values()
+    }
+    commits = [event for kind, event in hub.events if kind == "create_commit"]
+    assert [commit["revision"] for commit in commits] == [
+        f"release-staging/{inputs.release_id}",
+        "main",
+    ]
+    for commit in commits:
+        paths = commit["paths"]
+        assert len(paths) == len(set(paths))
+        assert [path for path in paths if path.endswith(".h5")] == [dataset.name]
+        assert set(paths) - {"latest.json"} == set(expected_hashes) | {
+            prefix + "release_manifest.json"
+        }
+    for path, expected in expected_hashes.items():
+        contents = [
+            content for uploaded_path, content in hub.uploads if uploaded_path == path
+        ]
+        assert len(contents) == 2  # Once in staging and once in main's atomic commit.
+        assert all(
+            hashlib.sha256(content).hexdigest() == expected for content in contents
+        )
+    assert hub.tags == [{"tag": inputs.release_id, "revision": commits[0]["commit"]}]
+    assert "latest.json" not in commits[0]["paths"]
+    assert commits[-1]["paths"][-1] == "latest.json"
+    assert hub.uploads[-1][0] == "latest.json"
+    assert json.loads(hub.uploads[-1][1]) == pointer
+    assert pointer["release_id"] == inputs.release_id
+    assert pointer["paths"] == {
+        name: f"{prefix}{name}.json"
+        for name in (
+            "build_manifest",
+            "release_manifest",
+            "calibration_diagnostics",
+            "us_source_coverage",
+        )
+    }

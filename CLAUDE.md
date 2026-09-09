@@ -89,7 +89,9 @@ actual native-loader compatibility in a separate bundle. The regular publisher
 requires `--parent-h5` and the four tested country/Core/wrapper/calculator wheels; `--preflight-only`
 runs the same contract and local publisher preparation (file paths, artifact
 hashes, revision/tag pins and latest-pointer eligibility), without constructing
-a Hub client or publishing. See
+a Hub client or publishing. Supplying `--parent-h5` or `--compatibility-wheel`
+for a release that is not a source enrichment is an error, including preflight
+and evidence-tier requests. See
 [the source-enrichment runbook](docs/us-native-spm-role-source-enrichment.md).
 Root's canonical-model acceptance and publication authorization remain separate
 from this producer-native-input receipt.
