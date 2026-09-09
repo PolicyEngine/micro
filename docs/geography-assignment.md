@@ -231,6 +231,15 @@ state totals, then join CD119 and tract-to-PUMA mappings. Delaware is the first
 source control; national survey assignment requires complete admitted support
 for the fifty states and DC. No native acquisition is accepted by these tests.
 
+`us_runtime/atomic_block_api_sources.py` implements that population-only response
+adapter. All thirty-five invented controls pass, including independent state
+totals, exact block preservation, missing mappings, malformed response fields,
+byte limits and late source-record mutation. Request descriptors preserve the
+repeated Census `in` parameters and omit credentials. The adapter does not infer
+the response's origin from its contents; acquisition and publisher qualification
+remain separate. Evidence:
+`experiments/us-atomic-block-api-sources-35-controls-20260909.json`.
+
 Publisher-qualified native block support, national and district calibration,
 and pruned export verification remain necessary for a release. Source integrity
 checks and successful invented-data runs do not establish geographic fit.
