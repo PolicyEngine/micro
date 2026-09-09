@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime.graph import uk_spine_graph
+from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_support import support_channel_column
 from microcosm.build.uk_runtime.uc_capital_coherence import (
@@ -21,6 +23,8 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
 )
 from microcosm.frame import WeightKind
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
+from microcosm.graph.executor import _project_context
+from microcosm.graph.population import Population
 
 
 def _stage():
@@ -199,6 +203,42 @@ def test_capital_donor_cells_use_claimant_partnership_and_preserve_marital_statu
     assert by_id.loc[1007, "frs_benunit_capital"] == 3_000.0
     assert by_id.loc[1005, "frs_benunit_capital"] == 200.0
     pd.testing.assert_series_equal(result["is_married"], marital_before)
+
+
+def test_graph_scoped_capital_redraw_receives_claimant_roles() -> None:
+    """The real node must retain role flags through executor input pruning."""
+
+    frame = _frame()
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    frame.table("household")["region"] = "LONDON"
+    person["age"] = np.where(person["is_benunit_head"] | person["is_parent"], 40, 5)
+    person[support_channel_column("person")] = person["person_benunit_id"].map(
+        benunit.set_index("benunit_id")[support_channel_column("benunit")]
+    )
+    # Legal marriage disagrees with the intended donor cells in both directions.
+    benunit.loc[benunit["benunit_id"] == 1007, "is_married"] = False
+    benunit.loc[benunit["benunit_id"] == 1005, "is_married"] = True
+    node = uk_spine_graph(source_mode="split").node("uc_capital_coherence")
+    context = _project_context(
+        node,
+        Population.from_frame(frame, "capital-input"),
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
+    )
+    transform = UKUCCapitalCoherenceStageTransform(stage=_stage())
+    result = UKStageKernel("uc_capital_coherence", transform).run(context)
+
+    capital = result.columns[("benunit", "frs_benunit_capital")]
+    assert capital.loc[1005] == 200.0
+    assert capital.loc[1007] == 3_000.0
+    assert capital.loc[1006] == 888_888.0  # A non-reporter is unchanged.
+    assert result.columns[("benunit", "would_claim_uc")].loc[1007]
+    assert (
+        transform.checkpoint_metadata()["evidence"]["redrawn_spi_reporter_count"] == 2
+    )
 
 
 def test_transform_is_deterministic_and_idempotent() -> None:

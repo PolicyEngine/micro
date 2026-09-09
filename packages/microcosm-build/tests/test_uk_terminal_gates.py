@@ -386,29 +386,68 @@ def test_target_fit_out_of_force_exclusion_fails_even_without_a_breach() -> None
     assert fit.details["expired_exclusions"] == ["dwp.uc.households_children_2@2025"]
 
 
-def test_committed_target_fit_register_carries_the_signed_deferrals() -> None:
+def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     register = uk_default_target_fit_reviewed_exclusions()
 
-    assert set(register) == {
-        "dwp.uc.households_single_with_children@2025",
-        "dwp.uc.households_children_1@2025",
-        "dwp.uc.households_children_2@2025",
-        "dwp.uc.households_children_5_or_more@2025",
-        "hmrc/private_pension_income_count_income_band_100_000_to_150_000@2025",
-        "obr.capital_gains_tax@2025",
+    assert set(register) == {"obr.capital_gains_tax@2025"}
+    record = register["obr.capital_gains_tax@2025"]
+    assert record.approved_by == "juaristi22"
+    assert record.adjudication == "microcosm#875"
+    assert record.approved_on == "2026-09-05"
+    assert record.expires_on == "2026-10-05"
+
+
+# Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
+# the explicit family_equal override. This is not a default-doctrine fit claim.
+_RESTORED_TARGET_FIT_ERRORS = {
+    "hmrc/private_pension_income_count_income_band_100_000_to_150_000@2025": 0.00044351581258511325,
+    "dwp.uc.households_children_1@2025": -0.19448861451075508,
+    "dwp.uc.households_children_2@2025": -0.0642032515751263,
+    "dwp.uc.households_children_5_or_more@2025": 0.00124633154479912,
+    "dwp.uc.households_single_with_children@2025": -0.14006391059548154,
+}
+
+
+def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
+    empty_tail = {
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800@2025": -1.0,
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_28_800_to_30_000@2025": -1.0,
     }
-    for name, record in register.items():
-        assert record.approved_by == "juaristi22"
-        if name == "obr.capital_gains_tax@2025":
-            # #834 composition: the 2024-25 forestalling-year gains bound at
-            # the 2025 period (microcosm#875 owns the translation).
-            assert record.adjudication == "microcosm#875"
-            assert record.approved_on == "2026-09-05"
-            assert record.expires_on == "2026-10-05"
-            continue
-        assert record.adjudication == "microcosm#796"
-        assert record.approved_on == "2026-08-30"
-        assert record.expires_on == "2026-09-30"
+    fit = uk_target_fit_gate(
+        {
+            **_RESTORED_TARGET_FIT_ERRORS,
+            **empty_tail,
+            "obr.capital_gains_tax@2025": 0.45,
+        },
+        reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
+        now=date(2026, 9, 9),
+    )
+
+    assert not fit.passed
+    assert fit.details["stale_exclusions"] == []
+    assert fit.details["failing_targets"] == empty_tail
+    assert set(fit.details["reviewed_exclusions"]) == {"obr.capital_gains_tax@2025"}
+
+
+@pytest.mark.parametrize("name", sorted(_RESTORED_TARGET_FIT_ERRORS))
+@pytest.mark.parametrize(
+    ("relative_error", "passes"),
+    [(-0.25, True), (0.25, True), (-0.250001, False), (0.250001, False)],
+)
+def test_restored_fit_checks_apply_if_a_later_run_breaches_again(
+    name, relative_error, passes
+) -> None:
+    # The fence consumes errors, not optimizer settings. A renewed breach from
+    # a default 256/uniform or any override run must have no old deferral.
+    fit = uk_target_fit_gate(
+        {name: relative_error},
+        reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
+        now=date(2026, 9, 9),
+    )
+
+    assert fit.passed is passes
+    assert fit.details["reviewed_exclusions"] == {}
+    assert fit.details["failing_targets"] == ({} if passes else {name: relative_error})
 
 
 def test_ported_june_parity_gates_reject_empty_evidence() -> None:

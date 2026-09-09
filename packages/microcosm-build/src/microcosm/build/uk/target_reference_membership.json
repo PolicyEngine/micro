@@ -1660,31 +1660,6 @@
       "to": "2025"
     },
     {
-      "name": "dwp.uc.households_children_1",
-      "from": "2025-12",
-      "to": "2025"
-    },
-    {
-      "name": "dwp.uc.households_children_2",
-      "from": "2025-12",
-      "to": "2025"
-    },
-    {
-      "name": "dwp.uc.households_children_3",
-      "from": "2025-12",
-      "to": "2025"
-    },
-    {
-      "name": "dwp.uc.households_children_4",
-      "from": "2025-12",
-      "to": "2025"
-    },
-    {
-      "name": "dwp.uc.households_children_5_or_more",
-      "from": "2025-12",
-      "to": "2025"
-    },
-    {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_0_to_1_200",
       "from": "2025-12",
       "to": "2025"
@@ -4883,6 +4858,7 @@
           "status": "active",
           "matched_fact_count_overall": 12,
           "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
           "resolved_period": 2025,
           "resolved_value": 1190123.8333333333,
           "resolved_fact_period": "2025-12",
@@ -4898,6 +4874,7 @@
           "status": "active",
           "matched_fact_count_overall": 12,
           "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
           "resolved_period": 2025,
           "resolved_value": 1049895.5,
           "resolved_fact_period": "2025-12",
@@ -4913,6 +4890,7 @@
           "status": "active",
           "matched_fact_count_overall": 12,
           "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
           "resolved_period": 2025,
           "resolved_value": 477887.6666666667,
           "resolved_fact_period": "2025-12",
@@ -4928,6 +4906,7 @@
           "status": "active",
           "matched_fact_count_overall": 12,
           "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
           "resolved_period": 2025,
           "resolved_value": 170713.66666666666,
           "resolved_fact_period": "2025-12",
@@ -4943,6 +4922,7 @@
           "status": "active",
           "matched_fact_count_overall": 12,
           "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
           "resolved_period": 2025,
           "resolved_value": 76320.08333333333,
           "resolved_fact_period": "2025-12",
