@@ -270,6 +270,18 @@ def test_ported_june_parity_gates_retain_their_named_failures() -> None:
     assert fit.name == "target_fit"
 
 
+def test_export_surface_allows_claimant_roles_but_not_unreviewed_columns() -> None:
+    reference = {"person.age"}
+    assert uk_export_surface_gate(
+        reference | {"person.is_uc_claimant"}, reference
+    ).passed
+    unrelated = uk_export_surface_gate(
+        reference | {"person.is_uc_claimant", "person.unreviewed_extra"}, reference
+    )
+    assert not unrelated.passed
+    assert any("unreviewed_extra" in failure for failure in unrelated.failures)
+
+
 def _target_fit_exclusion(
     *,
     approved_on: str = "2026-08-30",

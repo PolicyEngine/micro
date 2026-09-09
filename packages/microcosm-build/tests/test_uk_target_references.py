@@ -248,6 +248,11 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         observation_basis = target["measurement"].get("observation_basis")
         if observation_basis is not None:
             expected_metadata["observation_basis"] = observation_basis
+        source_months = target["measurement"].get("source_months")
+        if source_months is not None:
+            expected_metadata["uk_uc_expected_source_months"] = json.dumps(
+                source_months, separators=(",", ":")
+            )
         assert reference["metadata"] == expected_metadata
         # The measure is a prepared column, so the pointed-to contract binding
         # must carry what the microcosm#622 materializer needs to prepare it.
