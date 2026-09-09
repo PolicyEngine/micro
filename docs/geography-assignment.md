@@ -99,6 +99,50 @@ the [Census PUMA guidance](https://www.census.gov/programs-surveys/geography/gui
 
 ## Existing implementation and next changes
 
+The shared implementation now lives in `microcosm.build.atomic_geography` and
+`microcosm.build.graph_atomic_geography`. It provides four country-neutral nodes:
+`geography.support_import@1`, `geography.assign_atomic@1`,
+`geography.derive@1` and `geography.gate@1`. Countries supply declarations and
+normalized, pinned support files. The graph interfaces and legacy country
+operators are unchanged. Country configuration and native support integration
+remain necessary before these nodes can assign locations in a release build.
+
+The support contract uses deterministic NPZ bytes with no object arrays. It has
+one unique string code per atomic area; every mapping column identifies its
+source, vintage and relation, and every integer sampling-weight column identifies
+its source and basis. Nonnegative weights have a bounded exact total. A source
+adapter must resolve any nonfunctional crosswalk before admission; the shared
+lookup never multiplies households through a many-to-many join.
+
+Assignment conditions on all nonmissing observed constraints jointly. Declared
+stages can use different weights—for example, household counts to select a
+constituency followed by population counts to select its small area. Each draw
+uses the existing `keyed_uniform` protocol with stable source identity, the
+declared stream, system, stage, assignment definition and support digest.
+Selection uses an integer inverse CDF. Reordering, subsetting or adding unrelated
+households preserves draws. The numerical declaration remains `platform_bitwise`;
+cross-platform equivalence has not been established.
+
+The version-1 declaration lists `identity`, `stream`, three assignment `outputs`
+(`area`, `system`, `basis`), and `systems`. Each system supplies its atomic
+identity and source, a selector, observed constraints, an optional observed-area
+column, sampling stages and derived layers. Geographic codes use nullable
+strings throughout, retaining leading zeroes. An engine that needs integer
+storage must declare that conversion separately. A system without a particular
+layer produces missing values for that layer, which the integrity gate checks.
+The graph stores the canonical declaration in its normative `definition`
+parameter and exposes the stream separately; no graph parameter grammar changed.
+
+The 34 invented-data controls include real graph execution, cold and warm reuse,
+source-change invalidation, exact lookup metadata, independent sampling-boundary
+checks, three-system routing, observed-area retention, row/subset stability and
+clone/prune validation. All passed under the isolated control runner on
+9 September 2026. These checks establish shared operator behavior; they do not
+admit a Census/ONS source or certify any population's geographic fit. The gate
+checks mapping integrity, while the executor and build own structural lineage
+and population-quality acceptance. The country's chosen identity still needs
+verification across actual sampling rungs.
+
 The US development composed graph attaches geography after harmonization, but
 `us_runtime/graph_geography.py` selects a joint tract/congressional-district cell
 and emits PUMA, county and district. It does not assign a Census block. Its prior
