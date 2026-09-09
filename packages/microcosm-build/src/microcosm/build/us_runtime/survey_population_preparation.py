@@ -49,6 +49,7 @@ SOURCE_CODEC = "us-survey-population-source-v1"
 MAX_REQUEST_BYTES = 4096
 MAX_PAYLOAD_BYTES = 64 * 1024**2
 _MAX_SCALAR_BYTES = 1024**2
+_FRAME_FAST_STRING_CHARS = 4096
 _SOURCE_ROSTER = (
     "selection-request.json",
     "acs/csv_hus.zip",
@@ -476,8 +477,9 @@ def _live():
                         )
     result["rng"] = (np.random.Generator, np.random.PCG64, np.random.SeedSequence)
     result["csv"] = (csv.reader, _csv.reader)
-    # The bounded catalogue path also uses JSONEncoder.encode and its C
-    # provider. Bind their actual live identities through this existing seal.
+    # The bounded catalogue path uses JSONEncoder.encode and its C provider;
+    # frame cells also use the same encode_basestring provider as _chunks.
+    # Bind their actual live identities through this existing seal.
     result["json_catalogue"] = (
         json.JSONEncoder,
         json.encoder,
@@ -500,6 +502,7 @@ def _live():
         MAX_REQUEST_BYTES,
         MAX_PAYLOAD_BYTES,
         _MAX_SCALAR_BYTES,
+        _FRAME_FAST_STRING_CHARS,
         _SOURCE_ROSTER,
         domains.DECLARATION,
         domains.MAX_MEMBERS,
@@ -559,6 +562,46 @@ def _cell(value):
     return value
 
 
+def _frame_cell_encode(value, maximum=MAX_PAYLOAD_BYTES):
+    """Encode one normalized cell with the exact _encode preimage and limits.
+
+    _cell admits only None, exact bool/int/str, or its own freshly constructed
+    ["float", finite_float.hex()] list. Keep normalization and the scalar walk
+    before encoding; large strings/integers retain the original slow path.
+    No Frame, Series, index, or normalized value is retained between calls.
+    """
+    value = _cell(value)
+    kind = type(value)
+    if not (
+        value is None
+        or kind is bool
+        or (kind is int and -(2**63) <= value < 2**64)
+        or (kind is str and len(value) <= _FRAME_FAST_STRING_CHARS)
+        or kind is list
+    ):
+        return _encode(value, maximum)
+
+    _check_scalars(value)
+    if value is None:
+        encoded = b"null"
+    elif kind is bool:
+        encoded = b"true" if value else b"false"
+    elif kind is int:
+        # Match JSON's exact-int formatter, including its decimal digit policy.
+        encoded = int.__repr__(value).encode("ascii")
+    elif kind is str:
+        # _chunks selects this very provider with ensure_ascii=False. UTF-8
+        # conversion still precedes the payload check, including surrogates.
+        # At most 6 * 4096 + 2 encoded bytes, even for all control characters.
+        encoded = json.encoder.encode_basestring(value).encode("utf-8")
+    else:
+        # Only _cell can construct this list: both strings are ASCII without
+        # JSON escapes. Keep hex spelling (especially -0.0), never decimalize.
+        encoded = b'["float","' + value[1].encode("ascii") + b'"]'
+    _require(len(encoded) <= maximum, "PAYLOAD_LIMIT")
+    return encoded
+
+
 def _frame_identity(frame):
     _require(
         isinstance(frame, Frame) and frame.schema == US_SCHEMA and not frame.links,
@@ -568,6 +611,10 @@ def _frame_identity(frame):
 
     def update(value):
         digest.update(_encode(value))
+        digest.update(b"\n")
+
+    def update_cell(value):
+        digest.update(_frame_cell_encode(value))
         digest.update(b"\n")
 
     update([list(frame.entities), list(frame.weighted_entities)])
@@ -590,7 +637,7 @@ def _frame_identity(frame):
             ]
         )
         for value in table.index:
-            update(_cell(value))
+            update_cell(value)
         for column in table:
             series = table[column]
             dtype = series.dtype
@@ -603,7 +650,7 @@ def _frame_identity(frame):
                 ]
             )
             for value in series:
-                update(_cell(value))
+                update_cell(value)
     update(
         [
             str(frame.strata.dtype),
@@ -615,9 +662,9 @@ def _frame_identity(frame):
         ]
     )
     for value in frame.strata.index:
-        update(_cell(value))
+        update_cell(value)
     for value in frame.strata:
-        update(_cell(value))
+        update_cell(value)
     for entity in frame.weighted_entities:
         weights = frame.weights_for(entity)
         update(

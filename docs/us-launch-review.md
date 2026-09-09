@@ -89,8 +89,25 @@ and installed-model cache-directory probes. Source/control, model-source and
 resource bytes remained unchanged. This is a failed integration run, not a
 replacement for the earlier passing component evidence. Its receipt is
 `67ff10fef45c58d2d6ea15c72b4311a4daa901dd2aae263fbb863d38c13bc7c8`.
-Broader CI also identifies missing helpers and stale schema, seed and runtime
-classification expectations. These failures remain open.
+The successor now passes all 314 selected invented integration and identity
+checks with no skips or unexpected refusals. This includes the original 156
+cases, five metadata-copy/mutation regressions and 153 encoder controls; seven
+synthetic-issuance controls remain explicitly outside this selection. Shallow
+copy, deepcopy and pickle previously added a class cache entry captured by
+Python 3.14 annotation closures. An explicit immutable-metadata representation
+avoids that mutation without weakening producer checks. Two stale ACS pins were
+updated only after verifying AST equality with their accepted source revisions.
+All 476 source/control, 5,983 model-source and 12 resource entries matched before,
+after and in the external postcheck. The run took 253.5 seconds and 738.7 MB peak
+RSS. Receipt:
+`d940913f918af4455dab2b9e680d55f9efc7bb922f72ff3d8fe26b0530b070f7`.
+
+A separate 16-case current seven-node age-development run passed 13 cases and
+failed three on exact diagnostic reconstruction. The checker omitted two
+solver-option fields added by the consolidated solver; its correction is being
+checked before another genuine run. Broader CI also identifies missing helpers
+and stale schema, seed and runtime classification expectations. These remain
+separate from the passing 314-case selection.
 
 ## Component evidence and remaining work
 
@@ -108,13 +125,14 @@ source/control files and four resources matched their before/after/current pins.
 Receipt: `6b334ca8df6c6ba721b60f84d28c43151a1e1b54e097616a3c0fa208daeb8cba`.
 This run constructs the donor; it does not fit or place it onto survey recipients.
 
-The proposed identity encoder passed two 40-case preflights and four 40-case
+The identity encoder passed two 40-case preflights and four 40-case
 timing runs in both execution orders. The 36 tiny invented cases retain exact
 identity bytes and mutation checks. Nine of the 72 case/trial comparisons were
 slower, including the small Python-string Frame in both orders; larger numeric
 fixtures improved substantially. These timings do not establish genuine-build
-speed. Integration must preserve the newer current-wage projection in the
-published source, which was absent from the benchmark's accepted baseline.
+speed. It is now integrated and passes the current 314-case selection, with the
+newer current-wage projection preserved byte for byte. That projection was absent
+from the benchmark's accepted baseline.
 
 The following work remains open:
 
@@ -134,10 +152,11 @@ The following work remains open:
    the build must retain one assigned Census block and derive its larger
    geographies. Prior wages remain excluded. A source operator's existence is
    not complete cell coverage.
-4. Resolve repeated per-cell identity encoding in the survey verifier. One genuine
+4. Verify the optimized identity encoder on genuine survey replay. One genuine
    successor run reached persisted-artifact verification but exhausted its
    two-hour CPU limit. That run failed; it is not a verified build. Performance
-   changes must preserve the identity bytes and pass small controls first.
+   changes now pass the small identity controls; a new genuine run must also pass
+   the current seven-node calibration/diagnostics checks before acceptance.
 5. Run real model evaluation, national/CD calibration, holdout checks and complete
    export/replay verification, followed by a dashboard bound to that exact file.
    Check every pruned analysis file separately.

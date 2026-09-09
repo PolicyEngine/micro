@@ -5,7 +5,9 @@ constructs its own real bytes and test pins before normal authentication. The tw
 fixture establishes held-out fit quality.
 """
 
+import copy
 import json
+import pickle
 from dataclasses import replace
 from types import MappingProxyType
 
@@ -20,12 +22,49 @@ from microcosm.build.us_runtime import current_survey_predictors as values
 from microcosm.build.us_runtime import graph_current_survey_predictors as graph
 from microcosm.build.us_runtime import graph_survey_population as survey
 from microcosm.build.us_runtime import puf_support as support
+from microcosm.build.us_runtime import survey_population_preparation as preparation
 from microcosm.fit import qrf, qrf_target
 from microcosm.fit.graph_legacy_apply_matrix import LegacyQRFApplyMatrixKernel
 from microcosm.fit.graph_legacy_train import LegacyQRFTrainKernel
 from microcosm.frame import Frame, WeightKind
+from microcosm.frame.bundle import _freeze_metadata
 from microcosm.graph import compile_graph, run_graph
 from microcosm.graph.keys import opaque_artifact_key
+
+
+@pytest.mark.parametrize("operation", ["copy", "deepcopy", "pickle"])
+def test_metadata_copy_preserves_producer_identity(monkeypatch, operation):
+    metadata = _freeze_metadata({"origin": {"stages": ["survey", "clone"]}})
+    # Exercise a cold class even if a preceding test already copied metadata.
+    # Python 3.14 annotation closures capture this mutable class namespace.
+    monkeypatch.delattr(type(metadata), "__slotnames__", raising=False)
+    namespace = dict(vars(type(metadata)))
+    producer = preparation._live()
+
+    if operation == "pickle":
+        restored = pickle.loads(pickle.dumps(metadata))
+    else:
+        restored = getattr(copy, operation)(metadata)
+
+    assert restored == metadata
+    assert restored is not metadata
+    assert restored["origin"]["stages"] == ("survey", "clone")
+    with pytest.raises(TypeError):
+        restored["origin"]["stages"] = ()
+    assert dict(vars(type(metadata))) == namespace
+    assert preparation._live() == producer
+
+
+@pytest.mark.parametrize("method", ["__getitem__", "__reduce__"])
+def test_metadata_method_replacement_still_invalidates_producer(monkeypatch, method):
+    metadata = _freeze_metadata({"origin": "survey"})
+    producer = preparation._live()
+    monkeypatch.setattr(type(metadata), method, lambda *args: None)
+    assert preparation._live() != producer
+    with pytest.raises(
+        preparation.SurveyPopulationPreparationError, match="PRODUCER_CHANGED"
+    ):
+        preparation._producer()
 
 
 def test_survey_source_ids_preserve_zero_without_relaxing_physical_or_unique_axis():
