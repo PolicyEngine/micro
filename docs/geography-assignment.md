@@ -164,3 +164,15 @@ using the modal active-postcode constituency. Review the official
 [NISRA constituency aggregation and lookup resources](https://www.nisra.gov.uk/publications/census-2021-output-geography-information-papers)
 before choosing or replacing that approximation. Source existence is not
 acceptance of a particular lookup or its application to the population.
+
+The US block adapter in `us_runtime/atomic_block_support.py` now preserves each
+supplied block, leading zeroes, population weight and the source-labeled
+tract-to-PUMA and block-to-district mappings. Its declaration uses the shared
+operators, preserves observed state/PUMA separately, and labels CD119 as
+`official_tabulation`. Its sampling proxy is 2020 persons; this does not imply
+household counts or support for subsequent construction in unpopulated 2020
+blocks. All 13 invented tests passed, including missing/inconsistent mapping
+refusals and subset-stable assignment. Receipt SHA256:
+`404deb7666b3ac9b8a654181228c545ab95c131f30a1fbe65a2e15d5a08a4c4c`.
+Actual normalized block support and attachment before the survey clone remain
+pending; these tests do not establish native geographic fit.
