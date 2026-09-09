@@ -657,15 +657,25 @@ class HuggingFaceDatasetStorage:
             self.api = HfApi()
         return self.api
 
-    def upload(self, local_path: Path, path_in_repo: str) -> None:
+    def upload(
+        self,
+        local_path: Path,
+        path_in_repo: str,
+        *,
+        parent_commit: str | None = None,
+    ) -> None:
+        options: dict[str, Any] = {}
+        if parent_commit is not None:
+            options["parent_commit"] = parent_commit
         self._api().upload_file(
             path_or_fileobj=str(local_path),
             path_in_repo=path_in_repo,
             repo_id=self.repo_id,
             repo_type="dataset",
+            **options,
         )
 
-    def download(self, path_in_repo: str) -> bytes:
+    def download(self, path_in_repo: str, *, revision: str | None = None) -> bytes:
         api = self._api()
         download = getattr(api, "hf_hub_download", None)
         if download is None:
@@ -676,8 +686,33 @@ class HuggingFaceDatasetStorage:
             filename=path_in_repo,
             repo_type="dataset",
             force_download=True,
+            revision=revision,
         )
         return Path(local).read_bytes()
+
+    def revision(self) -> str:
+        revision = (
+            self._api()
+            .repo_info(
+                repo_id=self.repo_id,
+                repo_type="dataset",
+            )
+            .sha
+        )
+        if not isinstance(revision, str) or not revision:
+            raise StagingContractError(
+                "Remote staging repository did not provide a revision."
+            )
+        return revision
+
+    def list_files(self, *, revision: str) -> list[str]:
+        return list(
+            self._api().list_repo_files(
+                repo_id=self.repo_id,
+                repo_type="dataset",
+                revision=revision,
+            )
+        )
 
 
 class StagingTelemetryV2:
@@ -771,7 +806,6 @@ class StagingTelemetryV2:
             "last_error_code": None,
             "opt_out_reason": None,
         }
-        self._merge_remote_index()
         self._append_event(
             stage_id="created",
             status="started",
@@ -780,51 +814,6 @@ class StagingTelemetryV2:
             timestamp=self.started_at,
         )
         self._persist_bundle()
-
-    def _merge_remote_index(self) -> None:
-        """Seed the local advisory index from the remote copy when available."""
-
-        if self._transport is None:
-            return
-        try:
-            remote = validate_v2_document(
-                json.loads(self._transport.download(RUNS_INDEX))
-            )
-            if remote["schema_name"] != RUN_INDEX_SCHEMA:
-                return
-        except Exception:
-            return
-        path = self.local_dir / RUNS_INDEX
-        local_runs: list[dict[str, Any]] = []
-        if path.exists():
-            try:
-                local = validate_v2_document(json.loads(path.read_text()))
-                if local["schema_name"] == RUN_INDEX_SCHEMA:
-                    local_runs = list(local["runs"])
-            except (OSError, ValueError, StagingContractError):
-                local_runs = []
-        by_run = {row["run_id"]: row for row in remote["runs"]}
-        for row in local_runs:
-            incumbent = by_run.get(row["run_id"])
-            if incumbent is None or str(row["updated_at"]) >= str(
-                incumbent["updated_at"]
-            ):
-                by_run[row["run_id"]] = row
-        merged = {
-            "schema_name": RUN_INDEX_SCHEMA,
-            "schema_version": STAGING_CONTRACT_VERSION,
-            "updated_at": max(
-                [str(remote["updated_at"])]
-                + [str(row["updated_at"]) for row in local_runs]
-            ),
-            "runs": sorted(
-                by_run.values(),
-                key=lambda row: str(row.get("updated_at") or row.get("started_at")),
-                reverse=True,
-            ),
-        }
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(_json_bytes(validate_v2_document(merged)))
 
     @property
     def repo_run_prefix(self) -> str:
@@ -1011,6 +1000,10 @@ class StagingTelemetryV2:
         if self._transport is None:
             raise StagingReadBackError("Remote read-back requires remote staging mode.")
         self._maybe_upload(force=True)
+        expected_manifest = self._manifest()
+        expected_progress = self._progress()
+        expected_latest = self._latest()
+        expected_summary = self._summary()
         expected = {
             f"{self.repo_run_prefix}/run_manifest.json": RUN_MANIFEST_SCHEMA,
             f"{self.repo_run_prefix}/progress.json": PROGRESS_SCHEMA,
@@ -1031,13 +1024,22 @@ class StagingTelemetryV2:
             progress = documents[f"{self.repo_run_prefix}/progress.json"]
             latest = documents[LATEST_STAGING_POINTER]
             index = documents[RUNS_INDEX]
-            if {manifest["run_id"], progress["run_id"], latest["run_id"]} != {
-                self.run_id
-            }:
-                raise StagingReadBackError("Remote run identifiers do not match.")
-            if not any(row["run_id"] == self.run_id for row in index["runs"]):
+            if manifest != expected_manifest:
                 raise StagingReadBackError(
-                    "Remote run index does not contain this run."
+                    "Remote run manifest does not match local pre-read-back state."
+                )
+            if progress != expected_progress:
+                raise StagingReadBackError(
+                    "Remote progress does not match local pre-read-back state."
+                )
+            if latest["run_id"] == self.run_id and latest != expected_latest:
+                raise StagingReadBackError(
+                    "Remote latest-run record does not match local run state."
+                )
+            indexed = [row for row in index["runs"] if row["run_id"] == self.run_id]
+            if indexed != [expected_summary]:
+                raise StagingReadBackError(
+                    "Remote run-index record does not match local run state."
                 )
         except Exception as exc:
             self._delivery["read_back"] = "failed"
@@ -1181,6 +1183,64 @@ class StagingTelemetryV2:
             "run_manifest_path": f"{self.repo_run_prefix}/run_manifest.json",
         }
 
+    def _summary_from_manifest(self, manifest: Mapping[str, Any]) -> dict[str, Any]:
+        run_id = str(manifest["run_id"])
+        return {
+            "run_id": run_id,
+            "candidate_id": manifest["candidate_id"],
+            "release_id": manifest["release_id"],
+            "country_code": manifest["country_code"],
+            "run_kind": manifest["run_kind"],
+            "non_release": manifest["non_release"],
+            "status": manifest["status"],
+            "stage": manifest["current_stage"],
+            "started_at": manifest["started_at"],
+            "updated_at": manifest["updated_at"],
+            "progress_path": f"{self.path_prefix}/{run_id}/progress.json",
+            "run_manifest_path": (f"{self.path_prefix}/{run_id}/run_manifest.json"),
+        }
+
+    def _remote_index_from_run_manifests(self, *, revision: str) -> dict[str, Any]:
+        """Derive the compatibility index from valid run-scoped manifests."""
+
+        prefix = f"{self.path_prefix}/"
+        suffix = "/run_manifest.json"
+        summaries: list[dict[str, Any]] = []
+        for remote_path in self._transport.list_files(revision=revision):
+            if not remote_path.startswith(prefix) or not remote_path.endswith(suffix):
+                continue
+            run_id = remote_path[len(prefix) : -len(suffix)]
+            if not _SAFE_ID.fullmatch(run_id):
+                continue
+            try:
+                manifest = validate_v2_document(
+                    json.loads(self._transport.download(remote_path, revision=revision))
+                )
+            except Exception:
+                continue
+            if (
+                manifest["schema_name"] != RUN_MANIFEST_SCHEMA
+                or manifest["run_id"] != run_id
+            ):
+                continue
+            summaries.append(self._summary_from_manifest(manifest))
+        summaries.sort(
+            key=lambda row: str(row.get("updated_at") or row.get("started_at")),
+            reverse=True,
+        )
+        if not summaries:
+            raise StagingContractError(
+                "Remote staging repository contains no valid run manifests."
+            )
+        return validate_v2_document(
+            {
+                "schema_name": RUN_INDEX_SCHEMA,
+                "schema_version": STAGING_CONTRACT_VERSION,
+                "updated_at": max(str(row["updated_at"]) for row in summaries),
+                "runs": summaries,
+            }
+        )
+
     def _index(self) -> dict[str, Any]:
         existing: list[dict[str, Any]] = []
         path = self.local_dir / RUNS_INDEX
@@ -1253,13 +1313,18 @@ class StagingTelemetryV2:
         remote_path: str,
         *,
         count_delivery: bool,
-    ) -> None:
+        parent_commit: str | None = None,
+    ) -> bool:
         data = local_path.read_bytes()
         self._content_policy.validate_remote_file(remote_path, data)
         if count_delivery:
             self._delivery["upload_attempts"] += 1
         try:
-            self._transport.upload(local_path, remote_path)
+            self._transport.upload(
+                local_path,
+                remote_path,
+                parent_commit=parent_commit,
+            )
         except Exception:
             self._consecutive_upload_failures += 1
             self._delivery["last_error_code"] = "UPLOAD_FAILED"
@@ -1279,6 +1344,35 @@ class StagingTelemetryV2:
             if count_delivery:
                 self._delivery["upload_successes"] += 1
             self._delivery["last_error_code"] = None
+            return True
+        return False
+
+    def _publish_remote_index(self) -> None:
+        """Publish an index derived from one repository revision."""
+
+        index_path = self.local_dir / RUNS_INDEX
+        for _ in range(3):
+            try:
+                revision = self._transport.revision()
+                index = self._remote_index_from_run_manifests(revision=revision)
+                index_path.write_bytes(_json_bytes(index))
+            except Exception:
+                self._delivery["last_error_code"] = "UPLOAD_FAILED"
+                print(
+                    "warning: staging run index could not be derived from remote "
+                    "run manifests",
+                    file=sys.stderr,
+                )
+                return
+            if self._upload_path(
+                index_path,
+                RUNS_INDEX,
+                count_delivery=True,
+                parent_commit=revision,
+            ):
+                return
+            if self._remote_disabled:
+                return
 
     def _reconcile_remote_delivery_metadata(self) -> None:
         """Refresh counter-bearing metadata without counting these two writes."""
@@ -1302,11 +1396,14 @@ class StagingTelemetryV2:
             return
         self._last_upload_at = now
         for local_path, remote_path in self._upload_paths():
-            self._upload_path(
-                local_path,
-                remote_path,
-                count_delivery=True,
-            )
+            if remote_path == RUNS_INDEX:
+                self._publish_remote_index()
+            else:
+                self._upload_path(
+                    local_path,
+                    remote_path,
+                    count_delivery=True,
+                )
             if self._remote_disabled:
                 break
         self._persist_bundle()
