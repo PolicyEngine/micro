@@ -1247,6 +1247,53 @@ class StagingTelemetryV2:
         )
         return paths
 
+    def _upload_path(
+        self,
+        local_path: Path,
+        remote_path: str,
+        *,
+        count_delivery: bool,
+    ) -> None:
+        data = local_path.read_bytes()
+        self._content_policy.validate_remote_file(remote_path, data)
+        if count_delivery:
+            self._delivery["upload_attempts"] += 1
+        try:
+            self._transport.upload(local_path, remote_path)
+        except Exception:
+            self._consecutive_upload_failures += 1
+            self._delivery["last_error_code"] = "UPLOAD_FAILED"
+            print(
+                f"warning: staging upload failed for {remote_path}",
+                file=sys.stderr,
+            )
+            if self._consecutive_upload_failures >= 3:
+                self._remote_disabled = True
+                print(
+                    "warning: pausing remote staging writes after three "
+                    "consecutive failures; local telemetry continues.",
+                    file=sys.stderr,
+                )
+        else:
+            self._consecutive_upload_failures = 0
+            if count_delivery:
+                self._delivery["upload_successes"] += 1
+            self._delivery["last_error_code"] = None
+
+    def _reconcile_remote_delivery_metadata(self) -> None:
+        """Refresh counter-bearing metadata without counting these two writes."""
+
+        for filename in ("run_manifest.json", "progress.json"):
+            if self._remote_disabled:
+                break
+            self._persist_bundle()
+            self._upload_path(
+                self.run_dir / filename,
+                f"{self.repo_run_prefix}/{filename}",
+                count_delivery=False,
+            )
+        self._persist_bundle()
+
     def _maybe_upload(self, *, force: bool = False) -> None:
         if self._transport is None or self._remote_disabled:
             return
@@ -1255,31 +1302,15 @@ class StagingTelemetryV2:
             return
         self._last_upload_at = now
         for local_path, remote_path in self._upload_paths():
-            data = local_path.read_bytes()
-            self._content_policy.validate_remote_file(remote_path, data)
-            self._delivery["upload_attempts"] += 1
-            try:
-                self._transport.upload(local_path, remote_path)
-            except Exception:
-                self._consecutive_upload_failures += 1
-                self._delivery["last_error_code"] = "UPLOAD_FAILED"
-                print(
-                    f"warning: staging upload failed for {remote_path}",
-                    file=sys.stderr,
-                )
-                if self._consecutive_upload_failures >= 3:
-                    self._remote_disabled = True
-                    print(
-                        "warning: pausing remote staging writes after three "
-                        "consecutive failures; local telemetry continues.",
-                        file=sys.stderr,
-                    )
-                    break
-            else:
-                self._consecutive_upload_failures = 0
-                self._delivery["upload_successes"] += 1
-                self._delivery["last_error_code"] = None
+            self._upload_path(
+                local_path,
+                remote_path,
+                count_delivery=True,
+            )
+            if self._remote_disabled:
+                break
         self._persist_bundle()
+        self._reconcile_remote_delivery_metadata()
 
 
 def validate_v2_bundle(
@@ -1356,7 +1387,7 @@ def validate_v2_bundle(
             raise StagingContractError(
                 f"Latest-run {field} path does not identify the validated run."
             )
-    for field in _RUN_REQUIRED:
+    for field in (*_RUN_REQUIRED, "sample", "delivery", "failure"):
         if documents["run_manifest"][field] != documents["progress"][field]:
             raise StagingContractError(f"Bundle disagrees on {field}.")
     for field in ("candidate_id", "release_id"):

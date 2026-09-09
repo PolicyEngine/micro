@@ -219,6 +219,26 @@ def test_unknown_schema_version_is_incompatible():
         )
 
 
+@pytest.mark.parametrize("field", ["sample", "delivery", "failure"])
+def test_bundle_validation_rejects_shared_document_disagreement(tmp_path, field):
+    telemetry = _recorder(tmp_path)
+    telemetry.stage("input_verification")
+    telemetry.fail(RuntimeError("build failed"))
+
+    progress_path = telemetry.run_dir / "progress.json"
+    progress = json.loads(progress_path.read_text())
+    if field == "sample":
+        progress[field] = _sample()
+    elif field == "delivery":
+        progress[field]["upload_attempts"] = 1
+    else:
+        progress[field]["error_code"] = "DIFFERENT_FAILURE"
+    progress_path.write_text(json.dumps(progress))
+
+    with pytest.raises(StagingContractError, match=f"Bundle disagrees on {field}"):
+        telemetry.validate_local_bundle()
+
+
 def test_identifiers_and_paths_cannot_escape_contract_root(tmp_path):
     with pytest.raises(StagingContractError, match="run_id"):
         _recorder(tmp_path, run_id="../outside")
@@ -273,6 +293,48 @@ def test_remote_read_back_validates_the_written_run(tmp_path):
     assert "runs.json" in api.files
     remote_manifest = json.loads(api.files["runs/uk-smoke-5-42/run_manifest.json"])
     assert remote_manifest["delivery"]["read_back"] == "passed"
+
+
+def test_remote_delivery_matches_local_delivery_after_completion(tmp_path):
+    api = MemoryApi(tmp_path)
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        api=api,
+        upload_interval_seconds=0,
+    )
+
+    telemetry.complete()
+
+    expected = telemetry.delivery_summary
+    assert expected["upload_attempts"] == len(telemetry._upload_paths())
+    assert expected["upload_successes"] == expected["upload_attempts"]
+    for filename in ("run_manifest.json", "progress.json"):
+        remote = json.loads(api.files[f"runs/uk-smoke-5-42/{filename}"])
+        assert remote["delivery"] == expected
+
+
+def test_remote_delivery_matches_local_delivery_after_read_back(tmp_path):
+    api = MemoryApi(tmp_path)
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        api=api,
+        upload_interval_seconds=0,
+    )
+    telemetry.complete()
+
+    counted_paths = len(telemetry._upload_paths())
+    telemetry.verify_remote()
+
+    expected = telemetry.delivery_summary
+    assert expected["upload_attempts"] == 3 * counted_paths
+    assert expected["upload_successes"] == expected["upload_attempts"]
+    for filename in ("run_manifest.json", "progress.json"):
+        remote = json.loads(api.files[f"runs/uk-smoke-5-42/{filename}"])
+        assert remote["delivery"] == expected
 
 
 def test_remote_read_back_failure_is_explicit(tmp_path):
