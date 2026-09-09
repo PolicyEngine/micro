@@ -776,3 +776,9 @@ Root reviews exact ordinary guard/source/resource admissions before execution. F
 ### Integration source-resource closure — 2026-09-09
 
 Root preflight found seven JSON source definitions declared by the ordinary guard but omitted by the staged patch delivery. Added the exact previously reviewed resource bytes from the accepted full65 source projection; no new resource admission or genuine payload. Preserved source staging and earlier evidence.
+
+## Layer14 full65 replay correction — 2026-09-09
+
+State: exact accepted two-file correction staged; successor57 integration execution pending.
+Done: verified clean84243 preimages, exact r2 postimages, fixed store/current-main sources and frozen36 evidence.
+Next: root admits the separate exact-allowlist57-case guard and final source identities before execution; no new resources.

@@ -57,6 +57,12 @@ from microcosm.graph.kernel import ArtifactValue
 from microcosm.graph.keys import node_key, opaque_artifact_key, platform_fingerprint
 from microcosm.graph.population import Population
 
+from . import (
+    acs_income_universe,
+    operator_column_contracts,
+    qbi_inputs,
+    support_provenance,
+)
 from . import full_puf_enrichment as full
 from . import survey_population_replay as replay
 
@@ -351,14 +357,9 @@ def retain_full_puf_attachment(
         fit_nodes == expected_fits and apply_nodes == expected_applies,
         "FULL_PUF_CHAIN_DECLARATION",
     )
-    # Structural patching labels all carried columns with the version owner;
-    # that runtime label is not a same-version declaration conflict. The real
-    # compiler checks inherited rewrite claims against the version's base.
-    require(
-        not _OUTPUT_COORDINATES
-        & {(o.entity, o.column) for o in population_node.outputs},
-        "FULL_PUF_UPSTREAM_OUTPUT_CONFLICT",
-    )
+    # Structural nodes have no ordinary output declarations. The compiler is
+    # the enforcer of same-version ownership conflicts and inherited rewrites;
+    # the integrating host must compile the entire graph before execution.
     for entity, name in MASKS.items():
         require(
             name not in population.frame.table(entity), "FULL_PUF_MASK_ALREADY_PRESENT"
@@ -393,9 +394,11 @@ def retain_full_puf_attachment(
 
 
 def _params(binding):
+    # The physical Population seals are in-process mutation checks only.
+    # Nullable backing storage beneath nulls is canonicalized by Frame-store
+    # v2. Graph column/frame keys bind the upstream values across sessions.
     return {
         "scope": SCOPE,
-        "upstream_state": binding.expected_stamp,
         "donor_values": binding.donor_stamp,
         "predictor_knownness": binding.known_stamp,
         "matrix_producer_key": binding.matrix.producer_key,
@@ -566,7 +569,8 @@ def _checked_artifacts(binding, edges, artifacts, producer_keys=None):
             values["placement"].payload == _placement(binding),
             "FULL_PUF_PLACEMENT_BINDING",
         )
-        for names in (("raw_064", "apply_state"), ("last_model", "training_state")):
+        last_raw = f"raw_{len(binding.apply_nodes) - 1:03d}"
+        for names in ((last_raw, "apply_state"), ("last_model", "training_state")):
             require(
                 len({values[name].producer_key for name in names}) == 1,
                 "FULL_PUF_SIBLING_PRODUCER",
@@ -626,6 +630,10 @@ class _FullPufKernel(KernelBase):
             sys.modules[__name__],
             full,
             full.support,
+            support_provenance,
+            operator_column_contracts,
+            qbi_inputs,
+            acs_income_universe,
             replay,
             population_ops,
             store_ops,

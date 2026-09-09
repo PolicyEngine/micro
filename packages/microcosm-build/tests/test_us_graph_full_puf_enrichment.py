@@ -109,6 +109,9 @@ class InventedCompleteBoundary(KernelBase):
 
 def _complete_frame():
     frame = _recipient()
+    frame.table("tax_unit")["health_savings_account_ald"] = np.linspace(
+        701.0, 1701.0, frame.n("tax_unit"), dtype=np.float64
+    )
     people = frame.table("person")
     people["self_employment_income_would_be_qualified"] = np.resize(
         np.array([False, True], dtype=bool), len(people)
@@ -453,6 +456,21 @@ def test_full65_cold_and_required_replay_preserve_complete_population(attached_f
     case = attached_full65
     mask_node, attach_node = case.nodes
     assert len(case.fits) == len(case.applies) == 65
+    hsa = next(
+        o
+        for o in attach_node.outputs
+        if (o.entity, o.column) == ("tax_unit", "health_savings_account_ald")
+    )
+    assert hsa.rewrite and hsa.dtype == "float64"
+    for result in case.results:
+        table = result.population.frame.table("tax_unit")
+        original = case.binding.expected_population.frame.table("tax_unit")
+        native = ~support.puf_tax_detail_clone_mask(original, entity="tax_unit")
+        pd.testing.assert_series_equal(
+            table.loc[native, "health_savings_account_ald"],
+            original.loc[native, "health_savings_account_ald"],
+            check_exact=True,
+        )
     assert len(full.PERSON_OUTPUTS) == 56 and len(full.TAX_UNIT_OUTPUTS) == 9
     assert "prior_year_wages" not in full.TARGETS
     assert "employment_income_last_year" not in full.TARGETS
@@ -607,7 +625,12 @@ def test_actual_artifact_value_identity_and_sibling_mutations_are_refused(
         producer_keys[node_id] = "f" * 64
     elif mutation == "producer_key":
         producer_keys[case.applies[0].id] = "e" * 64
-    with pytest.raises(ValueError):
+    expected_refusal = (
+        r"^Legacy QRF artifact content digest mismatch\.$"
+        if mutation == "model_bytes"
+        else "FULL_PUF_|SURVEY_POPULATION_REPLAY_|PUF_"
+    )
+    with pytest.raises(ValueError, match=expected_refusal):
         _verify(case, result, artifacts=artifacts, producer_keys=producer_keys)
 
 
@@ -700,7 +723,7 @@ def test_complete_materialized_population_mutations_are_refused(
     elif mutation == "frame_mass_log":
         assert changed.frame.mass_log
         changed = _copy_population(changed, mass_log=changed.frame.mass_log[:-1])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="FULL_PUF_|SURVEY_POPULATION_REPLAY_|PUF_"):
         _verify(case, result, population=changed)
 
 
@@ -737,7 +760,7 @@ def test_upstream_replay_checks_full_state_beyond_matrix_values(
         ).matrix
         == result.artifacts["matrix"].payload
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="FULL_PUF_|SURVEY_POPULATION_REPLAY_|PUF_"):
         _verify(case, result, upstream_population=changed)
 
 
@@ -788,7 +811,7 @@ def test_retained_live_inputs_cannot_change_after_binding(attached_full65, mutat
             binding,
             input_owners={**binding.input_owners, ("person", "age"): "different.owner"},
         )
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="FULL_PUF_|SURVEY_POPULATION_REPLAY_|PUF_"):
         _verify(case, result, binding=binding)
 
 
@@ -838,7 +861,7 @@ def test_boundary_requires_complete_chain_and_explicit_population_owner_binding(
     elif mutation == "incomplete_owner_map":
         arguments["input_owners"] = dict(arguments["input_owners"])
         arguments["input_owners"].pop(("person", "age"))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="FULL_PUF_|SURVEY_POPULATION_REPLAY_|PUF_"):
         placement.retain_full_puf_attachment(**arguments)
 
 
@@ -913,7 +936,7 @@ def test_complete_input_knownness_and_incumbent_physical_dtypes_are_required(
             ),
         )
     arguments["expected_population"] = _copy_population(arguments["population"])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="FULL_PUF_|SURVEY_POPULATION_REPLAY_|PUF_"):
         placement.retain_full_puf_attachment(**arguments)
 
 
@@ -937,67 +960,107 @@ def test_actual_manifest_and_compiled_producer_contract_mutations_are_refused(
     records = dict(manifest.nodes)
     node_id = case.fits[-1].id
     record = records[node_id]
-    # Constructors may themselves reject inconsistent typed ancestry. In the
-    # cases which remain structurally valid, the actual loader must reject the
-    # changed implementation/declaration against the retained complete chain.
-    with pytest.raises(ValueError):
-        if mutation == "kernel_ref":
-            records[node_id] = replace(record, kernel_ref="test.different.fit@1")
-        elif mutation == "kernel_impl":
-            records[node_id] = replace(record, kernel_impl_hash="e" * 64)
-        elif mutation == "producer_key":
-            records[node_id] = replace(record, key="e" * 64)
-        elif mutation in ("producer_descriptor_type", "consumer_descriptor_type"):
-            if mutation == "consumer_descriptor_type":
-                node_id = case.nodes[-1].id
-                record = records[node_id]
-            typed = {
-                direction: {
-                    name: {**value, "type": dict(value["type"])}
-                    for name, value in entries.items()
-                }
-                for direction, entries in record.typed_artifacts.items()
+    if mutation == "kernel_ref":
+        records[node_id] = replace(record, kernel_ref="test.different.fit@1")
+    elif mutation == "kernel_impl":
+        records[node_id] = replace(record, kernel_impl_hash="e" * 64)
+    elif mutation == "producer_key":
+        records[node_id] = replace(record, key="e" * 64)
+    elif mutation in ("producer_descriptor_type", "consumer_descriptor_type"):
+        if mutation == "consumer_descriptor_type":
+            node_id = case.nodes[-1].id
+            record = records[node_id]
+        typed = {
+            direction: {
+                name: {**value, "type": dict(value["type"])}
+                for name, value in entries.items()
             }
-            direction, name = (
-                ("outputs", "model")
-                if mutation == "producer_descriptor_type"
-                else ("inputs", "last_model")
-            )
-            typed[direction][name]["type"]["name"] = "test.different.model"
-            records[node_id] = replace(record, typed_artifacts=typed)
-        elif mutation == "compiled_fit_params":
-            fit = case.fits[-1]
-            changed = replace(fit, params={**fit.params, "n_estimators": 3})
-            compiled = compile_graph(
-                replace(
-                    compiled.graph,
-                    nodes=tuple(
-                        changed if node.id == fit.id else node
-                        for node in compiled.graph.nodes
-                    ),
-                )
-            )
-        elif mutation == "compiled_apply_edge":
-            apply = case.applies[-1]
-            changed = replace(
-                apply,
-                artifact_inputs=tuple(
-                    replace(edge, producer=case.applies[1].id)
-                    if edge.name == "prior_000"
-                    else edge
-                    for edge in apply.artifact_inputs
+            for direction, entries in record.typed_artifacts.items()
+        }
+        direction, name = (
+            ("outputs", "model")
+            if mutation == "producer_descriptor_type"
+            else ("inputs", "last_model")
+        )
+        typed[direction][name]["type"]["name"] = "test.different.model"
+        records[node_id] = replace(record, typed_artifacts=typed)
+    elif mutation == "compiled_fit_params":
+        fit = case.fits[-1]
+        changed = replace(fit, params={**fit.params, "n_estimators": 3})
+        compiled = compile_graph(
+            replace(
+                compiled.graph,
+                nodes=tuple(
+                    changed if node.id == fit.id else node
+                    for node in compiled.graph.nodes
                 ),
             )
-            compiled = compile_graph(
-                replace(
-                    compiled.graph,
-                    nodes=tuple(
-                        changed if node.id == apply.id else node
-                        for node in compiled.graph.nodes
-                    ),
-                )
+        )
+    elif mutation == "compiled_apply_edge":
+        apply = case.applies[-1]
+        changed = replace(
+            apply,
+            artifact_inputs=tuple(
+                replace(edge, producer=case.applies[1].id)
+                if edge.name == "prior_000"
+                else edge
+                for edge in apply.artifact_inputs
+            ),
+        )
+        compiled = compile_graph(
+            replace(
+                compiled.graph,
+                nodes=tuple(
+                    changed if node.id == apply.id else node
+                    for node in compiled.graph.nodes
+                ),
             )
-        manifest = replace(manifest, nodes=records)
+        )
+    if mutation in (
+        "producer_key",
+        "producer_descriptor_type",
+        "consumer_descriptor_type",
+    ):
+        # Make both ends of typed ancestry internally consistent. Construction
+        # must succeed; the owned loader then rejects the false graph contract.
+        producer_id = case.fits[-1].id
+        producer = records[producer_id]
+        changed_type = ArtifactType("test.different.model", 1)
+        outputs = {
+            name: descriptor(
+                producer=producer_id,
+                artifact=name,
+                type_=(
+                    changed_type
+                    if name == "model" and mutation != "producer_key"
+                    else ArtifactType(
+                        value["type"]["name"], value["type"]["schema_version"]
+                    )
+                ),
+                producer_key=producer.key,
+                capabilities=producer.capabilities,
+            )
+            for name, value in producer.typed_artifacts["outputs"].items()
+        }
+        records[producer_id] = replace(
+            producer,
+            typed_artifacts={**producer.typed_artifacts, "outputs": outputs},
+            opaque_artifacts={name: value["key"] for name, value in outputs.items()},
+        )
+        for consumer_id, consumer in tuple(records.items()):
+            if not consumer.typed_artifacts:
+                continue
+            inputs = {
+                name: outputs[value["artifact"]]
+                if value["producer"] == producer_id
+                else value
+                for name, value in consumer.typed_artifacts["inputs"].items()
+            }
+            records[consumer_id] = replace(
+                consumer, typed_artifacts={**consumer.typed_artifacts, "inputs": inputs}
+            )
+    manifest = replace(manifest, nodes=records)
+    with pytest.raises(ValueError, match="FULL_PUF_"):
         placement.load_full_puf_attachment_artifacts(
             case.binding, compiled=compiled, manifest=manifest, store=case.store
         )
@@ -1020,3 +1083,91 @@ def test_person_and_tax_unit_masks_must_describe_the_same_memberships(attached_f
     # mask-membership invariant, rather than a changed-state seal, must reject it.
     with pytest.raises(ValueError, match="FULL_PUF_MASK_MEMBERSHIP"):
         placement.retain_full_puf_attachment(**arguments)
+
+
+def test_rebuilt_binding_from_fresh_frame_store_requires_full_cached_replay(
+    attached_full65, tmp_path
+):
+    """Nullable physical mutation seals cannot become cross-session graph keys."""
+    case = attached_full65
+    original = case.retention_arguments
+    cold_expected = _copy_population(original["expected_population"])
+    # Exercise the real codec's difference between masked storage and value.
+    hidden = cold_expected.frame.table("person")["unrelated_nullable"].array
+    nulls = hidden._mask
+    assert nulls.any()
+    hidden._data[nulls] = True
+    assert hidden._data[nulls].all()
+    cold_binding = placement.retain_full_puf_attachment(
+        **{**original, "expected_population": cold_expected}
+    )
+    cold_nodes = placement.full_puf_attachment_nodes(cold_binding)
+    assert cold_nodes == case.nodes
+
+    retained_path = tmp_path / "new-session-upstream"
+    writer = ContentStore(retained_path)
+    frame_key = full.codec.sha(b"rebuilt-full65-upstream")
+    writer.put_frame(frame_key, cold_expected.frame)
+    # A distinct store object reads actual codec output; no in-memory reuse.
+    reader = ContentStore(retained_path)
+    restored = reader.load_frame(frame_key)
+    assert not restored.person["unrelated_nullable"].array._data[nulls].any()
+    replay.same_replayed_frame(cold_expected.frame, restored)
+    warm_expected = replace(_copy_population(cold_expected), frame=restored)
+    warm_upstream = _copy_population(case.results[-1].upstream)
+    warm_binding = placement.retain_full_puf_attachment(
+        **{
+            **original,
+            "population": warm_upstream,
+            "expected_population": warm_expected,
+            "input_owners": dict(warm_upstream.owners),
+        }
+    )
+    assert cold_binding.expected_stamp != warm_binding.expected_stamp
+    warm_nodes = placement.full_puf_attachment_nodes(warm_binding)
+    assert warm_nodes == cold_nodes
+    assert placement._placement(warm_binding) == placement._placement(cold_binding)
+    rebuilt_graph = compile_graph(
+        replace(
+            case.compiled.graph,
+            nodes=tuple(
+                {node.id: node for node in warm_nodes}.get(node.id, node)
+                for node in case.compiled.graph.nodes
+            ),
+        )
+    )
+    kernels = KernelRegistry()
+    for kernel in (
+        InventedSource(),
+        InventedCompleteBoundary(),
+        InventedMatrix(),
+        LegacyQRFTrainKernel(),
+        LegacyQRFApplyMatrixKernel(),
+        placement.FullPufMaskKernel(warm_binding),
+        placement.FullPufAttachKernel(warm_binding),
+    ):
+        kernels.register(kernel)
+    observed = {}
+    manifest = run_graph(
+        rebuilt_graph,
+        sources=case.sources,
+        store=case.store,
+        kernels=kernels,
+        resume="require",
+        _population_observer=lambda name, value: observed.__setitem__(name, value),
+    )
+    assert all(record.hit for record in manifest.nodes.values())
+    assert manifest.key == case.results[-1].manifest.key
+    artifacts, producer_keys = placement.load_full_puf_attachment_artifacts(
+        warm_binding, compiled=rebuilt_graph, manifest=manifest, store=case.store
+    )
+    placement.verify_materialized_full_puf_attachment(
+        warm_binding,
+        upstream_population=observed[warm_binding.population_node.id],
+        population=observed[warm_nodes[-1].id],
+        artifacts=artifacts,
+        producer_keys=producer_keys,
+    )
+    replay.same_replayed_population(
+        case.results[-1].population, observed[warm_nodes[-1].id]
+    )
