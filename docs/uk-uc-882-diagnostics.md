@@ -1,8 +1,10 @@
 # UC target repair diagnostics, September 2026
 
-The first controlled comparison shows that paid-claim target repairs improve
-the broad UC fit but **do not close the lone-parent gap**. These are private
-development calibrations reported as aggregates, not a certified release.
+The fresh controlled comparison shows that paid-claim target repairs improve
+the broad UC fit but **do not close the lone-parent gap**. Against the same
+paid target, the fresh lone-parent shortfall changes from 14.37% to 14.01%.
+These are private development calibrations reported as aggregates, not a
+certified release.
 The [target contract](uk-uc-paid-target-contract.md) describes the statistical
 repair and its remaining approximations. [#882](https://github.com/PolicyEngine/microcosm/issues/882)
 remains open.
@@ -87,6 +89,44 @@ below target; couples with children and five-plus reported children are within
 0.13%. This confirms that the repaired targets do not close the gap on the
 fresh combined pipeline either.
 
+An authenticated private replay reproduces every initial and final estimate
+for all 366 canonical rows exactly, along with the selected iterate, loss,
+ESS and maximum weight ratio. It saves diagnostic matrices/weights only and
+preserves the original terminal refusal. A separate old-contract solve then
+holds that fresh population, source identities, priors, awards, matrix, row
+order, coefficients and solver budget fixed.
+
+On the same paid target, the fresh old-contract weights estimate 1,831,438
+lone-parent claims (−14.37%), compared with 1,839,214 after repair (−14.01%).
+The apparent own-contract change from −17.73% to −14.01% is mostly a changed
+comparison denominator. The ten broad UC rows' error on common CY targets
+falls from 8.97% to 4.72%, with seven of ten within 5%, compared with five.
+The retained-to-fresh differences combine prior pipeline changes and are not
+an isolated causal estimate of the capital graph repair.
+
+Its lone-parent row has 1,917 household rows from 677 original households,
+source ESS 237.37 and a largest-source share of 2.42%. Its individual-row
+capacity under the existing caps is 12.35 million against a 2.14 million
+target. The same supported-108-UC and named-38-protected-row feasibility
+checks described below pass on the fresh matrix. The lone-parent miss is
+therefore not explained by that row's own lack of support or capacity.
+
+A bounded directional diagnostic raises existing lone-parent-support weights
+enough to improve the row by one percentage point. That direction increases
+the full objective, chiefly through non-UC rows including the benefit-cap
+caseload, Scottish Child Payment spending, ONS lone-parent households and
+funded childcare. This identifies pressure along that particular direction;
+it does not prove those rows prevent every compensating reallocation.
+
+Six follow-up linear programs confirm that distinction. The broad ten UC
+rows remain jointly feasible at 5% as the five named opposing rows are added
+one by one. All 108 supported UC/TCL rows plus those five are also feasible.
+The bounds remain zero to ten times each prior, with no total-mass or ESS
+constraint. The largest check leaves the other 253 active rows unconstrained.
+Thus these named rows alone do not establish an unavoidable conflict; the
+remaining objective/constraint audit must examine the wider system and the
+concentration of any feasible redistribution.
+
 The terminal gate refuses export: both unsupported payment bands remain at
 −100%, and five old fit exemptions are now within the permitted bound and
 flagged as stale. No calibrated H5 or passing calibration build record is
@@ -94,6 +134,16 @@ produced. The signed failed-gate report and its bound diagnostic file are
 retained; they are not converted into a release pass. The source HMRC replay
 has reviewed-exclusion coverage only, with zero numerical comparison coverage,
 so the source build's gate pass is not an HMRC fit claim.
+
+The five stale exemptions are removed in this change: UC households with one,
+two, or five-plus children; UC single households with children; and private
+pension recipient counts in the £100,000–£150,000 income band. Replaying all
+366 saved errors through the tightened gate leaves exactly the two empty-tail
+failures. The CGT exemption remains unchanged. Any renewed breach on those
+five rows now faces the normal 25% bound. This does not alter the historical
+failed report or establish readiness under the default 256-update,
+uniform-allocation calibration: these experiments used the declared
+1,500-update, `family_equal` settings.
 
 ## Empty cells and bounded feasibility
 
@@ -126,6 +176,24 @@ advances and payments on the claimant's behalf, while the model provides an
 annual recurring award. No recurring entitlement is invented to fill these
 cells. Component, deduction and timing evidence must precede support generation.
 
+The fresh component audit reproduces all 24 active childless-couple matrix
+rows exactly from annual model masks. Twenty copies from seven original
+families have gross maximum UC above £2,300 per month-equivalent, but all
+have income reductions. Even the largest recorded maximum-minus-reduction
+balance is only £2,131.58 per month-equivalent; no pre-cap award reaches
+the unsupported bands. Later benefit caps or deductions therefore do not
+explain the upper-band zeros in this captured state. Eight of these copies
+would claim and six have a positive payment. This identifies sparse
+high-element/low-income combinations and take-up inputs for further audit;
+it does not establish an incorrect income formula.
+
+The £1,800–£2,200 near-tail has only 14 copies from seven original families,
+source ESS 4.09 and a largest-source share of 38.62%. Two adjacent bands each
+rely on one source despite fitting closely. The recorded UC maximum,
+pre-cap and final-payment components reconcile within one penny annually.
+Exact monthly cash timing and the first source stage of tail absence remain
+unobserved.
+
 ## Five-plus children and independent support
 
 The CY paid five-plus target itself has 80 household rows from 29 original
@@ -140,6 +208,19 @@ The three component rows' 5% tolerances imply a contrast interval of
 [14,460, 27,620]. Removing all descendants of that one source leaves attainable
 contrast [0, 0], so the three rows cannot jointly retain that fit. The FY arm
 has the same one-source dependency.
+
+The fresh paid five-plus row has 78 household rows from 28 original households,
+source ESS 9.87 and a largest-source share of 27.5%. The contrast still has
+four rows from one source, with fitted contribution 21,051. The fresh build
+therefore does not remove this dependence.
+
+The lost paid source is still in the data: all four descendants remain, with
+the same roles, five-child count, eligibility, elements and income reductions.
+Two SPI copies lose reporter/would-claim status. Fresh saved checkpoints never
+promote those copies to reporters; capital coherence does not demote them.
+The retained replay had a promotion this complete rebuild does not reproduce.
+This whole-build comparison cannot isolate the earlier donor/assignment change
+responsible, and does not justify restoring a promotion solely to recover fit.
 
 This subtraction explains optimizer algebra across different concepts and
 windows. It is not an administrative statistical identity or a newly inferred
@@ -171,3 +252,25 @@ independently of model-year labels. April open/nil claim history, TCL exceptions
 education transitions and exact administrative child attachment remain
 separate limitations. Annual zero awards or take-up flags cannot establish
 open nil claims. The new Chronicle crosses do not supply these histories.
+
+## Evidence and reproduction
+
+The [aggregate comparison receipt](evidence/uk-uc-882/calibration-comparison.json)
+contains the selected target values/estimates, source concentration, protected
+outcomes, runtime and input/output hashes for each completed arm. It omits
+individual source IDs and records. Original private archives and failed-gate
+receipts remain unchanged.
+
+`tools/diagnose_uk_uc_matrix.py` authenticates retained replay inputs, measures
+the complete active roster and writes private diagnostic matrices/weights.
+`tools/diagnose_uk_uc_support.py` reads a completed matrix receipt to reproduce
+source concentration, capacity, named-subset LP probes and removal sensitivity:
+
+```sh
+uv run --no-sync python tools/diagnose_uk_uc_support.py \
+  --run-dir /path/to/completed-run --output-dir /path/to/new-support-report
+```
+
+The latter performs no population simulation or calibration fit. Its LP
+witnesses answer only their explicitly named feasibility questions. Keep
+`source_group_influence_private.json` local; aggregate reports omit IDs.
