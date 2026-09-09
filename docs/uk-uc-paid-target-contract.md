@@ -20,7 +20,7 @@ digests before compiling targets; local surfaces retain their separate pins.
 |---|---|---|
 | Paid headline | Within each month, sum five family categories × both child-entitlement states, with payment indicator Yes; average the 12 monthly sums | GB benefit units with annual `universal_credit > 0` |
 | Four paid family counts | Within each month, sum entitlement No and Yes for the named family and payment Yes; average 12 months | Positive-UC benefit units classified by the model standard allowance and the reported-child proxy |
-| Five paid child-count categories | Average each publisher `total_benefit_units` series with payment Yes and `child_entitlement: all` | Positive-UC benefit units by the existing declared-under-20 child-count proxy |
+| Five paid child-count categories | Use `monthly_window_average` over the 12 explicit months of each publisher `total_benefit_units` series with payment Yes and `child_entitlement: all` | Positive-UC benefit units by the existing declared-under-20 child-count proxy |
 
 Unknown family records contribute to the headline. A publisher zero must be
 present; it cannot be replaced by an absent cell. The family cube has no
@@ -28,12 +28,16 @@ published grand Total, so its headline is explicitly derived. The child-count
 cube has publisher Totals over entitlement; these are used directly rather
 than reconstructed from independently perturbed detail cells.
 
-The administrative-family measurement follows DWP's standard-allowance rule:
-an allowance above the maximum single rate implies a couple. Zero allowance
-returns UNKNOWN. It preserves source claimant roles and the structural family
-measurement. It does not recover ineligible-partner cases that the model cannot
-identify. The four existing family payment-band bindings use the same new family
-measurement. [DWP family definition](https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html)
+The administrative-family measurement is an allowance-based model proxy for
+DWP's standard-allowance rule: an allowance above the maximum single rate implies
+a couple. With the tested PolicyEngine-UK 2.97 claimant inputs, the allowance and
+structural classification use the same claimant roles, so these comparison arms
+coincide and create no additional support. Zero allowance returns UNKNOWN as
+defensive input handling; this does not identify administrative missingness.
+Source claimant roles remain unchanged. The proxy does not recover
+ineligible-partner cases that the model cannot identify. The four existing
+family payment-band bindings use the same proxy.
+[DWP family definition](https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html)
 
 `uc_child_element > 0` is a separate child-entitlement diagnostic. It does not
 turn reported children into own qualifying children. No family × child-count
@@ -56,6 +60,10 @@ every declared month × operand. They reject duplicate, missing, mixed-series or
 mixed-publication cells. A sum divides by the **month count**, not the number of
 cells. Receipts retain member identities, publication identity and the actual
 denominator. Existing period policies retain their calendar/future-period guards.
+All ten paid count references use this explicit source-window policy. Averaging
+their selected 2025 observations does not apply a December-to-annual uprating
+hold. The five child-count references use the single-series operation, while
+the headline and family references average their declared monthly sums.
 
 Only these ten count references acquire 12 months. The other 101 monthly UC
 references retain their declared nine-month coverage. TCL remains an April
@@ -75,6 +83,10 @@ exclusions. No non-UC value, target roster or coefficient changes.
 The [source-only diff receipt](evidence/uk-uc-882/source-target-diff.json)
 records all ten old/CY/FY values, complete compilation counts, source hashes
 and monthly reconciliation.
+Population fit figures reported with these changes come from the companion
+[completed development comparisons](evidence/uk-uc-882/calibration-comparison.json),
+described in the [diagnostic report](uk-uc-882-diagnostics.md). The source-only
+receipt contains no population fit results and does not certify those runs.
 
 In calendar 2025 the family-derived paid headline is 6,197,311, including
 1,168.92 unknown-family claims. Summed child-count publisher Totals differ from

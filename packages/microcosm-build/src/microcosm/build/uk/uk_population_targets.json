@@ -7,6 +7,7 @@
     "sum",
     "difference",
     "calendar_year_average",
+    "monthly_window_average",
     "monthly_window_sum_average"
   ],
   "resolution_defaults": {
@@ -3589,7 +3590,8 @@
           "2025-12"
         ]
       },
-      "value_operation": "calendar_year_average"
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.uc.households_children_2",
@@ -3705,7 +3707,8 @@
           "2025-12"
         ]
       },
-      "value_operation": "calendar_year_average"
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.uc.households_children_3",
@@ -3821,7 +3824,8 @@
           "2025-12"
         ]
       },
-      "value_operation": "calendar_year_average"
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.uc.households_children_4",
@@ -3937,7 +3941,8 @@
           "2025-12"
         ]
       },
-      "value_operation": "calendar_year_average"
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.uc.households_children_5_or_more",
@@ -4053,7 +4058,8 @@
           "2025-12"
         ]
       },
-      "value_operation": "calendar_year_average"
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.uc.households_single_no_children",

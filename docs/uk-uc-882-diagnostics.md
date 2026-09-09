@@ -3,8 +3,10 @@
 The fresh controlled comparison shows that paid-claim target repairs improve
 the broad UC fit but **do not close the lone-parent gap**. Against the same
 paid target, the fresh lone-parent shortfall changes from 14.37% to 14.01%.
-These are private development calibrations reported as aggregates, not a
-certified release.
+The [population comparison receipt](evidence/uk-uc-882/calibration-comparison.json)
+records these completed development calibrations and their input hashes. These
+fit results do not come from the [source-only compilation receipt](evidence/uk-uc-882/source-target-diff.json),
+which checks source targets without a population solve. No certified release is claimed.
 The [target contract](uk-uc-paid-target-contract.md) describes the statistical
 repair and its remaining approximations. [#882](https://github.com/PolicyEngine/microcosm/issues/882)
 remains open.
@@ -41,8 +43,11 @@ without establishing closure.
 The CY structural-family and allowance-family arms produce identical matrices
 and weights. Both use a matrix identical to the baseline on this retained
 sample. The changed values are ten right-hand-side targets; the family
-measurement introduces no new support here. The explicit allowance definition
-is still the appropriate comparison contract and preserves structural roles.
+measurement introduces no new support here. It is an allowance-based model
+proxy: under the tested UK2.97 claimant inputs it coincides with structural
+family typing. It does not recover administrative ineligible-partner cases or
+change claimant roles. `UNKNOWN` handles zero model allowance defensively; it
+does not identify observed administrative missing-family records.
 
 Evaluated against one common CY matrix, target vector and coefficient vector,
 the ten broad count rows' weighted mean absolute percentage error falls from
@@ -63,6 +68,14 @@ gives identical values and metadata for all 415 targets. The fresh run below
 uses the tightened guard; the completed retained comparisons remain bound to
 their original code receipts.
 
+A later metadata correction expresses the five paid child-count averages as
+explicit twelve-month source windows. It removes their misleading
+December-to-year hold records and records the months and publication identity.
+It leaves all 415 compiled values/statuses and all 366 active target identities
+and their order unchanged. The other 410 references, including 101 other
+monthly UC references, and all unrelated holds are unchanged. This correction
+does not require another population solve or alter the comparisons above.
+
 ## Fresh combined source build and calibration
 
 The full unsampled source build completes in 391.51 seconds with 40 graph
@@ -70,8 +83,20 @@ nodes and all 15 source-scope gates passing. It uses stock UK 2.97.0, the
 pinned FRS2024/25 inputs and seed 578. The first attempt exposed two missing
 read declarations on the capital stage: `person.is_benunit_head` and
 `person.is_parent` existed in the full checkpoint but were removed by graph
-scoping. Adding those dependencies fixes execution. The regression exercises
-that exact scoped call, and the legacy-versus-graph parity check passes.
+scoping. Adding those dependencies fixes execution. The engine-free
+[test](../packages/microcosm-build/tests/test_uk_uc_capital_coherence.py) runs the
+production split node through executor projection and the actual capital
+transform, with positive SPI reporters and claimant roles that disagree with
+legal marriage. It checks the resulting donor values and redraw count.
+
+Existing [graph-stage integration](../packages/microcosm-build/tests/test_uk_graph.py)
+and [H2 parity](../packages/microcosm-graph/tests/test_acceptance_h_parity.py)
+exercise all 28 real transforms using committed synthetic source tables and
+the UK engine; the legacy-versus-graph parity check passes. Running every
+stage does not guarantee every conditional read is reached: capital donor
+selection reads claimant roles only when a reporter redraw occurs. The new
+regression forces that branch. A broader inventory of conditional branches
+and reusable projected-stage fixtures remains follow-up work.
 
 The final spine contains 52,846 households, 61,213 benefit units and 113,590
 persons, with complete original ancestry for all descendants. The 16,288
@@ -149,15 +174,44 @@ retained; they are not converted into a release pass. The source HMRC replay
 has reviewed-exclusion coverage only, with zero numerical comparison coverage,
 so the source build's gate pass is not an HMRC fit claim.
 
-The five stale exemptions are removed in this change: UC households with one,
-two, or five-plus children; UC single households with children; and private
-pension recipient counts in the £100,000–£150,000 income band. Replaying all
-366 saved errors through the tightened gate leaves exactly the two empty-tail
-failures. The CGT exemption remains unchanged. Any renewed breach on those
-five rows now faces the normal 25% bound. This does not alter the historical
-failed report or establish readiness under the default 256-update,
-uniform-allocation calibration: these experiments used the declared
-1,500-update, `family_equal` settings.
+The five retired exemptions originated in [#796](https://github.com/PolicyEngine/microcosm/issues/796).
+That adjudication deferred four UC composition residuals and a private-pension
+count residual attributed at the time to related solver pressure. Its earlier
+UC support/capital explanation was subsequently marked historical as claimant
+and child definitions changed; removing these entries does not validate that
+old causal attribution. The [pre-removal register](https://github.com/PolicyEngine/microcosm/blob/cc9c953c72b003406f4aeec8ae5e82bd211099bc/packages/microcosm-build/src/microcosm/build/uk/target_fit_reviewed_exclusions.json)
+preserves the original reasons, approval and expiry dates, and annotations.
+
+The fresh candidate's observed errors are inside the unchanged absolute 25%
+release bound:
+
+| Retired target ID | Relative error |
+|---|---:|
+| `dwp.uc.households_children_1@2025` | −19.448861% |
+| `dwp.uc.households_children_2@2025` | −6.420325% |
+| `dwp.uc.households_children_5_or_more@2025` | +0.124633% |
+| `dwp.uc.households_single_with_children@2025` | −14.006391% |
+| `hmrc/private_pension_income_count_income_band_100_000_to_150_000@2025` | +0.044352% |
+
+The [`retired_fit_deferral_evidence` block](evidence/uk-uc-882/calibration-comparison.json)
+records these exact target values, estimates and errors from the completed
+1,500-update, `family_equal` candidate, not a default-budget run. The canonical
+diagnostic SHA-256 is
+`971e6f8cac94b69ebf82364e83845f27d19fce38490a032524db237eb4884463`;
+its original failed-gate report and exact recovery are bound in the
+[population receipt](evidence/uk-uc-882/calibration-comparison.json).
+
+The gate deliberately rejects an exemption once its target is back inside
+the bound. Retiring these five entries removes those stale-exemption failures
+and restores ordinary enforcement: any renewed absolute error above 25%
+blocks release. All five targets remain in the solve. Replaying all 366 saved
+errors through the updated register leaves exactly the two empty-tail
+failures. `obr.capital_gains_tax@2025` remains deferred under
+[#875](https://github.com/PolicyEngine/microcosm/issues/875), with a +44.771038%
+error in this candidate; its exemption is unchanged. Neither the 25% gate nor
+the calibration exclusions or optimizer defaults change. This does not
+rewrite the original failed report or establish readiness under the default
+256 updates and uniform target allocation.
 
 ## Empty cells and bounded feasibility
 
@@ -169,7 +223,8 @@ every retained arm:
 | £2,300.01–£2,400 | 746.33 | 0 |
 | £2,400.01–£2,500 | 605.78 | 0 |
 
-Their annual matrix bands are £27,600–£28,800 and £28,800–£30,000. Reweighting
+Their annual matrix bounds are £27,600.12≤UC<£28,800.12 and
+£28,800.12≤UC≤£30,000, retaining the source labels’ penny offset. Reweighting
 leaves both at −100% under every feasible weight vector. These rows stay in
 the evaluation; they are not silently excluded to claim a successful fit.
 The same limitation was acknowledged in the
@@ -245,7 +300,7 @@ leave-one-source-out capacity.
 ## Date, claim and relationship limits
 
 The source audit found birth-date fields entirely blank in the delivered
-adult and child files. Current-year official documentation confirms completed
+adult and child files. Official 2024/25 documentation confirms completed
 age, adult age-80 top-coding and household `INTDATE` as interview-start date.
 It does not establish the numeric TAB date encoding or exactness of every age
 at that date. [UKDS variable listing](https://doc.ukdataservice.ac.uk/doc/9563/mrdoc/excel/9563_frs2425_variable_listing_eul.xlsx),
@@ -288,3 +343,33 @@ uv run --no-sync python tools/diagnose_uk_uc_support.py \
 The latter performs no population simulation or calibration fit. Its LP
 witnesses answer only their explicitly named feasibility questions. Keep
 `source_group_influence_private.json` local; aggregate reports omit IDs.
+
+The committed [LP evidence producer](../tools/diagnose_uk_uc_lp_evidence.py)
+reproduces the later named-opposition, full-supported and bounded-redistribution
+profiles, including heterogeneous tolerances and the fixed-mass/current-weight
+bounds. With the authenticated fresh archives and the recorded Python 3.13.14,
+NumPy 2.4.6 and SciPy 1.17.1 environment, run:
+
+```sh
+uv run --no-sync python tools/diagnose_uk_uc_lp_evidence.py \
+  --run-dir /path/to/fresh-current-recovered \
+  --output-dir /path/to/new-lp-reproduction \
+  --profile all \
+  --expected-evidence docs/evidence/uk-uc-882/calibration-comparison.json
+```
+
+The formatted producer reproduces all three historical families' deterministic
+constraint, solver-status, fit, concentration and protected-outcome fields
+exactly. Runtime and historical narrative/provenance are excluded from this
+comparison. The tool refuses changed archives, missing or unexpected zero
+rows, and mismatched replay versions; it verifies successful witnesses against
+the declared constraints before reporting feasibility. It exports aggregate
+results and verification receipts, without witness weights or source IDs.
+
+The public comparison receipt retains the historical receipt/script hashes
+and adds a separate reproduction attestation for the committed producer,
+imported support helper, saved inputs, versions and result. Its
+`expected_evidence_sha256` binds the comparison file read before appending
+that attestation. A later replay against the augmented file checks the same
+historical fields and creates its own receipt/hash. No population build,
+model calculation or Adam calibration was rerun for this reproduction.

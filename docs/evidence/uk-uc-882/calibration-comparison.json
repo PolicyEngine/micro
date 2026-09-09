@@ -5591,5 +5591,113 @@
       "The concentration comparison covers aggregate household weight and original-source household weight, not a guarantee about concentration within every benefit or target cell.",
       "No global optimality, calibration-loss improvement, ESS guarantee, or release-readiness conclusion follows from this single feasibility witness."
     ]
+  },
+  "retired_fit_deferral_evidence": {
+    "canonical_diagnostics_sha256": "971e6f8cac94b69ebf82364e83845f27d19fce38490a032524db237eb4884463",
+    "population_arm": "fresh-current-recovered",
+    "population_receipt_sha256": "87c8070aecaaa781d8dd795ee1fec2f578426f73efa168d1837f86bc3eb7ce50",
+    "model_year": 2025,
+    "solver_epochs": 1500,
+    "target_weight_rule": "family_equal",
+    "unchanged_release_absolute_relative_error_bound": 0.25,
+    "original_adjudication": "https://github.com/PolicyEngine/microcosm/issues/796",
+    "retired_target_errors": [
+      {
+        "name": "dwp.uc.households_children_1@2025",
+        "target": 1190123.8333333333,
+        "final_estimate": 958658.2978921045,
+        "relative_error": -0.19448861451075508
+      },
+      {
+        "name": "dwp.uc.households_children_2@2025",
+        "target": 1049895.5,
+        "final_estimate": 982488.795085907,
+        "relative_error": -0.0642032515751263
+      },
+      {
+        "name": "dwp.uc.households_children_5_or_more@2025",
+        "target": 76320.08333333333,
+        "final_estimate": 76415.20346069336,
+        "relative_error": 0.00124633154479912
+      },
+      {
+        "name": "dwp.uc.households_single_with_children@2025",
+        "target": 2138780.1666666665,
+        "final_estimate": 1839214.2526192775,
+        "relative_error": -0.14006391059548154
+      },
+      {
+        "name": "hmrc/private_pension_income_count_income_band_100_000_to_150_000@2025",
+        "target": 109000.0,
+        "final_estimate": 109048.34322357178,
+        "relative_error": 0.00044351581258511325
+      }
+    ],
+    "retained_cgt_adjudication": "https://github.com/PolicyEngine/microcosm/issues/875",
+    "retained_cgt_target": "obr.capital_gains_tax@2025",
+    "limitations": [
+      "The evidence comes from the declared 1500-epoch family_equal run, not the default 256-epoch uniform allocation.",
+      "The existing terminal gate rejects stale deferrals once a target is inside its 25% bound; retirement restores that unchanged bound for renewed breaches.",
+      "The CGT deferral and both zero-support UC payment failures remain; no calibration target, weight, historical receipt or failed-gate report is altered."
+    ]
+  },
+  "lp_evidence_reproduction": {
+    "status": "exact_deterministic_parity",
+    "command": "uv run --no-sync python tools/diagnose_uk_uc_lp_evidence.py --run-dir /path/to/fresh-current-recovered --output-dir /path/to/new-lp-reproduction --profile all --expected-evidence docs/evidence/uk-uc-882/calibration-comparison.json",
+    "producer": {
+      "path": "tools/diagnose_uk_uc_lp_evidence.py",
+      "sha256": "425c2595a6a6be5a5a783ac5a431433a366b546d5f478a7f162dcc34c6552481"
+    },
+    "imported_support_helper": {
+      "path": "tools/diagnose_uk_uc_support.py",
+      "sha256": "15df89f1fd06f943da77630e5ddd70c276b30bd0d7a0be606817f3f6aef34e3c"
+    },
+    "versions": {
+      "python": "3.13.14",
+      "numpy": "2.4.6",
+      "scipy": "1.17.1"
+    },
+    "profile": "all",
+    "probe_counts": {
+      "named-opposition": 6,
+      "full-supported": 3,
+      "bounded-redistribution": 1
+    },
+    "result_sha256": "527dc116dc003e6693a67b4fe46362c286635df2e0b28e8909328f39a6d22cf0",
+    "verification_receipt_sha256": "54cb94ff74a199fc253be86cb71ac6565865354d7272f7e77f1841174abfa4d9",
+    "expected_evidence_sha256": "a0f344bf217099a0db24b5dc343d0ea0fc0dcce41d049353193b56f1f3a67220",
+    "expected_evidence_hash_scope": "Comparison JSON as read before appending this reproduction block, including the retirement evidence. A later replay against the appended JSON attests different comparison bytes while checking the same historical deterministic fields.",
+    "population_receipt_sha256": "87c8070aecaaa781d8dd795ee1fec2f578426f73efa168d1837f86bc3eb7ce50",
+    "matrix_sha256": "9d5e1598c7751dce94c6446e50a9e10d2a6a2544574720cd471c055db847c4d5",
+    "input_archive_sha256": "4a69939b0fb48570cfe1dec931a89b5445b91d8e527999ca0db672552d5bd825",
+    "weight_archive_sha256": "dd1a4953cd7243f7491d9d2d274c1deaa0ee71c757ba2bbf37ca3e0520fbe434",
+    "comparison": {
+      "excluded_runtime_fields": [
+        "elapsed_seconds"
+      ],
+      "historical_only_fields": [
+        "aggregate_receipt_sha256",
+        "limitations",
+        "limits",
+        "probe_script_sha256",
+        "protected_outcome_basis",
+        "purpose"
+      ],
+      "historical_narrative_paths": [
+        "material_tradeoffs.interpretation"
+      ]
+    },
+    "historical_receipts_preserved": {
+      "fresh_named_opposition_lp_probes": "5f8ab745bc9c812919e7bbaaf1bcfa4402439b106b64b63159a32975566802f4",
+      "fresh_full_supported_lp_probes": "9704eaa7b7ebece8cc7bcb7f70a03a0ec472ae6d46f2b4fb4d5eac30b9bf5bad",
+      "fresh_bounded_redistribution_lp_probes": "2aa871694a54d2f57e81589c9241238b277b1533abdb6c8ff90fef7389623a07"
+    },
+    "historical_named_probe_script_sha256": "f99ca7274335d1096e7715313edfc913f05d98354d31d2ddc4962c578f145931",
+    "limits": [
+      "Every historical deterministic number, status, row selection, bound, tolerance, concentration and protected-outcome field matches exactly; this does not establish global optimality or release readiness.",
+      "Original receipt hashes and the original private-script hash remain historical identities; the new producer and imported-helper identities are recorded separately.",
+      "The reproduction runs no population engine or Adam calibration and exports no witness weights or original source IDs.",
+      "The conditional wider bounded probe was not run because the tighter bound remained feasible."
+    ]
   }
 }
