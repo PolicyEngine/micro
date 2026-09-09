@@ -666,3 +666,37 @@ e2667da9). Comparisons across that line carry an input-and-solver difference, as
   the RF-UC and childcare scripts were killed by the OS (out of memory, 26 GB machine). Roll-up "review" on
   all three. A T6 against the default enhanced-FRS snapshot (a9e52499) would fit; not run.
 
+### eFRS legs and T6 replays (2026-09-09 14:48–16:07Z, `spine-p/efrs-legs/`)
+
+María asked whether the eFRS could be added to the downstream section rather than assumed. The three
+uk-candidate-eval instruments were re-run with the enhanced FRS (7b0a06f0) as the comparison file, and the
+P95b/R17 pair re-run beside them, all on policyengine-uk **2.97.0** (the rebased lock), so one table holds
+P50, P95b, R17 and the eFRS:
+
+- **T5 eight reforms** (impact on the government balance, £bn; expected = uk-data's published expectation,
+  tolerance 5): P50 / P95b / R17 / eFRS pass **7 / 7 / 6 / 8** of 8. The eFRS lands the UC taper reform at
+  −23.2 (expected −17.2, in tolerance) where P50 / P95b / R17 give −35.4 / −35.9 / −34.3 — the one reform the
+  microcosm family misses, dense and compact alike; VAT +2pp: eFRS 33.4 vs expected 31.3, P50 24.7, R17 21.1.
+  On the six income-tax and benefit reforms all four files agree within 0.5bn.
+- **T4 admin anchors**: P50 and P95b pass the same three (UC spend, UC caseload, carer element) and fail the
+  same five as R17; against the eFRS the differentiator "multi-family households" reads 6.3m on the
+  candidates and 2.9m on the eFRS (anchor 244k — all far off), income tax 269bn vs the eFRS 293bn (anchor
+  331bn), population 68.4m vs 69.6m (anchor 69.5m).
+- **T3 variable distributions against the eFRS**: P50 105 pass / 52 attention / 33 fail / 1 expected; P95b
+  103 / 53 / 34 / 1 (against R17 the same runs fail 9): the extra fails are variables the microcosm family
+  models differently from the eFRS (charitable gifts, corporate wealth, education spending, fuel spending,
+  AFCS/BSP reported), not size effects.
+- **T6 dashboard replays against the default eFRS snapshot (a9e52499), uk-data environment**: all three
+  dashboards ran for both candidates, roll-up "review" (the replay's only non-failing verdict when metrics
+  move). Autumn budget (vendored model 2.65.3): 1,302 metrics, P50 819 ok / 473 flagged (472 "move", 6
+  benchmark regressions, 3 band migrations), candidate closer to or level with the benchmark on 25 of 37
+  benchmarked metrics (bands close/moderate/divergent/none 6/10/13/8 vs the eFRS 3/7/19/8); combined
+  budgetary impact FY 2026-27 −4.0bn vs the eFRS −7.9bn. RF UC (2.89.2): 27 metrics, 13 ok / 14 flagged,
+  closer on 7 of 10; working-age adults in UC 8.69m vs the eFRS 7.93m (RF headline 8.5m). Childcare (2.89.2):
+  35 metrics, 18 ok / 15 flagged / 2 excluded, closer on 8 of 17; Tax-Free Childcare 0.97bn vs 1.23bn (HMRC
+  0.63bn), UC childcare element 2.13bn vs 1.84bn. P95b within a few percent of P50 on every dashboard.
+  Controls pass (income-curve identical-control 20,100 cells).
+
+All four files' numbers and the per-metric T6 tables are under `efrs-legs/` (JSON + markdown per
+dashboard and run); the evaluation page carries the four-file tables.
+
