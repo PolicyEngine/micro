@@ -747,3 +747,5 @@ Layer 3: ACCEPTED-SHARED-RESTORE.patch applied; all declared postimages and pres
 Layer 4: PUF-SUPPORT-MERGE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
 
 Layer 5: SOLVE-MERGE-PROPOSAL.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 6: J-GRAPH-COMPATIBILITY.patch applied; all declared postimages and preservation hashes verified. No tests executed.
