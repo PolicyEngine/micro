@@ -759,3 +759,5 @@ Layer 9: F-JOINT-GEOGRAPHY-GATE.patch applied; all declared postimages and prese
 Layer 10: SOURCE-CLOSURE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
 
 Layer 11: PLACEMENT-ADDITIONS.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 12: ORDINARY-CLOSURE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
