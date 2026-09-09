@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.ledger_targets import MONTHLY_WINDOW_OPERATIONS
 from microcosm.build.target_reference_authoring import (
     TargetReferenceAuthoringConfig,
     author_target_references,
@@ -73,10 +74,10 @@ DESCRIPTION = (
     "target_id or an incumbent-compatible fan-out row name; ledger_selector "
     "is the contract selector plus geography pins; entity is from_entity, "
     "then map_to, then household; measure is the prepared-column metric name "
-    "or fan-out row name; family is the contract family; period is 2025 "
-    "(opening-year convention for the FRS 2024-25 survey line). Observed "
-    "values stay in Ledger facts and resolve by identity unless the reference "
-    "declares value_operation=sum for a genuine multi-fact residue. Deferred "
+    "or fan-out row name; family is the contract family; period is the model "
+    "and calibration year 2025. Observation windows are declared separately "
+    "from the FRS 2024-25 survey vintage. Observed values stay in Ledger facts "
+    "and resolve through each reference's declared value operation. Deferred "
     "classes and geography-pin decisions are recorded in "
     "uk/target_reference_membership.json. metadata.measure_kind records that "
     "measures are prepared columns produced from the contract binding payload "
@@ -287,7 +288,10 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
         declared = target.get("value_operation")
         if declared is not None:
             operations[target_id] = str(declared)
-        if target.get("family") == "dwp_universal_credit":
+        if (
+            target.get("family") == "dwp_universal_credit"
+            and declared not in MONTHLY_WINDOW_OPERATIONS
+        ):
             operations[target_id] = "calendar_year_average"
     return operations
 
@@ -341,7 +345,14 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
         if "source_months" in measurement:
             if target.get("family") != "dwp_universal_credit":
                 raise ValueError("source_months is currently a UK UC-only declaration.")
-            metadata.update(uc_source_month_metadata(measurement["source_months"]))
+            metadata.update(
+                uc_source_month_metadata(
+                    measurement["source_months"],
+                    value_operation=str(
+                        target.get("value_operation", "calendar_year_average")
+                    ),
+                )
+            )
         if metadata:
             result[str(target["target_id"])] = metadata
     return result
