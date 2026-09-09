@@ -751,3 +751,5 @@ Layer 5: SOLVE-MERGE-PROPOSAL.patch applied; all declared postimages and preserv
 Layer 6: J-GRAPH-COMPATIBILITY.patch applied; all declared postimages and preservation hashes verified. No tests executed.
 
 Layer 7: F-CATALOGUE-OPTIMIZATION.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 8: GRAPH-ATTACHMENT-METADATA.patch applied; all declared postimages and preservation hashes verified. No tests executed.

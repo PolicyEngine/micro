@@ -3,6 +3,8 @@
 These store references never enter node records or portable manifest identity.
 """
 
+import hashlib
+
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +23,9 @@ from .store import (
     _FRAME_FORMAT,
     ContentStore,
     StoreCorrupt,
+    StoreUnavailable,
+    _canonical_json,
+    _encode_frame_metadata,
     _payload_table,
     _write_frame,
 )
@@ -80,9 +85,8 @@ class _LazyPopulations(Mapping[str, PopulationView]):
                         "The decoded population attachment changed after execution."
                     )
                 view = PopulationView(frame)
-                # The existing Frame store codec omits metadata. Retain the
-                # original Frame's already-frozen scalar/container descriptor,
-                # which cannot own tables/arrays, for this live manifest only.
+                # Retain the original already-frozen metadata object after
+                # the decoded snapshot has passed the content check above.
                 object.__setattr__(view, "_metadata", reference.metadata)
                 self._cache[version] = view
             return view
@@ -205,6 +209,16 @@ def _snapshot(
     """
 
     population.frame.revalidate()
+    metadata_sha256 = hashlib.sha256(
+        _canonical_json(_encode_frame_metadata(population.frame.metadata))
+    ).hexdigest()
+
+    def validate_existing(metadata: Mapping[str, object]) -> None:
+        if metadata.get("frame_format") != _FRAME_FORMAT:
+            raise StoreUnavailable("Stored frame predates complete metadata storage.")
+        if metadata.get("frame_metadata_sha256") != metadata_sha256:
+            raise StoreCorrupt("The same frame key cannot carry different metadata.")
+
     with TemporaryDirectory(
         prefix="population-attachment-", dir=store.tmp
     ) as directory:
@@ -233,7 +247,17 @@ def _snapshot(
         def publish(destination: Path) -> Mapping[str, object]:
             for child in staging.iterdir():
                 child.rename(destination / child.name)
-            return {"frame_format": _FRAME_FORMAT, "node_key": structural.key}
+            return {
+                "frame_format": _FRAME_FORMAT,
+                "node_key": structural.key,
+                "frame_metadata_sha256": metadata_sha256,
+            }
 
-        store._put(key, "frame", publish, verify_existing=verify_existing)
+        store._put(
+            key,
+            "frame",
+            publish,
+            verify_existing=verify_existing,
+            validate_existing=validate_existing,
+        )
     return key, payload_hash
