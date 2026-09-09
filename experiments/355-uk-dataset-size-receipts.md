@@ -612,3 +612,22 @@ the stretch bound 10 on the HT baseline stops it from re-weighting the few survi
 whether doubling the support closes those gaps; a mass-conserving refit, or protecting a carrier per
 national composition row the way the local rows are protected, are the two machinery levers if it does not.
 
+### Rebase onto main and push (María, 2026-09-09 ~13:10Z)
+
+`uk-dataset-sizes-355` rebased onto main a19582bd (#881 policy-year rule, #883 UC claimant contracts with
+best-iterate retention in `_optimize`); 26 branch commits replayed (the three superseded re-pin commits fell
+away), two `solve.py` conflicts resolved by keeping both sides (main's `selection_receipt` kwarg beside the
+gate-initialisation splat; main's `iterate_selection_receipt` beside `budget_search`). Pins re-cut on the
+combined tree: bundles am 6352283c… / be 03b57d3f… / uk 1f4c6fd8…, loader golden 66d468c0…, seed map
+fbc9ca74…, seed protocol 28869ae8…, US spec 86ad8bb9… (the multispine test's live binding; its second
+`spec_sha256` is a fixture constant), the coverage report and the H1 calibrate fixture; main's new
+pre-best-iterate oracle attests `gates.py` bytes, re-pinned 379e4adb… → 14608a5e… because #355's gates
+changes (per-record initial probabilities, protected mask) move it. Main now locks policyengine-uk
+**2.97.0**; the run tree's venv was synced (`uv sync --locked --extra us --extra uk`). Green on the rebased
+tree at 2.97.0: calibrate 236, UK build suites 100, registers/ledger 84, spec pins + graph parity 58,
+multispine 187, engine re-run 120; ruff, format and the partition verification clean.
+
+Consequence for the next runs: S4 and any later size run execute on engine 2.97.0 with main's best-iterate
+dense solver, so their dense reference will not be bit-identical to the one P50 and P95b share (2.94.0,
+e2667da9). Comparisons across that line carry an input-and-solver difference, as the R17 comparison does.
+
