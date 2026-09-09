@@ -176,3 +176,17 @@ refusals and subset-stable assignment. Receipt SHA256:
 `404deb7666b3ac9b8a654181228c545ab95c131f30a1fbe65a2e15d5a08a4c4c`.
 Actual normalized block support and attachment before the survey clone remain
 pending; these tests do not establish native geographic fit.
+
+`us_runtime/graph_atomic_survey_clone.py` now declares the combined sequence:
+shared import, assignment, derivation and integrity gate, then the existing
+combined-survey support clone and an inherited-mapping gate. The graph compiler
+makes the clone depend on every member of its base version, including the
+pre-clone gate. The post-clone gate never draws another location. An actual
+executor control passes cold execution and required replay: four invented
+households become eight, every location column is inherited, all entity rows
+are copied, and each household weight is split equally across the pair.
+Subset mapping verification also passes. Receipt SHA256:
+`1bb75a5ee53edcbdd199a6d0163cbe75c32e54c80513cb3eb8d13021c3c2b1c3`.
+A separate source-only Codex review found no actionable defects. Native observed
+column qualification and geography-aware reconstruction in the survey runner
+and origin-budget verifier remain pending.
