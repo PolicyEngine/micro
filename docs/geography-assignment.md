@@ -9,6 +9,32 @@ separate declared population operation with explicit identities and weights.
 This document records the intended contract and the implementation gap. It does
 not certify a new geographic source, assignment run or population file.
 
+## Declarative country capability
+
+Geography is a declarative country capability backed by shared graph operators.
+A country declares its atomic area type, code system and vintage, source mapping
+artifacts, observed-geography constraints and sampling-weight convention. The UK
+declaration can select an area system by nation. Adding a country should not
+require writing a country-specific assignment or derivation kernel.
+
+The shared assignment operator selects the atomic area using the declared
+support and stable household identity. Shared lookup/join operations derive
+larger geographies from identified mappings. If an input already has a qualified
+atomic area, validate and retain it. Source acquisition and normalization may
+still require publisher-specific adapters; they produce the common support and
+mapping contracts, rather than owning a separate assignment algorithm.
+
+Sampling and derivation remain executable graph operations with typed inputs,
+outputs and replay identity. A country configuration does not itself execute
+them. Mapping edges retain their relation type, including exact nesting or an
+explicit best-fit convention. Prefer existing graph lookup/join primitives where
+they support these contracts; introduce only the shared behavior they lack.
+
+The existing country-spec geography declaration is a starting point, but its
+legacy clone-and-assign contract and country-specific runtime references do not
+yet implement this shared atomic-area contract. Preserve those compatibility
+paths while the shared operators and country adapters receive their own checks.
+
 ```mermaid
 flowchart LR
   S[Combined survey spine] --> A[Assign one small area per household]
