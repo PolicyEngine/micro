@@ -12,7 +12,11 @@ from collections.abc import Callable, Mapping
 import numpy as np
 import torch
 
-from microcosm.calibrate.gates import HardConcrete
+# Frozen control: the gate module this oracle runs with is the sibling copy the
+# test loads under this name, never the live microcosm.calibrate.gates, so a
+# gate-behaviour change shows as a numeric mismatch rather than being absorbed.
+from pre_best_iterate_gates import HardConcrete
+
 from microcosm.calibrate.solve import (
     _PRUNE_REL_ATOL,
     _apply_constraint,

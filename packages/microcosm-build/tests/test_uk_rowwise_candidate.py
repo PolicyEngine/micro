@@ -1822,3 +1822,375 @@ def test_candidate_multi_block_engine_run_is_never_releasable(
         "single_block_engine": False,
         "release_blocking_gates_passed": True,
     }
+
+
+def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
+    monkeypatch, tmp_path
+):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "spine.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    out = tmp_path / "k300"
+    _write_staging_h5(input_h5, households_per_region=52)
+    ladder = _write_ladder(ladder_path)
+    import microcosm.build.uk_runtime.battery_bindings as bindings
+
+    monkeypatch.setattr(
+        bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+    status = builder.main(
+        [
+            "--input-h5",
+            str(input_h5),
+            "--ladder",
+            str(ladder_path),
+            "--out",
+            str(out),
+            "--n-clones",
+            "2",
+            "--dataset-households",
+            "300",
+            "--selection-seed",
+            "11",
+            "--epochs",
+            "2",
+            "--skip-holdout",
+            "--seed",
+            "7",
+        ]
+    )
+    assert status in (0, 1)  # Gate failures remain reportable candidates.
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["releasable"] is False
+    assert manifest["release_posture"]["size_certification_present"] is False
+    size = manifest["solve"]["dataset_size"]
+    assert size["requested_households"] == size["realized_households"] == 300
+    assert size["pool_households"] == 416
+    assert manifest["parameters"]["n_clones"] == 2
+    assert (
+        manifest["weights"]["stretch_reference"]
+        == "normalized_horvitz_thompson_w_over_q"
+    )
+    path = out / builder.CANDIDATE_FILENAME_TEMPLATE.format(calibration_year=2025)
+    with pd.HDFStore(path, "r") as store:
+        households = store["household"]
+        persons = store["person"]
+        benunits = store["benunit"]
+    assert len(households) == 300
+    assert set(persons.person_household_id) == set(households.household_id)
+    assert set(persons.person_benunit_id) == set(benunits.benunit_id)
+    assert len(_spool_rows(out)) == 1
+
+    # The selection seed moves the draw only; the manifest records both seeds.
+    assert manifest["parameters"]["seed"] == 7
+    assert manifest["parameters"]["selection_seed"] == 11
+    assert size["seed"] == 11
+    assert manifest["parameters"]["selection_pi_hi"] == 1.0
+    assert size["selection_pi_hi"] == 1.0
+    assert size["selection_receipt"]["pi_hi"] == 1.0
+    assert size["selection_feasibility"]["requested_pi_hi"] == 1.0
+    assert size["selection_feasibility"]["feasible_at_requested_pi_hi"] is True
+
+    # The dense solve the selection was cut from ships as evidence.
+    dense = size["dense_reference"]
+    assert dense["final_loss"] == size["dense_loss"]
+    assert dense["n_households"] == 416
+    assert dense["weights"]["n_records"] == 416
+    assert {"effective_sample_size", "max_to_median_positive_weight"} <= set(
+        dense["weights"]
+    )
+    assert dense["diagnostics_file"] == builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
+    outputs = manifest["outputs"]
+    dense_csv = out / builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
+    selection_csv = out / builder.DATASET_SIZE_SELECTION_FILENAME
+    assert Path(outputs["dense_reference_diagnostics"]["path"]) == dense_csv.resolve()
+    assert Path(outputs["dataset_size_selection"]["path"]) == selection_csv.resolve()
+    assert (
+        outputs["dataset_size_selection"]["sha256"]
+        == hashlib.sha256(selection_csv.read_bytes()).hexdigest()
+    )
+    dense_rows = pd.read_csv(dense_csv)
+    assert len(dense_rows) == manifest["solve"]["n_targets"]
+    assert dense_rows.columns[0] == "grain"
+    assert {"target", "final_estimate", "abs_relative_error"} <= set(dense_rows.columns)
+    selection = pd.read_csv(selection_csv)
+    assert list(selection.columns) == [
+        "pool_row_index",
+        "household_id",
+        "clone_index",
+        "design_weight",
+        "inclusion_probability",
+        "certainty",
+        "ht_baseline_weight",
+        "refit_weight",
+    ]
+    assert len(selection) == 300
+    assert selection["pool_row_index"].is_unique
+    assert selection["pool_row_index"].max() < 416
+    assert set(selection["household_id"]) == set(households.household_id)
+    assert (selection["refit_weight"] > 0).all()
+    assert (selection["design_weight"] > 0).all()
+    assert (
+        int(selection["certainty"].sum())
+        == size["selection_receipt"]["certainty_count"]
+    )
+    assert int(selection["certainty"].sum()) == size["protected_carriers"]
+
+
+def test_selection_seed_requires_a_dataset_size(tmp_path):
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+            "--selection-seed",
+            "11",
+        ]
+    )
+    with pytest.raises(ValueError, match="requires --dataset-households"):
+        builder._validate_cli_args(args)
+
+
+@pytest.mark.parametrize(
+    ("argv_tail", "message"),
+    [
+        (["--selection-pi-hi", "0.95"], "requires --dataset-households"),
+        (["--dataset-households", "10", "--selection-pi-hi", "0"], r"in \(0, 1\]"),
+        (["--dataset-households", "10", "--selection-pi-hi", "1.5"], r"in \(0, 1\]"),
+    ],
+)
+def test_selection_pi_hi_is_candidate_only_and_bounded(tmp_path, argv_tail, message):
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+            *argv_tail,
+        ]
+    )
+    with pytest.raises(ValueError, match=message):
+        builder._validate_cli_args(args)
+
+
+def test_dense_candidate_manifest_has_no_size_sidecars(tmp_path):
+    builder = _load_builder_module()
+    paths = builder._output_paths(tmp_path, source_year=2024, calibration_year=2025)
+    assert paths["dense_reference"].name == builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
+    assert paths["selection"].name == builder.DATASET_SIZE_SELECTION_FILENAME
+    assert builder._SIZE_RUN_ONLY_OUTPUTS == {"dense_reference", "selection"}
+
+
+def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+            "--dataset-households",
+            "50000",
+            "--release-candidate",
+        ]
+    )
+    with pytest.raises(ValueError, match="candidate-only"):
+        builder._validate_cli_args(args)
+
+
+def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
+    monkeypatch, tmp_path, capsys
+):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    from microcosm.build.uk_runtime.size_checkpoint import (
+        SIZE_CHECKPOINT_ARRAYS_FILENAME,
+        SIZE_CHECKPOINT_MANIFEST_FILENAME,
+    )
+
+    input_h5 = tmp_path / "spine.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    _write_staging_h5(input_h5, households_per_region=52)
+    ladder = _write_ladder(ladder_path)
+    import microcosm.build.uk_runtime.battery_bindings as bindings
+
+    monkeypatch.setattr(
+        bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+    common = [
+        "--input-h5",
+        str(input_h5),
+        "--ladder",
+        str(ladder_path),
+        "--n-clones",
+        "2",
+        "--dataset-households",
+        "300",
+        "--epochs",
+        "2",
+        "--skip-holdout",
+        "--seed",
+        "7",
+    ]
+    first = tmp_path / "first"
+    status = builder.main([*common, "--out", str(first), "--selection-pi-hi", "0.5"])
+    assert status in (0, 1)
+    # The solve is no longer silent: probe verdicts and the search stop reach
+    # stderr as they happen, beside the phase lines.
+    err = capsys.readouterr().err
+    assert "probe 1/10 done:" in err and "search stopped:" in err
+    assert "dense solve: epoch 2/2" in err and "refit: epoch 2/2" in err
+    assert "size selection checkpoint written to" in err
+    assert (first / SIZE_CHECKPOINT_ARRAYS_FILENAME).is_file()
+    checkpoint = json.loads((first / SIZE_CHECKPOINT_MANIFEST_FILENAME).read_text())
+    assert checkpoint["selection"]["households"] == 300
+    assert checkpoint["selection"]["search_pi_hi"] == 0.5
+    assert checkpoint["identity"]["dataset_households"] == 300
+    assert checkpoint["identity"]["epochs"] == 2
+    # The identity carries the solve doctrine; the provenance names the
+    # writing run (reported on resume, not compared).
+    assert checkpoint["identity"]["doctrine"] == builder._doctrine_bounds()
+    assert set(checkpoint["provenance"]) == {"code_pin", "build_id"}
+    manifest = json.loads((first / builder.MANIFEST_FILENAME).read_text())
+    written = manifest["solve"]["dataset_size"]["checkpoint"]["written"]
+    assert "written_at" not in written and "directory" not in written
+    size_first = manifest["solve"]["dataset_size"]
+    assert 0 < size_first["certainty_share"] <= 1
+    assert (
+        size_first["boundary_draws"]
+        == 300 - (size_first["selection_receipt"]["certainty_count"])
+    )
+    assert size_first["zero_target_rows"] >= 0
+    weights_block = manifest["weights"]
+    assert weights_block["stretch_reference"] == "normalized_horvitz_thompson_w_over_q"
+    assert weights_block["realized_max_weight_ratio_vs_stretch_reference"] > 0
+    assert weights_block["realized_max_weight_ratio_vs_design"] > 0
+    assert manifest["parameters"]["size_checkpoint"] is True
+    assert manifest["parameters"]["resume_size_checkpoint"] is None
+    written = manifest["solve"]["dataset_size"]["checkpoint"]["written"]
+    assert written["arrays_sha256"] == checkpoint["arrays_sha256"]
+    assert manifest["solve"]["dataset_size"]["selection_reused"] is False
+    rows = _spool_rows(first)
+    assert len(rows) == 1
+    assert "size_selection_checkpointed" in rows[0].phases_reached
+
+    # Resume on the same inputs: no dense solve, no search, same draw and refit.
+    second = tmp_path / "second"
+    status = builder.main(
+        [
+            *common,
+            "--out",
+            str(second),
+            "--selection-pi-hi",
+            "0.5",
+            "--resume-size-checkpoint",
+            str(first),
+        ]
+    )
+    assert status in (0, 1)
+    assert not (second / SIZE_CHECKPOINT_ARRAYS_FILENAME).exists()
+    resumed = json.loads((second / builder.MANIFEST_FILENAME).read_text())
+    assert resumed["parameters"]["size_checkpoint"] is False
+    assert resumed["parameters"]["resume_size_checkpoint"] == str(first.resolve())
+    size = resumed["solve"]["dataset_size"]
+    assert size["selection_reused"] is True
+    assert size["selection_search_pi_hi"] == 0.5
+    assert (
+        size["checkpoint"]["resumed_from"]["arrays_sha256"]
+        == (checkpoint["arrays_sha256"])
+    )
+    assert size["dense_loss"] == manifest["solve"]["dataset_size"]["dense_loss"]
+    assert (
+        size["selection_l0_lambda"]
+        == (manifest["solve"]["dataset_size"]["selection_l0_lambda"])
+    )
+    first_selection = pd.read_csv(first / builder.DATASET_SIZE_SELECTION_FILENAME)
+    second_selection = pd.read_csv(second / builder.DATASET_SIZE_SELECTION_FILENAME)
+    pd.testing.assert_frame_equal(first_selection, second_selection)
+    assert "size_selection_resumed" in _spool_rows(second)[0].phases_reached
+
+    # Another threshold re-draws from the same checkpoint and records both.
+    third = tmp_path / "third"
+    status = builder.main(
+        [
+            *common,
+            "--out",
+            str(third),
+            "--selection-pi-hi",
+            "1.0",
+            "--resume-size-checkpoint",
+            str(first),
+        ]
+    )
+    assert status in (0, 1)
+    redrawn = json.loads((third / builder.MANIFEST_FILENAME).read_text())
+    assert redrawn["solve"]["dataset_size"]["selection_pi_hi"] == 1.0
+    assert redrawn["solve"]["dataset_size"]["selection_search_pi_hi"] == 0.5
+
+    # A resume whose inputs differ refuses by name, before any solve.
+    different_epochs = list(common)
+    different_epochs[different_epochs.index("--epochs") + 1] = "3"
+    with pytest.raises(ValueError, match="epochs: checkpoint 2 != run 3"):
+        builder.main(
+            [
+                *different_epochs,
+                "--out",
+                str(tmp_path / "fourth"),
+                "--resume-size-checkpoint",
+                str(first),
+            ]
+        )
+    with pytest.raises(ValueError, match="requires --dataset-households"):
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(tmp_path / "fifth"),
+                "--resume-size-checkpoint",
+                str(first),
+            ]
+        )
+    # An --out that already holds a checkpoint refuses before any solve
+    # (Vahid's should-fix 2): the checkpoint writer's own refusal came hours
+    # too late.
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    (stale / SIZE_CHECKPOINT_ARRAYS_FILENAME).write_bytes(b"stale")
+    (stale / SIZE_CHECKPOINT_MANIFEST_FILENAME).write_text("{}")
+    with pytest.raises(FileExistsError, match="already holds a size checkpoint"):
+        builder.main([*common, "--out", str(stale)])
+    assert not (stale / builder.MANIFEST_FILENAME).exists()
+    assert manifest["solve"]["dataset_size"]["checkpoint"]["written"]["stage"] == (
+        "before_exact_count_draw"
+    )
+    resumed_receipt = resumed["solve"]["dataset_size"]["checkpoint"]["resumed_from"]
+    assert (
+        resumed_receipt["provenance"]["build_id"]
+        == checkpoint["provenance"]["build_id"]
+    )
+    assert "written_at" not in resumed_receipt

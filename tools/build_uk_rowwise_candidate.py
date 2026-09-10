@@ -91,6 +91,7 @@ from microcosm.build.uk_runtime import (
     runtime_provenance,
     solve_uk_rowwise_weights_under_doctrine,
     spine_provenance_from_sidecar,
+    uk_fit_by_family,
     uk_household_weight_kind,
     uk_ladder_area_support_summary,
     uk_ladder_household_uprating,
@@ -99,6 +100,7 @@ from microcosm.build.uk_runtime import (
     uk_local_target_surface,
     uk_support_limited_misses,
     uk_time_period,
+    uk_weight_summary,
     write_uk_calibration_diagnostics,
     write_uk_rowwise_dataset,
 )
@@ -135,6 +137,11 @@ CALIBRATION_DIAGNOSTICS_FILENAME = "calibration_diagnostics.json"
 AREA_SUPPORT_FILENAME = "area_support_summary.csv"
 PAST_CAP_FILENAME = "past_cap_census.json"
 LOCAL_REGISTRY_FILENAME = "local_target_registry.json"
+DENSE_REFERENCE_DIAGNOSTICS_FILENAME = "dense_reference_diagnostics.csv"
+DATASET_SIZE_SELECTION_FILENAME = "dataset_size_selection.csv"
+
+#: Outputs a run writes only when ``--dataset-households`` is set.
+_SIZE_RUN_ONLY_OUTPUTS = frozenset({"dense_reference", "selection"})
 
 _CONSERVE_MASS = False
 _TARGET_RECORDS: int | None = None
@@ -472,6 +479,83 @@ def _pin_from_artifact(info: Mapping[str, Any]) -> dict[str, object]:
     }
 
 
+def _stderr_progress(line: str) -> None:
+    """Solver progress (epoch losses, budget probes, the search verdict)."""
+    print(line, file=sys.stderr, flush=True)
+
+
+def _refuse_stale_size_checkpoint(args: argparse.Namespace, out_dir: Path) -> None:
+    """Refuse an --out holding a checkpoint before the solve, not after it.
+
+    The checkpoint writer refuses to overwrite, but it runs after the dense
+    solve and the search; a stale checkpoint in --out must fail here, before
+    the hours are spent.
+    """
+    if args.dataset_households is None or args.no_size_checkpoint:
+        return
+    if args.resume_size_checkpoint is not None:
+        return
+    from microcosm.build.uk_runtime.size_checkpoint import (
+        SIZE_CHECKPOINT_ARRAYS_FILENAME,
+        SIZE_CHECKPOINT_MANIFEST_FILENAME,
+    )
+
+    existing = sorted(
+        str(out_dir / name)
+        for name in (SIZE_CHECKPOINT_ARRAYS_FILENAME, SIZE_CHECKPOINT_MANIFEST_FILENAME)
+        if (out_dir / name).exists()
+    )
+    if existing:
+        raise FileExistsError(
+            "refusing to run into an --out that already holds a size checkpoint: "
+            f"{existing}. Resume from it with --resume-size-checkpoint, or choose "
+            "another --out."
+        )
+
+
+def _size_checkpoint_identity(
+    args: argparse.Namespace,
+    *,
+    pins: Mapping[str, Mapping[str, object]],
+    source_year: int,
+) -> dict[str, object]:
+    """Everything a size checkpoint must share with the run that resumes it.
+
+    The pool (spine, ladder, clones, seed, sampling), the target surface
+    (ledger digests, year, rule, engine blocks) and the solve settings the
+    checkpointed dense solve and search were made with. The draw threshold is
+    deliberately absent: re-drawing at another threshold is the point.
+    """
+    return {
+        "dataset_pin": dict(pins["dataset"]),
+        "ladder_pin": dict(pins["ladder"]),
+        "ledger_facts_sha256": args.ledger_facts_sha256,
+        "ledger_manifest_sha256": args.ledger_manifest_sha256,
+        "seed": int(args.seed),
+        "selection_seed": int(
+            args.seed if args.selection_seed is None else args.selection_seed
+        ),
+        "n_clones": int(args.n_clones),
+        "dataset_households": args.dataset_households,
+        "epochs": int(args.epochs),
+        "learning_rate": float(args.learning_rate),
+        "sample_fraction": float(args.sample_fraction),
+        "sample_seed": int(args.sample_seed),
+        "source_year": int(source_year),
+        "source_lineage_modulus": args.source_lineage_modulus,
+        "calibration_year": getattr(args, "_calibration_year", None),
+        "target_weight_rule": args.target_weight_rule,
+        "engine_blocks": int(args.engine_blocks),
+        "measure_exclusions": (
+            None if args.measure_exclusions is None else str(args.measure_exclusions)
+        ),
+        # The solve doctrine the dense solve and the search run under: a
+        # resume after a doctrine change must refuse, not run under the old
+        # bound while the manifest declares the new one.
+        "doctrine": _doctrine_bounds(),
+    }
+
+
 def _candidate_identity_digest(
     *,
     pins: dict[str, dict[str, object]],
@@ -591,6 +675,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         required=True,
         help="Output directory for the candidate H5 and evidence sidecars.",
     )
+    parser.add_argument(
+        "--dataset-households",
+        type=int,
+        help="Exact output household count after informed L0 and refit; pool clone K is unchanged. Candidate-only until size certification.",
+    )
     parser.add_argument("--n-clones", type=int, default=UK_LOCAL_CLONE_COUNT)
     parser.add_argument(
         "--candidate-clone-counts",
@@ -598,6 +687,50 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Dry-run only comma-separated candidate clone counts.",
     )
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--selection-seed",
+        type=int,
+        help=(
+            "Seed for the size selection only (informed L0 search, exact-count "
+            "draw, refit); defaults to --seed. The pool, ladder assignment and "
+            "dense reference stay on --seed, so two selections compare on one "
+            "pool. Requires --dataset-households."
+        ),
+    )
+    parser.add_argument(
+        "--selection-pi-hi",
+        type=float,
+        default=1.0,
+        help=(
+            "Certainty threshold of the exact-count draw: gates whose learned open "
+            "probability reaches it are taken with certainty. 1.0 (default) keeps "
+            "only the protected carriers certain; a lower value promotes learned "
+            "near-certain gates (the US exact-k ladder runs 0.95). Candidate-only; "
+            "recorded in the size receipt. Requires --dataset-households."
+        ),
+    )
+    parser.add_argument(
+        "--no-size-checkpoint",
+        action="store_true",
+        help=(
+            "Do not persist the dense solve and the informed L0 search before the "
+            "exact-count draw. By default a --dataset-households run writes "
+            "size_selection_checkpoint.{npz,json} into --out so a draw refusal "
+            "costs a re-draw, not the pool solve (microcosm#355)."
+        ),
+    )
+    parser.add_argument(
+        "--resume-size-checkpoint",
+        type=Path,
+        help=(
+            "Directory holding a size_selection_checkpoint written by an earlier "
+            "--dataset-households run on the same inputs: the pool and the target "
+            "surface are re-derived and verified, the dense solve and the search "
+            "are restored, and the run continues at the exact-count draw "
+            "(--selection-pi-hi may differ; both thresholds are recorded). "
+            "Requires --dataset-households and the same seeds, epochs and pins."
+        ),
+    )
     parser.add_argument(
         "--sample-fraction",
         type=float,
@@ -779,6 +912,7 @@ def _run_candidate(
             input_h5=input_h5,
             ladder_path=ladder_path,
         )
+        _refuse_stale_size_checkpoint(args, out_dir)
         ladder = load_uk_oa_ladder(ladder_path)
         target_provenance = ladder_target_provenance(ladder)
         joint_inputs = _load_joint_target_inputs(args)
@@ -841,6 +975,13 @@ def _run_candidate(
             source_lineage_modulus=args.source_lineage_modulus,
         )
         clone = assignment.result
+        if (
+            args.dataset_households is not None
+            and args.dataset_households > clone.frame.n("household")
+        ):
+            raise ValueError(
+                "--dataset-households exceeds the cloned pool; selection never clamps the request."
+            )
         if state is not None:
             append_phase(state, "cloned")
 
@@ -966,6 +1107,25 @@ def _run_candidate(
             file=sys.stderr,
             flush=True,
         )
+        checkpoint_identity = _size_checkpoint_identity(
+            args, pins=pins, source_year=source_year
+        )
+        resume_checkpoint = (
+            None
+            if args.resume_size_checkpoint is None
+            else args.resume_size_checkpoint.expanduser().resolve()
+        )
+        write_checkpoint = (
+            args.dataset_households is not None
+            and not args.no_size_checkpoint
+            and resume_checkpoint is None
+        )
+        if resume_checkpoint is not None:
+            print(
+                f"resuming the size selection from {resume_checkpoint}...",
+                file=sys.stderr,
+                flush=True,
+            )
         solve = solve_uk_rowwise_weights_under_doctrine(
             solve_frame,
             problem,
@@ -977,11 +1137,30 @@ def _run_candidate(
             learning_rate=args.learning_rate,
             conserve_mass=_CONSERVE_MASS,
             target_records=_TARGET_RECORDS,
+            dataset_households=args.dataset_households,
             l0_lambda=_L0_LAMBDA,
             budget_iters=_BUDGET_ITERS,
             seed=args.seed,
+            selection_seed=args.selection_seed,
+            selection_pi_hi=args.selection_pi_hi,
+            size_checkpoint_dir=out_dir if write_checkpoint else None,
+            resume_size_checkpoint=resume_checkpoint,
+            checkpoint_identity=checkpoint_identity,
+            checkpoint_provenance={"code_pin": code_pin, "build_id": state.build_id},
+            progress=_stderr_progress,
         )
         _validate_solve_result(solve, problem=problem)
+        if solve.size_receipt is not None and solve.size_receipt.get("checkpoint"):
+            checkpoint = solve.size_receipt["checkpoint"]
+            if "written" in checkpoint:
+                append_phase(state, "size_selection_checkpointed")
+                print(
+                    f"size selection checkpoint written to {out_dir}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            elif "resumed_from" in checkpoint:
+                append_phase(state, "size_selection_resumed")
         append_phase(state, "solved")
 
         # The kernel minted the calibration mass record inside calibrate() (the
@@ -1083,9 +1262,12 @@ def _run_candidate(
                 learning_rate=args.learning_rate,
                 conserve_mass=_CONSERVE_MASS,
                 target_records=_TARGET_RECORDS,
+                dataset_households=args.dataset_households,
                 l0_lambda=_L0_LAMBDA,
                 budget_iters=_BUDGET_ITERS,
                 solve_seed=args.seed,
+                selection_seed=args.selection_seed,
+                selection_pi_hi=args.selection_pi_hi,
             )
         args._rotated_holdout = rotated_holdout
 
@@ -1587,6 +1769,7 @@ def _joint_dry_run_plan(
         },
         "candidate_clone_counts": list(args.candidate_clone_counts or (args.n_clones,)),
         "candidate_clone_support": clone_support,
+        "parameters": _parameters(args, source_year=source_year),
         "releasable": False,
         "engine": "not_run",
         "ladder_target_provenance": dict(target_provenance),
@@ -1995,7 +2178,9 @@ def _dry_run_plan(
             "fraction": args.sample_fraction,
             "unreachable_check": "completed",
         },
-        "releasable": args.sample_fraction == 1.0 and args.engine_blocks == 1,
+        "releasable": args.sample_fraction == 1.0
+        and args.engine_blocks == 1
+        and args.dataset_households is None,
         "parameters": _parameters(args, source_year=source_year),
         "shapes": {
             "person": list(clone.frame.table("person").shape),
@@ -2047,6 +2232,13 @@ def _write_output_bundle(
         )
         write_uk_rowwise_dataset(candidate, staged["dataset"])
         solve.diagnostics.to_csv(staged["diagnostics"], index=False)
+        if solve.dense_reference is not None:
+            _dense_reference_diagnostics_frame(solve).to_csv(
+                staged["dense_reference"], index=False
+            )
+            _dataset_size_selection_frame(solve, problem=problem, clone=clone).to_csv(
+                staged["selection"], index=False
+            )
         support = support.copy()
         support["support_below_floor"] = (
             (support["assigned_households"] < 50)
@@ -2111,6 +2303,15 @@ def _write_output_bundle(
                 reported_path=output_paths["local_registry"],
             ),
         }
+        if solve.dense_reference is not None:
+            outputs["dense_reference_diagnostics"] = _artifact_info(
+                staged["dense_reference"],
+                reported_path=output_paths["dense_reference"],
+            )
+            outputs["dataset_size_selection"] = _artifact_info(
+                staged["selection"],
+                reported_path=output_paths["selection"],
+            )
         manifest = _manifest(
             args,
             candidate=candidate,
@@ -2289,11 +2490,25 @@ def _manifest(
             },
             "abs_delta": abs(new_total - old_total),
             "declared_stretch_bound": float(UK_LOCAL_MAX_WEIGHT_RATIO),
+            "stretch_reference": "pool_design"
+            if solve.size_receipt is None
+            else "normalized_horvitz_thompson_w_over_q",
+            # Against the frame the refit started from (the pool design on a
+            # dense run, the Horvitz-Thompson baseline on a size run)...
+            "realized_max_weight_ratio_vs_stretch_reference": float(
+                np.max(
+                    np.divide(
+                        np.asarray(solve.weights, dtype=np.float64),
+                        np.asarray(solve.initial_weights),
+                    )
+                )
+            ),
+            # ...and always against the pool design weights themselves.
             "realized_max_weight_ratio_vs_design": float(
                 np.max(
                     np.divide(
                         np.asarray(solve.weights, dtype=np.float64),
-                        np.asarray(clone.frame.weights_for("household").values),
+                        np.asarray(_design_weights_for(solve), dtype=np.float64),
                     )
                 )
             ),
@@ -2305,7 +2520,14 @@ def _manifest(
                 "ladder": ladder_rows,
                 "national": int(len(solve.national_diagnostics)),
             },
-            "n_households": int(problem.n_households),
+            "n_households": int(solve.frame.n("household")),
+            "pool_households": int(problem.n_households),
+            "dataset_size": None
+            if solve.size_receipt is None
+            else {
+                **dict(solve.size_receipt),
+                "dense_reference": _dense_reference_summary(solve),
+            },
             "initial_loss": float(solve.initial_loss),
             "final_loss": float(solve.final_loss),
             "max_abs_relative_error": float(abs_errors.max()),
@@ -2364,12 +2586,12 @@ def _manifest(
             },
         },
         "fit": {
-            "local_by_family": _fit_by_family(solve.diagnostics),
-            "national_by_family": _fit_by_family(solve.national_diagnostics),
+            "local_by_family": uk_fit_by_family(solve.diagnostics),
+            "national_by_family": uk_fit_by_family(solve.national_diagnostics),
             "weakest_families": sorted(
                 [
-                    *_fit_by_family(solve.diagnostics),
-                    *_fit_by_family(solve.national_diagnostics),
+                    *uk_fit_by_family(solve.diagnostics),
+                    *uk_fit_by_family(solve.national_diagnostics),
                 ],
                 key=lambda row: (
                     -float(row["worst_abs_relative_error"]),
@@ -2390,8 +2612,15 @@ def _manifest(
             for gate_id, payload in gate_rows.items()
             if not isinstance(payload, Mapping) or payload.get("status") != "passed"
         ),
-        "releasable": releasable,
-        "release_posture": release_posture,
+        "releasable": releasable and args.dataset_households is None,
+        "release_posture": {
+            **release_posture,
+            **(
+                {}
+                if args.dataset_households is None
+                else {"size_certification_present": False}
+            ),
+        },
         "ladder_household_uprating": dict(
             cross_grain.get("ladder_household_uprating")
             or {"applied": False, "reason": "no cross-grain receipt"}
@@ -2421,7 +2650,22 @@ def _manifest(
 def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]:
     return {
         "n_clones": int(args.n_clones),
+        "dataset_households": args.dataset_households,
         "seed": int(args.seed),
+        "selection_seed": None
+        if args.dataset_households is None
+        else int(args.seed if args.selection_seed is None else args.selection_seed),
+        "selection_pi_hi": None
+        if args.dataset_households is None
+        else float(args.selection_pi_hi),
+        "size_checkpoint": bool(
+            args.dataset_households is not None
+            and not args.no_size_checkpoint
+            and args.resume_size_checkpoint is None
+        ),
+        "resume_size_checkpoint": None
+        if args.resume_size_checkpoint is None
+        else str(args.resume_size_checkpoint.expanduser().resolve()),
         "source_year": source_year,
         "source_lineage_modulus": args.source_lineage_modulus,
         "sample_fraction": float(args.sample_fraction),
@@ -2443,27 +2687,98 @@ def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]
     }
 
 
-def _fit_by_family(diagnostics: pd.DataFrame) -> list[dict[str, object]]:
-    if diagnostics.empty:
-        return []
-    rows = []
-    for family, group in diagnostics.groupby("family", sort=True):
-        errors = group["abs_relative_error"].to_numpy(dtype=np.float64)
-        worst_index = int(np.argmax(errors))
-        worst = group.iloc[worst_index]
-        rows.append(
-            {
-                "family": str(family),
-                "n_targets": len(group),
-                "share_within_10pct": float((errors <= 0.10).mean()),
-                "share_within_25pct": float((errors <= 0.25).mean()),
-                "worst_abs_relative_error": float(errors[worst_index]),
-                "worst_cell": str(
-                    worst.get("target_name", worst.get("name", "unknown"))
-                ),
-            }
+def _design_weights_for(solve: UKRowwiseDoctrineSolve) -> np.ndarray:
+    """The pool design weights aligned to the solve's exported rows."""
+    if solve.selected_support is None or solve.dense_reference is None:
+        return np.asarray(solve.initial_weights, dtype=np.float64)
+    return np.asarray(solve.dense_reference.initial_weights, dtype=np.float64)[
+        np.asarray(solve.selected_support, dtype=np.int64)
+    ]
+
+
+def _dense_reference_summary(solve: UKRowwiseDoctrineSolve) -> dict[str, Any] | None:
+    """Manifest-sized evidence of the dense solve a size run was cut from."""
+
+    dense = solve.dense_reference
+    if dense is None:
+        return None
+    local_errors = dense.diagnostics["abs_relative_error"].to_numpy(dtype=np.float64)
+    national_errors = dense.national_diagnostics["abs_relative_error"].to_numpy(
+        dtype=np.float64
+    )
+    past_cap = dict(dense.past_cap_census or {})
+    return {
+        "initial_loss": float(dense.initial_loss),
+        "final_loss": float(dense.final_loss),
+        "n_nonzero": int(dense.n_nonzero),
+        "n_households": int(dense.weights.size),
+        "max_abs_relative_error": float(local_errors.max())
+        if local_errors.size
+        else None,
+        "median_abs_relative_error": float(np.median(local_errors))
+        if local_errors.size
+        else None,
+        "national_max_abs_relative_error": float(national_errors.max())
+        if national_errors.size
+        else None,
+        "past_cap": {key: int(past_cap[key]) for key in _PAST_CAP_COUNT_KEYS},
+        "weights": uk_weight_summary(dense.weights),
+        "local_by_family": uk_fit_by_family(dense.diagnostics),
+        "national_by_family": uk_fit_by_family(dense.national_diagnostics),
+        "diagnostics_file": DENSE_REFERENCE_DIAGNOSTICS_FILENAME,
+    }
+
+
+def _dense_reference_diagnostics_frame(solve: UKRowwiseDoctrineSolve) -> pd.DataFrame:
+    """Every target's dense-reference estimate, local rows then national rows."""
+
+    dense = solve.dense_reference
+    assert dense is not None
+    local = dense.diagnostics.copy()
+    local.insert(0, "grain", local["area_type"].astype(str))
+    national = dense.national_diagnostics.copy()
+    national.insert(0, "grain", "national")
+    return pd.concat([local, national], ignore_index=True, sort=False)
+
+
+def _dataset_size_selection_frame(
+    solve: UKRowwiseDoctrineSolve,
+    *,
+    problem: UKRowwiseLocalMatrix,
+    clone: UKLadderRowwiseDatasetResult,
+) -> pd.DataFrame:
+    """One row per selected pool household: identity, design, draw and refit."""
+
+    dense = solve.dense_reference
+    receipt = solve.size_receipt
+    assert dense is not None and receipt is not None
+    support = np.asarray(solve.selected_support, dtype=np.int64)
+    household = clone.frame.table("household")
+    clone_column = ladder_clone_index_column("household")
+    ids = household["household_id"].to_numpy()[support]
+    expected = np.asarray([problem.household_ids[i] for i in support])
+    if not np.array_equal(ids, expected):
+        raise RuntimeError(
+            "the cloned pool's household order does not match the solve's "
+            "matrix columns; the selection sidecar would misattribute rows."
         )
-    return rows
+    inclusion = np.asarray(receipt["inclusion_probabilities"], dtype=np.float64)
+    if inclusion.shape != support.shape:
+        raise RuntimeError("selection receipt inclusion probabilities are misaligned.")
+    return pd.DataFrame(
+        {
+            "pool_row_index": support,
+            "household_id": ids,
+            "clone_index": household[clone_column].to_numpy()[support]
+            if clone_column in household.columns
+            else np.zeros(support.size, dtype=np.int64),
+            "design_weight": dense.initial_weights[support],
+            "inclusion_probability": inclusion,
+            "certainty": inclusion >= 1.0,
+            "ht_baseline_weight": np.asarray(solve.initial_weights, dtype=np.float64),
+            "refit_weight": np.asarray(solve.weights, dtype=np.float64),
+        }
+    )
 
 
 def _local_output_registry(
@@ -2523,7 +2838,12 @@ def _validate_solve_result(
         raise RuntimeError(
             "doctrine solve returned no past-cap census; refusing candidate."
         )
-    if len(solve.weights) != problem.n_households:
+    expected_count = (
+        problem.n_households
+        if solve.selected_support is None
+        else len(solve.selected_support)
+    )
+    if len(solve.weights) != expected_count:
         raise RuntimeError(
             "doctrine solve returned a weight vector with the wrong length."
         )
@@ -2585,6 +2905,29 @@ def _validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError(
             "the joint registry path requires --input-sha256 and --ladder-sha256."
         )
+    if args.selection_seed is not None and args.dataset_households is None:
+        raise ValueError("--selection-seed requires --dataset-households.")
+    if not (0.0 < args.selection_pi_hi <= 1.0):
+        raise ValueError("--selection-pi-hi must be in (0, 1].")
+    if args.selection_pi_hi != 1.0 and args.dataset_households is None:
+        raise ValueError("--selection-pi-hi requires --dataset-households.")
+    if args.no_size_checkpoint and args.dataset_households is None:
+        raise ValueError("--no-size-checkpoint requires --dataset-households.")
+    if args.resume_size_checkpoint is not None:
+        if args.dataset_households is None:
+            raise ValueError("--resume-size-checkpoint requires --dataset-households.")
+        if args.no_size_checkpoint:
+            raise ValueError(
+                "--resume-size-checkpoint already implies no new checkpoint; "
+                "drop --no-size-checkpoint."
+            )
+    if args.dataset_households is not None:
+        if args.dataset_households <= 0:
+            raise ValueError("--dataset-households must be positive.")
+        if args.release_candidate:
+            raise ValueError(
+                "--dataset-households is candidate-only: size-specific matched comparison and promotion scorecard are required before release."
+            )
     if args.release_candidate:
         required_release = {
             "--input-sha256": args.input_sha256,
@@ -2665,6 +3008,8 @@ def _output_paths(
         "local_gates": out_dir
         / LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(calibration_year=calibration_year),
         "local_registry": out_dir / LOCAL_REGISTRY_FILENAME,
+        "dense_reference": out_dir / DENSE_REFERENCE_DIAGNOSTICS_FILENAME,
+        "selection": out_dir / DATASET_SIZE_SELECTION_FILENAME,
     }
 
 
@@ -2705,12 +3050,16 @@ def _publish_staged_files(
         "past_cap",
         "calibration_diagnostics",
         "local_registry",
+        "dense_reference",
+        "selection",
         "manifest",
     )
     published: list[Path] = []
     succeeded = False
     try:
         for key in publish_order:
+            if key in _SIZE_RUN_ONLY_OUTPUTS and not staged[key].exists():
+                continue
             destination = output_paths[key]
             if destination.exists():
                 raise FileExistsError(
