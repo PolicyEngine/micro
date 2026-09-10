@@ -45,6 +45,17 @@ need reconciliation; this draft does not supersede either review.
 
 ## Verification and review scope
 
+The first native twenty-node survey, block-geography and financial cold pilot
+now passes at 1/1000: 1,584 source households and 3,464 people become 3,168
+household records and 6,928 person records after cloning. The run assigns one
+block before cloning, retains location inheritance and attaches seven financial
+fields while preserving the other population fields. It took 110.12 minutes and
+11.45 GB peak memory. The final receipt and independent source/resource
+postcheck pass. This is the original frozen 491-source implementation; newer
+cache and budget changes are separate revisions. Required native cached replay,
+PUF augmentation, model quality and calibration remain pending. See the
+[scoped native cold result](../experiments/us-native-atomic-financial-cold-20260910.json).
+
 The previously published head `a85c9cbb79081a980e7d3afe8916c80153de5bf8`
 passed 36 integration controls and 57 enrichment/replay controls on invented
 inputs. The 36 cover eight solver, eleven snapshot/storage, nine geography and
@@ -146,8 +157,9 @@ from the benchmark's accepted baseline.
 
 The following work remains open:
 
-1. Run the accepted twenty-node atomic and financial composition on the genuine
-   combined survey population. Its cold/required replay, complete retained
+1. Complete required cached replay of the accepted native twenty-node atomic
+   and financial cold pilot, then validate the complete survey scale. Its
+   invented cold/required replay, complete retained
    fields and geography, default three-feature versus explicit five-feature
    conditioning, and both final mutation refusals pass on invented inputs.
    Two test-code mistakes in the initial four-case run were corrected and
@@ -216,9 +228,10 @@ readback. Normalization took 82.97 seconds and 6.814 GB peak RSS. Its SHA-256 is
 `5edc0e77471ba31d550a1eed416d5b46ada0a35425718eb87cfabe4d66fe4960`;
 see the [national source control](../experiments/us-atomic-native-national-1-control-20260909.json).
 Postchecks reauthenticated code and compared the 104 native pins from bounded
-receipts without reopening source bodies. This clears the national support
-normalization check; assigning households, evaluating geographic fit and
-calibrating the enriched survey remain separate acceptance steps.
+receipts without reopening source bodies. National support normalization and
+household assignment in the small native financial pilot now pass. Evaluating
+geographic fit and calibrating the enriched survey remain separate acceptance
+steps.
 
 The financial successor's unchanged positive control now passes with both
 original fixture teardowns and final code/resource checks: 647.19 CPU seconds,
