@@ -182,6 +182,42 @@ def _catalogue_digest(value):
     return digest.hexdigest()
 
 
+def _catalogue_memo(value, expected_digest):
+    """Retain one proved immutable tree, never an unchecked caller digest.
+
+    The exact-tuple/int/ASCII-str eligibility test also excludes mutable leaves
+    and subclasses. Strong references prevent identity reuse. Rehash once while
+    creating the memo to bind those exact immutable roots to the earlier seal.
+    A replacement tree or an ineligible shape keeps the original digest path.
+    """
+    if not _catalogue_fast_path(value):
+        return None
+    if _catalogue_digest(value) != expected_digest:
+        return None
+    return (value[0], value[1], expected_digest)
+
+
+def _memoized_catalogue_digest(value, memo=None, *, expected_digest=None):
+    """Reuse only the issued preparation's unchanged immutable record roots.
+
+    This private memo is not source authority. The owning preparation still
+    performs every source/producer borrow and full physical Frame seal. Its
+    original nested digest is checked independently of the memo's digest.
+    """
+    if (
+        type(value) is tuple
+        and len(value) == 2
+        and type(memo) is tuple
+        and len(memo) == 3
+        and value[0] is memo[0]
+        and value[1] is memo[1]
+        and type(memo[2]) is str
+        and memo[2] == expected_digest
+    ):
+        return memo[2]
+    return _catalogue_digest(value)
+
+
 def _value(value):
     if isinstance(value, Enum):
         return value.value
@@ -981,13 +1017,16 @@ class _State:
     plan: selection.CatalogueSelectionPlan
     plan_sha256: str
     nested: tuple
+    acs_catalogue_memo: tuple | None = None
 
 
 def _attached(state):
     return tuple(value.payload for value in (*state.catalogues, *state.native))
 
 
-def _nested_seals(catalogues, native):
+def _nested_seals(
+    catalogues, native, *, catalogue_memo=None, expected_catalogue_digest=None
+):
     """Pure final borrowed-object seals after all source/producer file checks.
 
     These inspect the actual retained issued owners, never construct issuer
@@ -1011,7 +1050,11 @@ def _nested_seals(catalogues, native):
                 for paths in acs.snapshots
             ]
         ),
-        _catalogue_digest((acs_cat.records, acs_cat.vacancies)),
+        _memoized_catalogue_digest(
+            (acs_cat.records, acs_cat.vacancies),
+            catalogue_memo,
+            expected_digest=expected_catalogue_digest,
+        ),
     ]
     for module, value in ((asec_catalogue, catalogues[1]), (asec_native, native[1])):
         entry = module._ISSUED.get(id(value))
@@ -1045,7 +1088,13 @@ def _pure_final(state):
     )
     _require(_attached(state) == state.attached, "ATTACHED_EVIDENCE_CHANGED")
     _require(
-        _nested_seals(state.catalogues, state.native) == state.nested,
+        _nested_seals(
+            state.catalogues,
+            state.native,
+            catalogue_memo=state.acs_catalogue_memo,
+            expected_catalogue_digest=state.nested[9],
+        )
+        == state.nested,
         "NESTED_EVIDENCE_CHANGED",
     )
     _require(_digest(_plan_document(state.plan)) == state.plan_sha256, "PLAN_CHANGED")
@@ -1322,6 +1371,11 @@ def prepare_authenticated_survey_population(
                 "release_eligible": False,
             }
         )
+        nested = _nested_seals((acs, asec), (actual_acs, actual_asec))
+        acs_owned = acs_catalogue._lookup(acs)
+        catalogue_memo = _catalogue_memo(
+            (acs_owned.records, acs_owned.vacancies), nested[9]
+        )
         state = _State(
             root,
             files_before,
@@ -1338,7 +1392,8 @@ def prepare_authenticated_survey_population(
             context,
             plan,
             _digest(_plan_document(plan)),
-            _nested_seals((acs, asec), (actual_acs, actual_asec)),
+            nested,
+            catalogue_memo,
         )
         _validate(state)
         _require(candidate is None or candidate == payload, "CANDIDATE_MISMATCH")

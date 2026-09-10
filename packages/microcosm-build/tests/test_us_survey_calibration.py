@@ -10,6 +10,9 @@ import test_us_national_age_counts as fixture
 import test_us_survey_age_artifact as age_fixture
 
 from microcosm.build.us_runtime import graph_survey_calibration as stage
+from microcosm.build.us_runtime import (
+    survey_calibration_diagnostics as diagnostic_check,
+)
 from microcosm.graph import ArtifactValue, KernelContext
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.kernel import Numeric, NumericScope
@@ -66,6 +69,32 @@ def context():
     )
 
 
+def _validated_diagnostics(value, output, payload):
+    anchors = {
+        name: output.receipt[name]
+        for name in (
+            "budget_sha256",
+            "numeric_bounds_sha256",
+            "counts_sha256",
+            "accepted_weight_sha256",
+            "constraint_digest",
+            "weight_anchor",
+            "cap_enforcement",
+            "fixed_zero_rows",
+        )
+    }
+    return diagnostic_check.validate_survey_calibration_diagnostics(
+        payload,
+        counts_payload=value.artifacts["counts"].payload,
+        bounds_payload=value.artifacts["bounds"].payload,
+        weights=output.weights.values,
+        registry=fixture.fixture_registry(),
+        epochs=value.params["epochs"],
+        learning_rate=value.params["learning_rate"],
+        anchors=anchors,
+    )
+
+
 def test_real_solver_retains_zero_rows_and_returns_weights_only():
     value = context()
     output = stage.SurveyAgeCalibrationKernel().run(value)
@@ -80,6 +109,22 @@ def test_real_solver_retains_zero_rows_and_returns_weights_only():
     assert diagnostics and output.receipt["fixed_zero_rows"] == 1
     assert output.receipt["release_eligible"] is False
     assert output.receipt["source_admission"] == "required_from_country_runner"
+    assert {
+        name: diagnostics["options"][name]
+        for name in (
+            "gate_initialization_supplied",
+            "budget_basis",
+            "feasible_draw_pi_hi",
+            "budget_search",
+        )
+    } == {
+        "gate_initialization_supplied": False,
+        "budget_basis": "nonzero_count",
+        "feasible_draw_pi_hi": None,
+        "budget_search": None,
+    }
+    checked = _validated_diagnostics(value, output, output.artifacts["diagnostics"])
+    assert checked["verification"]["optimizer_rerun"] is False
 
 
 @pytest.mark.parametrize(
@@ -187,3 +232,26 @@ def test_projection_can_preserve_the_full_signed_id_domain():
     assert stage.decode_numeric_survey_bounds(
         canonical_json(document)
     ).grouped.household_ids == tuple(document["household_ids"])
+
+
+@pytest.mark.parametrize(
+    "field,changed",
+    [
+        ("gate_initialization_supplied", True),
+        ("budget_basis", "open_probability_mass"),
+        ("feasible_draw_pi_hi", 0.5),
+        ("budget_search", {}),
+    ],
+)
+def test_survey_diagnostics_recompute_closed_solver_option_values(field, changed):
+    value = context()
+    output = stage.SurveyAgeCalibrationKernel().run(value)
+    raw = output.artifacts["diagnostics"]
+    _validated_diagnostics(value, output, raw)
+    document = json.loads(raw)
+    assert document["options"][field] != changed
+    document["options"][field] = changed
+    with pytest.raises(
+        ValueError, match="^SURVEY_DIAGNOSTICS_RECOMPUTED_VALUES$"
+    ):
+        _validated_diagnostics(value, output, canonical_json(document))
