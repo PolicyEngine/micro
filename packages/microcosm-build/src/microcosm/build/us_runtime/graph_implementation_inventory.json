@@ -1100,7 +1100,8 @@
         "microcosm.graph.randomness",
         "microcosm.graph.serialize",
         "microcosm.graph.store",
-        "microcosm.graph.view"
+        "microcosm.graph.view",
+        "microcosm.graph.weight_update"
       ],
       "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
@@ -1197,6 +1198,7 @@
     "microcosm.graph/kernel.py": {
       "imports": [
         "microcosm.frame",
+        "microcosm.frame.bundle",
         "microcosm.graph.decl",
         "numpy",
         "pandas"
@@ -1236,6 +1238,7 @@
         "microcosm.graph.canonical",
         "microcosm.graph.decl",
         "microcosm.graph.kernel",
+        "microcosm.graph.weight_update",
         "numpy",
         "pandas"
       ],
@@ -1273,6 +1276,13 @@
         "microcosm.graph.canonical",
         "microcosm.graph.decl",
         "microcosm.graph.manifest"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/weight_update.py": {
+      "imports": [
+        "microcosm.graph.canonical"
       ],
       "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
@@ -1533,6 +1543,7 @@
     "microcosm.graph.serialize": "whole-module in explicit stages",
     "microcosm.graph.store": "whole-module in explicit stages",
     "microcosm.graph.view": "whole-module in explicit stages",
+    "microcosm.graph.weight_update": "whole-module pure ordered-axis receipt in every shared-graph scope; no source data, external resource, policy engine or calibration route",
     "microunit": "whole-module in explicit stages",
     "microunit.core": "whole-module in explicit stages",
     "microunit.diagnostics": "whole-module in explicit stages",
@@ -1597,7 +1608,8 @@
       "schema.py",
       "serialize.py",
       "store.py",
-      "view.py"
+      "view.py",
+      "weight_update.py"
     ],
     "microunit": [
       "__init__.py",
@@ -1629,7 +1641,8 @@
     "occupied_housing_review_base": "HU v1 source definition and attachment are exact approved 4b26e59b additions on d4bddcb6ac2aba52903cd8dace90330cee4a21e1; only the v2 prepared graph/transport wiring is new. Original source-verifier modules and resources are unchanged.",
     "operator_boundary": "Resolved output/formula registries projected; provider bodies are not called by source construction.",
     "other_imports": "Canonical non-stdlib import modules are explicitly classified. Ordinary symbols from a module/dependency bound in every using scope need no inventory edit. Only unbound-helper uses retain a lexical-scope fingerprint; resource-access expressions retain their own fingerprint. Expanded AST details are audit output, not packaged data. Neither fingerprint is a proof of dynamic closure.",
-    "resources": "Microunit rule YAML is bound. Default packaged geography/source-stage resources belong to inactive legacy entrypoints; graph lookups are explicit SourceRefs."
+    "resources": "Microunit rule YAML is bound. Default packaged geography/source-stage resources belong to inactive legacy entrypoints; graph lookups are explicit SourceRefs.",
+    "uk_full_graph_shared_contracts": "PR #901 shared-graph review against f4e5ec4eb761e26f65667f693ef37d3ea68adfc8: bind the added pure weight_update module in the existing conservative graph closure. The explicit same-kind weight contract does not activate on US source nodes. Kernel context now preserves immutable Frame metadata, mass records and projected column order; its frame.bundle freeze helper was already whole-module bound. Existing modules add only these covered imports; resource-access and unbound-use fingerprints are unchanged. Positional column patching preserves sampled pandas row labels. No source definition, target, numerical dependency, external resource or US stage route was added."
   },
   "stages": {
     "acs_codec_2024": {
@@ -1681,6 +1694,7 @@
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
+        "microcosm.graph/weight_update.py",
         "microunit/__init__.py",
         "microunit/core.py",
         "microunit/diagnostics.py",
@@ -1755,6 +1769,7 @@
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
+        "microcosm.graph/weight_update.py",
         "microunit/__init__.py",
         "microunit/core.py",
         "microunit/diagnostics.py",
@@ -1826,7 +1841,8 @@
         "microcosm.graph/randomness.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
-        "microcosm.graph/view.py"
+        "microcosm.graph/view.py",
+        "microcosm.graph/weight_update.py"
       ],
       "resources": [],
       "source_boundary_projection": true
@@ -1912,6 +1928,7 @@
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
+        "microcosm.graph/weight_update.py",
         "microunit/__init__.py",
         "microunit/core.py",
         "microunit/diagnostics.py",
@@ -1987,7 +2004,8 @@
         "microcosm.graph/randomness.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
-        "microcosm.graph/view.py"
+        "microcosm.graph/view.py",
+        "microcosm.graph/weight_update.py"
       ],
       "resources": [],
       "source_boundary_projection": false
@@ -2055,6 +2073,7 @@
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
+        "microcosm.graph/weight_update.py",
         "microunit/__init__.py",
         "microunit/core.py",
         "microunit/diagnostics.py",
@@ -2165,6 +2184,7 @@
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
+        "microcosm.graph/weight_update.py",
         "microunit/__init__.py",
         "microunit/core.py",
         "microunit/diagnostics.py",
@@ -2286,6 +2306,7 @@
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
+        "microcosm.graph/weight_update.py",
         "microunit/__init__.py",
         "microunit/core.py",
         "microunit/diagnostics.py",
@@ -2406,6 +2427,7 @@
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
+        "microcosm.graph/weight_update.py",
         "microunit/__init__.py",
         "microunit/core.py",
         "microunit/diagnostics.py",
@@ -2479,7 +2501,8 @@
         "microcosm.graph/randomness.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
-        "microcosm.graph/view.py"
+        "microcosm.graph/view.py",
+        "microcosm.graph/weight_update.py"
       ],
       "resources": [],
       "source_boundary_projection": false
