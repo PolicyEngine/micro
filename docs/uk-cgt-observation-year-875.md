@@ -51,9 +51,11 @@ the replacement tax row changes from 1/420 to 1/63. These 22 changes follow fami
 membership. The comparison therefore combines dating, individual scope, liability
 comparator and objective weighting; it is not an isolated causal year effect.
 
-**Applicability, 10 September 2026:** this PR is rebased onto main `141bface`,
-which includes #892 and #877. Main's two additional UC payment-tail measure
-exclusions reduce the expected default fitted roster to 364 of 415 references.
+**Applicability, 10 September 2026:** this PR is rebased onto main `45231f9e`,
+which preserves #892 and #877 from the `141bface` feature baseline. The later
+#899 changes only CI run scheduling and its documentation. Main's two additional
+UC payment-tail measure exclusions reduce the expected default fitted roster to
+364 of 415 references.
 Those exclusions apply before solving and are distinct from target-fit exemptions.
 The original 366-row objective, fitted weights and failed gate maps remain
 historical evidence. No fit or gate certification on the rebased head is claimed.

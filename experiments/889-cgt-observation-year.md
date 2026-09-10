@@ -7,11 +7,13 @@ combine the measurement-year correction,
 individual scope, liability comparator and automatic family weighting changes;
 they do not isolate the effect of any one change.
 
-**Applicability, 10 September 2026:** the rebase onto main `141bface` preserves
-merged #892 and #877. The original JSON, CSV, 366-row objective and gate maps below
-remain unchanged. Main now declares 51 measure exclusions, giving an expected
-364-row default fitting surface, and the combined target-fit exemption register
-is empty. The old two empty-band and five stale-exemption failures are historical
+**Applicability, 10 September 2026:** the rebase onto main `45231f9e` preserves
+merged #892 and #877 from the `141bface` feature baseline. The later #899 changes
+only CI run scheduling and its documentation. The original JSON, CSV, 366-row
+objective and gate maps below remain unchanged. Main now declares 51 measure
+exclusions, giving an expected 364-row default fitting surface, and the combined
+target-fit exemption register is empty. The old two empty-band and five
+stale-exemption failures are historical
 run outcomes, not a verdict for the rebased surface. No current-head paired fit,
 unchanged fitted weights, release-gate pass or full local calibration is claimed.
 
