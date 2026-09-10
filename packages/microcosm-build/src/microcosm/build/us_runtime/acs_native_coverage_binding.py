@@ -7,13 +7,15 @@ This is a native population successor, not a decoder or a graph attachment.
 from __future__ import annotations
 
 import ast
+import builtins
 import importlib.util
 import json
 import sys
 import tempfile
+from _thread import RLock
 from dataclasses import InitVar, dataclass
 from pathlib import Path
-from types import CodeType, FunctionType
+from types import BuiltinFunctionType, CodeType, FunctionType
 from weakref import WeakKeyDictionary
 
 from microcosm.frame import Frame
@@ -38,6 +40,16 @@ _ACCEPTED = {
 _TOKEN = object()
 _ISSUED = WeakKeyDictionary()
 
+# Only bytecode compilation is reused across producers. Fresh source reads,
+# AST checks, local code indexes and loaded-function checks remain mandatory.
+_COMPILE_CACHE_MAX_ENTRIES = 128
+_COMPILE_CACHE_MAX_SOURCE_BYTES = 16 * 1024**2
+_COMPILE_CACHE_MAX_ENTRY_BYTES = 1024**2
+_COMPILE_CACHE_COMPILER = compile
+_COMPILE_CACHE_DEFAULT_OPTIMIZE = sys.flags.optimize
+_COMPILE_CACHE = {}
+_COMPILE_CACHE_LOCK = RLock()
+
 
 class ACSNativeCoverageBindingError(ValueError):
     """Static refusal without source values, paths or exception chains."""
@@ -46,6 +58,93 @@ class ACSNativeCoverageBindingError(ValueError):
 def _require(condition, code):
     if not condition:
         raise ACSNativeCoverageBindingError(code)
+
+
+def _clear_compile_cache():
+    """Clear only compiled-source outputs, for process-local test isolation."""
+    with _COMPILE_CACHE_LOCK:
+        _COMPILE_CACHE.clear()
+
+
+def _compile_source(
+    source, filename, mode="exec", *, flags=0, dont_inherit=True, optimize=-1
+):
+    """Reuse bounded immutable bytecode; never reuse loaded-function validity.
+
+    Non-original compilers and context-dependent or non-exact inputs bypass the
+    cache. Compiler warning/audit events occur on misses; AST parsing still runs
+    on every _live_code call. This shares the trusted-process scope of that check.
+    """
+    compiler = compile
+    eligible = (
+        compiler is _COMPILE_CACHE_COMPILER
+        and type(compiler) is BuiltinFunctionType
+        and compiler.__module__ == "builtins"
+        and compiler.__name__ == "compile"
+        and compiler.__self__ is builtins
+        and type(source) is bytes
+        and type(filename) is str
+        and type(mode) is str
+        and mode in ("exec", "eval", "single")
+        and type(flags) is int
+        and flags >= 0
+        and dont_inherit is True
+        and type(optimize) is int
+        and optimize in (-1, 0, 1, 2)
+        and len(source) <= _COMPILE_CACHE_MAX_ENTRY_BYTES
+        and len(source) <= _COMPILE_CACHE_MAX_SOURCE_BYTES
+        and _COMPILE_CACHE_MAX_ENTRIES > 0
+    )
+    key = None
+    if eligible:
+        effective_optimize = (
+            _COMPILE_CACHE_DEFAULT_OPTIMIZE if optimize == -1 else optimize
+        )
+        key = (
+            source,
+            filename,
+            mode,
+            flags,
+            dont_inherit,
+            effective_optimize,
+            id(compiler),
+        )
+        with _COMPILE_CACHE_LOCK:
+            entry = _COMPILE_CACHE.get(key)
+            if (
+                type(entry) is tuple
+                and len(entry) == 3
+                and type(entry[0]) is tuple
+                and entry[0] == key
+                and entry[1] is compiler
+                and type(entry[2]) is CodeType
+            ):
+                return entry[2]
+            _COMPILE_CACHE.pop(key, None)
+
+    # Compile outside the lock: instrumentation/audit hooks may reenter, and a
+    # concurrent duplicate miss is harmless. Never retain a failed compilation.
+    code = compiler(
+        source,
+        filename,
+        mode,
+        flags=flags,
+        dont_inherit=dont_inherit,
+        optimize=optimize,
+    )
+    if key is not None and type(code) is CodeType:
+        with _COMPILE_CACHE_LOCK:
+            # A nested/concurrent call may already have filled this key. FIFO
+            # eviction bounds retained source keys; it is not a hard RSS cap.
+            if key not in _COMPILE_CACHE:
+                while _COMPILE_CACHE and (
+                    len(_COMPILE_CACHE) >= _COMPILE_CACHE_MAX_ENTRIES
+                    or sum(len(item[0]) for item in _COMPILE_CACHE) + len(source)
+                    > _COMPILE_CACHE_MAX_SOURCE_BYTES
+                ):
+                    del _COMPILE_CACHE[next(iter(_COMPILE_CACHE))]
+                _COMPILE_CACHE[key] = (key, compiler, code)
+    return code
 
 
 def _live_code(module, compiled):
@@ -100,7 +199,11 @@ def _live_code(module, compiled):
                     if isinstance(value, CodeType):
                         visit(value)
 
-            visit(compile(Path(path).read_bytes(), path, "exec", dont_inherit=True))
+            visit(
+                _compile_source(
+                    Path(path).read_bytes(), path, "exec", dont_inherit=True
+                )
+            )
             compiled[path] = codes
         _require(
             function.__globals__ is vars(origin)
