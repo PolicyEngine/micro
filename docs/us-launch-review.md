@@ -205,7 +205,20 @@ corrected check still decompresses only `NationalCD119.txt`. The
 [accepted source control](../experiments/us-atomic-native-de-corrected-1-control-20260909.json)
 preserves the original failed evidence. This is not national population or
 release acceptance. Delaware-only support must not enter the national survey
-graph. Complete support for the fifty states and DC is required first.
+graph.
+
+The subsequent population-only national acquisition and normalization now pass
+for all fifty states and DC. The 104 exact sources produce 5,769,942 populated
+blocks, independently reconciling every state to a total of 331,449,281 people.
+Every block retains its identity and population, with complete CD119/PUMA joins.
+The full support artifact is 28,862,508 bytes and passes exact serialization and
+readback. Normalization took 82.97 seconds and 6.814 GB peak RSS. Its SHA-256 is
+`5edc0e77471ba31d550a1eed416d5b46ada0a35425718eb87cfabe4d66fe4960`;
+see the [national source control](../experiments/us-atomic-native-national-1-control-20260909.json).
+Postchecks reauthenticated code and compared the 104 native pins from bounded
+receipts without reopening source bodies. This clears the national support
+normalization check; assigning households, evaluating geographic fit and
+calibrating the enriched survey remain separate acceptance steps.
 
 ## Related reviews
 
