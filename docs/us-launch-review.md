@@ -18,8 +18,8 @@ The optional ten-node survey prefix now assigns a block before cloning, and its
 thirteen-node age-calibration extension passes cold execution and required
 replay on invented originals. A twenty-node extension now carries atomic
 geography through current financial imputation and required replay. Native
-Delaware block support passes source normalization; complete national support
-and national/CD acceptance remain pending. The earlier joint tract/district
+Delaware and complete national block support pass source normalization;
+national/CD acceptance of the enriched population remains pending. The earlier joint tract/district
 operator is a separate path. See
 [Geography assignment](geography-assignment.md) for the country contracts,
 implementation and source boundaries.
@@ -219,6 +219,25 @@ Postchecks reauthenticated code and compared the 104 native pins from bounded
 receipts without reopening source bodies. This clears the national support
 normalization check; assigning households, evaluating geographic fit and
 calibrating the enriched survey remain separate acceptance steps.
+
+The financial successor's positive control reached its 600 CPU-second limit
+without a final receipt. A separate, bounded profile of the unchanged invented
+cold/required financial fixture now passes its test, original teardown and all
+final code/resource checks: 303.90 CPU seconds, 308.26 wall seconds and 594.3 MB
+peak RSS. This diagnoses the fixture; it does not accept the financial successor.
+See the [profile evidence](../experiments/us-financial-fixture-profile-20260910.json).
+Loaded ACS code verification accounts for 180.20 cumulative seconds inside the
+298.15-second profiled fixture. Its nested function checker runs 2,009,108 times
+and uses 91.05 self seconds; complete Frame identity uses 7.31 cumulative seconds.
+Cumulative timings overlap and profiling adds overhead. The next change targets
+repeated comparisons of immutable code objects within a single verification,
+while preserving fresh source reads, aliases, globals, closure checks and final
+mutation seals. That optimization, the remaining successor controls and the
+native financial pilot have not yet passed.
+
+Current CI separately reports stale source-attested spec/seed fingerprints and
+an imported-resource identity expectation. These failures remain open; neither
+the component passes nor this profile establishes a green consolidation.
 
 ## Related reviews
 
