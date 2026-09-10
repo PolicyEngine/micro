@@ -89,13 +89,14 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
             calibration_year=2026,
             time_period="2023",
             source_year=2023,
-            n_clones=1,
             seed=7,
             calibration=UKGraphCalibrationConfig(epochs=2, seed=7),
         ),
         spine=base,
         spine_population="source",
     )
+    # Keep maintained K so the tiny fixture can reach every selected area;
+    # zero-support targets still refuse before gates at deliberately smaller K.
     provenance = ArtifactInput(
         "spine_provenance", "source", "provenance", SPINE_PROVENANCE_TYPE
     )
@@ -113,7 +114,7 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
     graph = add_uk_export_preparation(
         graph,
         population=full.calibration.population,
-        bindings={"target_scope": "all", "n_clones": 1},
+        bindings={"target_scope": "all", "n_clones": full.config.n_clones},
         artifact_inputs=(final_gate,),
     )
     graph = add_uk_export_continuation(
@@ -160,7 +161,7 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
     assert {row["geography_level"] for row in selection["included"]} >= {
         "country",
         "constituency",
-        "local_authority",
+        "la",
     }
     warm = run_graph(
         checkpoint,

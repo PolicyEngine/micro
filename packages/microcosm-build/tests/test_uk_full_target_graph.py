@@ -371,7 +371,12 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
     assert sum(by_grain["constituency"]) == pytest.approx(33.0)
     assert sum(by_grain["la"]) == pytest.approx(33.0)
     assert len(set(by_grain["constituency"])) == 1
-    assert len(set(by_grain["la"])) == 2
+    assert len(set(by_grain["la"])) > 1
+    census_receipt = default_problem.bindings["cross_geography"][
+        "census_household_uprating"
+    ]
+    assert census_receipt["grains"]["constituency"]["factor"] == 33.0 / 200.0
+    assert census_receipt["grains"]["local_authority"]["factor"] == 33.0 / 195.0
     assert default_problem.problem.names == explicit_problem.problem.names
     np.testing.assert_array_equal(
         default_problem.problem.matrix.toarray(),

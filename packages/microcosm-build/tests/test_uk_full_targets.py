@@ -138,6 +138,21 @@ def test_loaded_source_mismatch_refuses(prepared):
     assert prepared[4] == []
 
 
+def test_omitted_explicit_pins_still_bind_both_reviewed_source_hashes(
+    prepared, monkeypatch
+):
+    calls = []
+    monkeypatch.setattr(
+        runtime,
+        "load_ledger_consumer_artifact",
+        lambda path, **kwargs: calls.append(kwargs) or prepared[3],
+    )
+    _load()
+    assert calls == [
+        {"expected_facts_sha256": "a" * 64, "expected_manifest_sha256": "b" * 64}
+    ]
+
+
 def test_local_review_is_required_before_read_or_compilation(prepared, monkeypatch):
     monkeypatch.setattr(
         runtime,
