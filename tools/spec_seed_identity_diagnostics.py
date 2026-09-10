@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import os
 import platform
@@ -54,6 +56,53 @@ DISTRIBUTIONS = (
     "referencing",
     "scikit-learn",
     "torch",
+    "urllib3",
+)
+URLLIB3_VERSION = "2.7.0"
+# Public model parameters eagerly loaded by the locked live engine ABI path.
+# These are reviewed wheel RECORD identities, not permission for other CSVs.
+PARAMETER_ASSET_VERSION = "1.819.0"
+PARAMETER_ASSETS = (
+    (
+        "gov/hud/income_limits/section8_income_limits.csv",
+        1570746,
+        "2a8de86c81a8806e75eb15b278a9708e855cd241ba4cc564871c94a565f46442",
+    ),
+    (
+        "gov/hud/payment_standards/zip_code_payment_standards.csv",
+        84054,
+        "66179687d3e0d9d6c99a58a528aad672ee6a3af8820189209eac6be1ba02d097",
+    ),
+    (
+        "gov/hud/fmr/fair_market_rents.csv",
+        1314027,
+        "aaaa3fe7935e553c5333da51722640704351040092dbf8102c2b19b86a373183",
+    ),
+    (
+        "gov/hud/fmr/small_area_fair_market_rents.csv",
+        246698,
+        "3ae1edbe6491bafd0b4c4d66401d914e9edf37304f8d93eb43a786a3e4d98ec1",
+    ),
+    (
+        "gov/hud/utility_allowance/county_utility_allowances.csv",
+        3913,
+        "0642a75980473ffa33be12d51a3c58ed735472598109b0998b3634d918563809",
+    ),
+    (
+        "gov/hhs/medicaid/geography/medicaid_rating_areas.csv",
+        59225,
+        "98bd49798e56026262002fb82699b7940d6bfb26589934909682f355ee4e086e",
+    ),
+    (
+        "gov/hhs/medicaid/geography/second_lowest_silver_plan_cost.csv",
+        293454,
+        "b2e415151d5ecc662b62e8b05ea3e1878dcad9e63384c255a314ea3254e47c55",
+    ),
+    (
+        "gov/hhs/medicaid/geography/aca_rating_areas.csv",
+        68571,
+        "a953284013a051956e1951f26e31252fcdf2275010953d09fd16546cb3df508e",
+    ),
 )
 # Filled from the reviewed source-only roster; no import is used to construct it.
 SOURCE_PATHS = (
@@ -323,6 +372,186 @@ def read_refusal_context(code, event, path, requested, roots) -> bytes:
     return payload
 
 
+def bootstrap_no_network_urllib3(bootstrap: dict[str, object]) -> None:
+    """Use urllib3's real optional IPv4 fallback without opening a probe socket."""
+    import socket
+
+    stdlib_socket = (
+        Path(sys.base_prefix)
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "socket.py"
+    ).resolve()
+    require(
+        Path(socket.__file__).resolve() == stdlib_socket
+        and socket.__spec__ is not None
+        and Path(socket.__spec__.origin).resolve() == stdlib_socket,
+        "SOCKET_ORIGIN",
+    )
+    require(
+        not any(
+            name == "urllib3" or name.startswith("urllib3.") for name in sys.modules
+        ),
+        "URLLIB3_PRELOADED",
+    )
+    distribution = importlib.metadata.distribution("urllib3")
+    package = Path(distribution.locate_file("urllib3")).absolute()
+    spec = importlib.util.find_spec("urllib3")
+    require(distribution.version == URLLIB3_VERSION, "URLLIB3_VERSION")
+    require(
+        package == package.resolve()
+        and package.is_relative_to(Path(sys.prefix).resolve())
+        and spec is not None
+        and spec.origin == str(package / "__init__.py")
+        and tuple(spec.submodule_search_locations or ()) == (str(package),),
+        "URLLIB3_ORIGIN",
+    )
+    original = socket.has_ipv6
+    require(type(original) is bool, "URLLIB3_FEATURE_FLAG")
+    callables = (socket.socket, socket.getaddrinfo, socket.create_connection)
+    evidence = {
+        "policy": "real_urllib3_optional_ipv4_fallback_v1",
+        "version": URLLIB3_VERSION,
+        "scope": "fresh_urllib3_import_only",
+        "original_has_ipv6": original,
+        "stdlib_socket_origin_verified": True,
+        "socket_flag_restored": False,
+        "socket_callables_unchanged": False,
+        "ipv4_fallback_verified": False,
+        "network_and_child_events_remain_denied": True,
+    }
+    bootstrap["urllib3"] = evidence
+    socket.has_ipv6 = False
+    try:
+        from urllib3.util import connection
+    finally:
+        socket.has_ipv6 = original
+        evidence["socket_flag_restored"] = socket.has_ipv6 is original
+        evidence["socket_callables_unchanged"] = callables == (
+            socket.socket,
+            socket.getaddrinfo,
+            socket.create_connection,
+        )
+    require(
+        evidence["socket_flag_restored"]
+        and evidence["socket_callables_unchanged"]
+        and sys.modules["urllib3"].__file__ == str(package / "__init__.py")
+        and connection.__file__ == str(package / "util/connection.py")
+        and connection.HAS_IPV6 is False
+        and connection.allowed_gai_family() == socket.AF_INET,
+        "URLLIB3_FALLBACK",
+    )
+    evidence["ipv4_fallback_verified"] = True
+
+
+class VerifiedParameterAssets:
+    """Exact package inputs; no country imports or directory-wide permission.
+
+    The audit hook admits one read-only verification read at a time. No asset
+    becomes an engine input until the complete roster passes, and any failed
+    verification revokes the entire roster. The main routine rechecks it after
+    derivation and before publishing success.
+    """
+
+    def __init__(self):
+        self._checking: Path | None = None
+        self._verified: frozenset[Path] = frozenset()
+        self._declarations: tuple | None = None
+
+    def permits(self, path: Path, *, writing: bool) -> bool:
+        return not writing and (path == self._checking or path in self._verified)
+
+    def _resolve(self) -> tuple:
+        distribution = importlib.metadata.distribution("policyengine-us")
+        require(distribution.version == PARAMETER_ASSET_VERSION, "PARAMETER_VERSION")
+        package = Path(distribution.locate_file("policyengine_us")).absolute()
+        require(
+            package == package.resolve()
+            and package.is_relative_to(Path(sys.prefix).resolve()),
+            "PARAMETER_ORIGIN",
+        )
+        spec = importlib.util.find_spec("policyengine_us")
+        require(
+            spec is not None
+            and spec.origin == str(package / "__init__.py")
+            and tuple(spec.submodule_search_locations or ()) == (str(package),),
+            "PARAMETER_ORIGIN",
+        )
+        files = tuple(distribution.files or ())
+        result = []
+        for relative, size, expected in PARAMETER_ASSETS:
+            name = "policyengine_us/parameters/" + relative
+            records = [file for file in files if str(file) == name]
+            require(len(records) == 1, "PARAMETER_RECORD")
+            record = records[0]
+            require(
+                record.size == size
+                and record.hash is not None
+                and record.hash.mode == "sha256"
+                and record.hash.value
+                == base64.urlsafe_b64encode(bytes.fromhex(expected))
+                .decode()
+                .rstrip("="),
+                "PARAMETER_RECORD",
+            )
+            path = Path(distribution.locate_file(record)).absolute()
+            require(
+                path == package / "parameters" / relative and path == path.resolve(),
+                "PARAMETER_ORIGIN",
+            )
+            result.append((path, name, size, expected))
+        return tuple(result)
+
+    def verify(self, bootstrap: dict[str, object]) -> None:
+        self._verified = frozenset()
+        try:
+            declarations = self._resolve()
+            require(
+                self._declarations is None or declarations == self._declarations,
+                "PARAMETER_CHANGED",
+            )
+            for path, _, size, expected in declarations:
+                info = path.lstat()
+                require(
+                    stat.S_ISREG(info.st_mode) and info.st_size == size,
+                    "PARAMETER_CONTENT",
+                )
+                self._checking = path
+                try:
+                    # O_NOFOLLOW also rejects a last-component substitution
+                    # between origin checking and the verification open.
+                    with open(
+                        path,
+                        "rb",
+                        opener=lambda name, flags: os.open(name, flags | os.O_NOFOLLOW),
+                    ) as stream:
+                        content = stream.read(size + 1)
+                finally:
+                    self._checking = None
+                require(
+                    len(content) == size and digest(content) == expected,
+                    "PARAMETER_CONTENT",
+                )
+            self._declarations = declarations
+            self._verified = frozenset(item[0] for item in declarations)
+            bootstrap["engine_parameter_assets"] = {
+                "policy": "exact_locked_public_parameters_v1",
+                "distribution": "policyengine-us",
+                "version": PARAMETER_ASSET_VERSION,
+                "record_origin_and_content_verified": True,
+                "recheck_before_publication_required": True,
+                "read_only": True,
+                "assets": [
+                    {"path": name, "size_bytes": size, "sha256": expected}
+                    for _, name, size, expected in declarations
+                ],
+            }
+        except Exception:
+            self._checking = None
+            self._verified = frozenset()
+            raise
+
+
 def install_boundary(
     root: Path,
     owned: Path,
@@ -331,6 +560,7 @@ def install_boundary(
     first_refusal: list[bytes] | None = None,
     distinct_refusals: list[str] | None = None,
     code_contexts: dict[str, bytes] | None = None,
+    parameter_assets: VerifiedParameterAssets | None = None,
 ) -> list[str]:
     refusals: list[str] = []
     blocked_files = (
@@ -365,6 +595,8 @@ def install_boundary(
         Path("/dev/null"),
         Path("/proc/cpuinfo"),
         Path("/proc/meminfo"),
+        # psutil defines its CPU-time tuple from this public OS metadata.
+        Path("/proc/stat"),
         Path("/proc/self/maps"),
         # operation_path resolves /proc/self to this process's numeric PID.
         Path(f"/proc/{os.getpid()}/maps"),
@@ -485,13 +717,16 @@ def install_boundary(
         if event == "open" and args:
             path = operation_path(args[0])
             name = str(path)
-            if name.lower().endswith(blocked_files):
-                refuse("DATA_FILE", event="open", path=path, requested=args[0])
             flags = args[2] if len(args) > 2 else 0
             writing = isinstance(flags, int) and bool(
                 flags
                 & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND)
             )
+            if name.lower().endswith(blocked_files) and not (
+                parameter_assets is not None
+                and parameter_assets.permits(path, writing=writing)
+            ):
+                refuse("DATA_FILE", event="open", path=path, requested=args[0])
             if writing and name != os.devnull:
                 if not any(path.is_relative_to(p) for p in (owned, output)):
                     refuse("WRITE_SCOPE")
@@ -959,6 +1194,7 @@ def main() -> int:
         first_refusal: list[bytes] = []
         distinct_refusals: list[str] = []
         code_contexts: dict[str, bytes] = {}
+        parameter_assets = VerifiedParameterAssets()
         refusals = install_boundary(
             root,
             owned,
@@ -966,6 +1202,7 @@ def main() -> int:
             first_refusal=first_refusal,
             distinct_refusals=distinct_refusals,
             code_contexts=code_contexts,
+            parameter_assets=parameter_assets,
         )
         # Dependency-created temporaries must stay inside this invocation's scope.
         tempfile.tempdir = str(owned)
@@ -1001,6 +1238,9 @@ def main() -> int:
             before = source_stamps(root)
             lock = tomllib.loads((root / "uv.lock").read_text())
             installed = versions(lock)
+            require("policyengine_us" not in sys.modules, "PARAMETER_PRELOADED")
+            parameter_assets.verify(bootstrap)
+            bootstrap_no_network_urllib3(bootstrap)
             phase = "derive"
             processor_state = prime_processor_metadata(bootstrap)
             with (
@@ -1020,6 +1260,7 @@ def main() -> int:
                 payloads = derive(
                     root, owned, run, before, installed, torch, controls, bootstrap
                 )
+            parameter_assets.verify(bootstrap)
             verify_processor_metadata(processor_state, bootstrap)
             require(not refusals, "BOUNDARY_REFUSAL")
             exit_code = 0

@@ -42,7 +42,7 @@ def test_caught_middle_child_denial_keeps_own_context(diagnostic, audited):
     terminal = None
     secret = "invented-secret-never-retain"
     for event, args, code in (
-        ("open", ("/proc/stat", "r", os.O_RDONLY), "READ_SCOPE"),
+        ("open", ("/proc/unlisted-stat", "r", os.O_RDONLY), "READ_SCOPE"),
         (
             "subprocess.Popen",
             (secret, [secret], secret, {secret: secret}),
@@ -112,7 +112,7 @@ def test_eight_record_capacity_never_discards_or_grows(diagnostic, audited):
     contexts.update({code: diagnostic.encoded({"code": code}) for code in codes})
     retained = tuple(contexts.items())
     with pytest.raises(diagnostic.RefusalError, match="^READ_SCOPE$") as error:
-        hook("open", ("/proc/stat", "r", os.O_RDONLY))
+        hook("open", ("/proc/unlisted-stat", "r", os.O_RDONLY))
     assert tuple(contexts.items()) == retained and len(contexts) == 8
     assert refusals == distinct == ["READ_SCOPE"]
     assert first == [error.value.boundary_context]
