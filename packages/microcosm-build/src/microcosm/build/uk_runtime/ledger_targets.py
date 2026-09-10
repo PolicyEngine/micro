@@ -1111,8 +1111,7 @@ def uk_census_household_uprating(
         factor = reference_value / total
         if not np.isfinite(factor) or factor <= 0:
             raise ValueError(
-                f"UK census household {level} uprating factor is invalid: "
-                f"{factor!r}."
+                f"UK census household {level} uprating factor is invalid: {factor!r}."
             )
         grains[level] = {
             "cells": len(specs),
@@ -1128,7 +1127,9 @@ def uk_census_household_uprating(
         "reference": dict(households_reference),
         "grains": grains,
         "adjudication": (
-            "microcosm#887 (supersedes #762 A15 denominator; A17 unchanged)"
+            "microcosm#887 (per-grain Chronicle denominator supersedes #762 "
+            "A15; A17 rule unchanged, factor moves from 1.0335759 to the "
+            "LA-grain 1.0335595)"
         ),
     }
 
@@ -1311,8 +1312,7 @@ def uk_local_target_surface(
             factor = float(grain["factor"])
             if not np.isfinite(factor) or factor <= 0:
                 raise ValueError(
-                    f"census household {level} uprating factor is invalid: "
-                    f"{factor!r}."
+                    f"census household {level} uprating factor is invalid: {factor!r}."
                 )
     # microcosm#762 A17 (ruling 2026-09-03): census tenure cells share the
     # Chronicle census-household universe at the same grain. Identity-held
@@ -1362,9 +1362,7 @@ def uk_local_target_surface(
                 to_period = spec.metadata.get("uprating_to_period")
                 grain = uprating_receipt.get("grains", {}).get(geography_level)
                 years = (
-                    frozenset(grain.get("census_years", ()))
-                    if grain
-                    else frozenset()
+                    frozenset(grain.get("census_years", ())) if grain else frozenset()
                 )
                 attempted = from_period is not None or to_period is not None
                 eligible = attempted and _is_census_vintage_hold(

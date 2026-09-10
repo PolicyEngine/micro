@@ -550,9 +550,8 @@ def test_uk_population_targets_use_corrected_local_selector_vocabulary() -> None
 def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None:
     resource = load_uk_local_geography_contract()
 
-    assert (
-        metric_names_from_target_profile(resource, "constituency")
-        == metric_names("constituency")
+    assert metric_names_from_target_profile(resource, "constituency") == metric_names(
+        "constituency"
     )
     assert metric_names_from_target_profile(resource, "la") == metric_names("la")
     assert len(metric_names_from_target_profile(resource, "constituency")) == 18
@@ -609,6 +608,15 @@ def test_uk_population_uc_households_target_counts_benunits() -> None:
     assert len(target["value_operands"]) == 10
     assert "derived" in target["bindings"]["policyengine"]["notes"]
     assert "publisher grand Total" in target["bindings"]["policyengine"]["notes"]
+
+
+def test_uk_census_households_measurement_is_occupied_households() -> None:
+    target = _target_by_id(_load(), "ons.census.households")
+    assert target["measurement"] == {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [{"concept": "uk.household.occupancy", "equals": "occupied"}],
+    }
 
 
 def test_uk_uc_composition_and_disability_children_targets_are_rebound() -> None:

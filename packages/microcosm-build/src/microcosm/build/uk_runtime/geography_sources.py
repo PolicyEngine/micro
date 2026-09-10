@@ -498,9 +498,7 @@ def load_ni_dz_parlcon24_lookup(
     }
     actual_constituencies = set(lookup["constituency_code"])
     if actual_constituencies != expected_constituencies:
-        missing_constituencies = sorted(
-            expected_constituencies - actual_constituencies
-        )
+        missing_constituencies = sorted(expected_constituencies - actual_constituencies)
         unexpected_constituencies = sorted(
             actual_constituencies - expected_constituencies
         )
@@ -842,8 +840,7 @@ def build_northern_ireland_crosswalk(
         )
         for column in nesting_columns:
             mismatch = comparison[
-                comparison[f"{column}_geojson"]
-                != comparison[f"{column}_lookup"]
+                comparison[f"{column}_geojson"] != comparison[f"{column}_lookup"]
             ]
             if not mismatch.empty:
                 examples = mismatch["oa_code"].tolist()[:5]
@@ -1631,7 +1628,13 @@ def _read_csv_url(url: str, **kwargs: Any) -> pd.DataFrame:
 
 
 def _read_excel_url(url: str, **kwargs: Any) -> pd.DataFrame:
-    __import__("openpyxl")
+    try:
+        __import__("openpyxl")
+    except ImportError as error:  # pragma: no cover - exercised without the extra
+        raise ImportError(
+            "Reading NISRA's DZ2021 lookup workbook needs openpyxl; install "
+            "microcosm-build[uk] (the workspace dev group also carries it)."
+        ) from error
     return pd.read_excel(
         io.BytesIO(_read_url_bytes(url)),
         engine="openpyxl",

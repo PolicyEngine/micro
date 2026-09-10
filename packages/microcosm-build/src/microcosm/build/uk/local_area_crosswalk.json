@@ -11,6 +11,26 @@
     "constituency": {
       "ledger_geography_level": "constituency",
       "ladder_layer": "constituency",
+      "ladder_layer_sources": {
+        "england_and_wales": {
+          "source": "ONS Open Geography Portal, OA (2021) to Westminster Parliamentary Constituency (July 2024) best fit lookup in EW (item 5968b5b2...)",
+          "url": "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/5968b5b2c0f14dd29ba277beaae6dec3/csv?layers=0",
+          "sha256": "e4ec577416bde73d5718ef133af4adeaae9b95a41867aeb006b5fc0260c790c0",
+          "vintage": "2024_pcon"
+        },
+        "northern_ireland": {
+          "source": "NISRA, Geography Data Zone and Super Data Zone Lookups V3, DZ2021 to PARLCON2024 published administrative lookup",
+          "url": "https://www.nisra.gov.uk/files/nisra/documents/2025-04/geography-data-zone-and-super-data-zone-lookups-v3.xlsx",
+          "sha256": "8e2e1f6daaddd2f5b6887ccab1bf9d0bf179f6d0d2ba60ef8e0ebb495a3e1999",
+          "vintage": "2024_pcon"
+        },
+        "scotland": {
+          "source": "NRS, OA2022 to UK Parliamentary Constituency 2024 lookup",
+          "url": "https://www.nrscotland.gov.uk/media/njkmhppf/oa22_ukpc24.zip",
+          "sha256": "b63829d28cdf93606d17ffd12999ec12f54a8bc3065cc40fbf9e975629e4689a",
+          "vintage": "2024_pcon"
+        }
+      },
       "ladder_code_column": "constituency_code",
       "ladder_vintage": "2024_pcon",
       "expected_vintage": [
@@ -673,6 +693,26 @@
     "local_authority": {
       "ledger_geography_level": "local_authority",
       "ladder_layer": "local_authority",
+      "ladder_layer_sources": {
+        "england_and_wales": {
+          "source": "ONS Open Geography Portal, OA (2021) to LAD (April 2023) best fit lookup in EW (item 83982ff4...)",
+          "url": "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/83982ff4a8144038be52be65dd2b8fa0/csv?layers=0",
+          "sha256": "85faebfff21b62cb4a242f4c87d6ee887ca182ea129de540f59e5734d650dbe3",
+          "vintage": "2023_april_lad"
+        },
+        "northern_ireland": {
+          "source": "NISRA DZ2021 GeoJSON (SDZ2021, LGD2014, and DEA2014 feature properties)",
+          "url": "https://www.nisra.gov.uk/files/nisra/publications/geography-dz2021-geojson.zip",
+          "sha256": "3acb357ebdecae64dbc2fb645e62c68f529a00f7ae9c19684bd3b7a10e62676b",
+          "vintage": "2021_census"
+        },
+        "scotland": {
+          "source": "NRS, OA2022 to LAU 2025 lookup (council area via CA19 join)",
+          "url": "https://www.nrscotland.gov.uk/media/qsxon3dm/oa22_lau25_itl25.zip",
+          "sha256": "4d94e959dfcc83ce6bcd0c09cfc073ad597fb89812eab1d8ab664f4ccbc6ba77",
+          "vintage": "2019_council_area"
+        }
+      },
       "ladder_code_column": "local_authority_code",
       "ladder_vintage": "ew:2023_april_lad;scotland:2019_council_area;ni:2014_lgd",
       "expected_vintage": {

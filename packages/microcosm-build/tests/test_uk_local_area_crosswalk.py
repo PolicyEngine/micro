@@ -55,6 +55,18 @@ def test_uk_local_area_crosswalk_pins_rosters_and_vintages() -> None:
     assert constituency["ladder_layer"] == "constituency"
     assert constituency["ladder_code_column"] == "constituency_code"
     assert constituency["ladder_vintage"] == "2024_pcon"
+    assert constituency["ladder_layer_sources"]["northern_ireland"] == {
+        "source": (
+            "NISRA, Geography Data Zone and Super Data Zone Lookups V3, "
+            "DZ2021 to PARLCON2024 published administrative lookup"
+        ),
+        "url": (
+            "https://www.nisra.gov.uk/files/nisra/documents/2025-04/"
+            "geography-data-zone-and-super-data-zone-lookups-v3.xlsx"
+        ),
+        "sha256": ("8e2e1f6daaddd2f5b6887ccab1bf9d0bf179f6d0d2ba60ef8e0ebb495a3e1999"),
+        "vintage": "2024_pcon",
+    }
     assert constituency["expected_vintage"] == ["pcon_2024"]
     assert constituency["area_count"] == 650
     assert len(constituency["area_ids"]) == 650

@@ -300,8 +300,7 @@ def test_uk_local_target_surface_keeps_single_national_control(monkeypatch) -> N
 
     assert captured["frame"]["target_id"].str.startswith("contract:").all()
     controls = captured["frame"].loc[
-        captured["frame"]["target_id"]
-        == "contract:dwp.uc.payment_distribution_single"
+        captured["frame"]["target_id"] == "contract:dwp.uc.payment_distribution_single"
     ]
     assert controls[["grain", "geography_id", "value"]].to_dict("records") == [
         {"grain": "country", "geography_id": "K03000001", "value": 42.0}
@@ -1610,7 +1609,11 @@ def test_uk_census_household_uprating_uses_each_compiled_grain() -> None:
                 "factor": pytest.approx(1.1),
             },
         },
-        "adjudication": "microcosm#887 (supersedes #762 A15 denominator; A17 unchanged)",
+        "adjudication": (
+            "microcosm#887 (per-grain Chronicle denominator supersedes #762 "
+            "A15; A17 rule unchanged, factor moves from 1.0335759 to the "
+            "LA-grain 1.0335595)"
+        ),
     }
     with pytest.raises(ValueError, match="calibration period"):
         uk_census_household_uprating(registry, reference, period=2024)
@@ -1656,7 +1659,7 @@ def test_uk_local_target_surface_uprates_households_and_tenure_by_grain() -> Non
     )
     assert as_published.loc[
         as_published["metric"] == "households", "value"
-    ].tolist() == [10.0, 20.0, 12.0, 18.0]
+    ].tolist() == [10.0, 20.0, 10.0, 20.0]
     assert receipt["census_household_uprating"]["applied"] is False
 
     surface, receipt = uk_local_target_surface(
@@ -1667,7 +1670,7 @@ def test_uk_local_target_surface_uprates_households_and_tenure_by_grain() -> Non
         census_household_uprating=uprating,
     )
     assert surface.loc[surface["metric"] == "households", "value"].tolist() == (
-        pytest.approx([11.0, 22.0, 13.2, 19.8])
+        pytest.approx([11.0, 22.0, 11.0, 22.0])
     )
     assert surface.loc[
         surface["metric"] == "tenure/social_rent", "value"
@@ -1913,9 +1916,7 @@ def test_tenure_receipt_counts_attempted_and_skipped_holds(
     from_period, to_period, reason, eligible
 ):
     registry = _census_household_registry(
-        _tenure_spec(
-            "E06000001", 5.0, from_period=from_period, to_period=to_period
-        )
+        _tenure_spec("E06000001", 5.0, from_period=from_period, to_period=to_period)
     )
     reference = uk_ledger_households_total(
         (_households_total_fact(2025, 33.0),), period=2025
@@ -1929,7 +1930,9 @@ def test_tenure_receipt_counts_attempted_and_skipped_holds(
     )
     tenure = receipt["census_household_uprating"]["tenure_cells"]
     assert tenure["total_cells"] == 1
-    assert tenure["attempted_cells"] == int(from_period is not None or to_period is not None)
+    assert tenure["attempted_cells"] == int(
+        from_period is not None or to_period is not None
+    )
     assert tenure["eligible_cells"] == tenure["cells"] == int(eligible)
     assert tenure["skipped_cells"] == int(not eligible)
     assert tenure["holds"][0]["reason"] == reason

@@ -102,7 +102,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     _input_mass_reference_evidence_sha256,
     coerce_input_mass_reference_registry,
     coerce_reviewed_exclusions,
-    load_uk_reviewed_exclusion_register,
+    load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
     uk_default_qrf_tail_reviewed_exclusions,
     uk_input_mass_parity_gate,
@@ -813,16 +813,17 @@ def _evaluate_area_support(
     kwargs = dict(parameters)
     resource = str(kwargs.pop("crosswalk_resource"))
     exclusions_resource = str(kwargs.pop("exclusions_resource"))
-    records = load_uk_reviewed_exclusion_register(
+    register = load_uk_local_area_support_exclusion_register(
         None,
         resource=exclusions_resource,
     )
+    records = register["exclusions"]
     clock = _exclusion_clock(context)
-    invalid = {
-        key: record
-        for key, record in records.items()
-        if record.expired(clock) or record.premature(clock)
-    }
+    invalid = {}
+    for block, entries in register.items():
+        for key, record in entries.items():
+            if record.expired(clock) or record.premature(clock):
+                invalid[f"{block}/{key}"] = record
     if invalid:
         return GateResult(
             name="area_support",
@@ -952,6 +953,7 @@ def _evaluate_local_default_target_surface(
         reference_name="UK local default metric surface",
         reviewed_exclusions=reviewed,
     )
+
 
 def _target_surface_required_artifacts(
     parameters: Mapping[str, Any],

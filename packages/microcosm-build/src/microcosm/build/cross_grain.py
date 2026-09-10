@@ -136,10 +136,7 @@ def detect_cross_grain_inconsistencies(
             bridge = bridge_by_side.get(contract_id)
             if bridge is None:
                 bridge = bridge_by_side.get(f"contract:{contract_id}")
-        bridge_is_unbound = bool(
-            bridge is not None and bridge.bridge_id in unbound_bridge_ids
-        )
-        if bridge_is_unbound:
+        if bridge is not None and bridge.bridge_id in unbound_bridge_ids:
             bridge = None
 
         is_bound_higher = contract_id in bound_set
@@ -161,11 +158,7 @@ def detect_cross_grain_inconsistencies(
         # matters when one lower side has both a bridged control and a second,
         # exact-signature partition (the UK UC case): both controls must be
         # seen so incompatible same-grain values fail closed.
-        if (
-            not bridge_is_unbound
-            and contract_id is not None
-            and contract_id in contract_signatures
-        ):
+        if contract_id is not None and contract_id in contract_signatures:
             keys.append(
                 (
                     "signature",

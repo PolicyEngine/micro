@@ -78,7 +78,7 @@ from microcosm.build.uk_runtime import (
     inject_measure_inputs,
     ladder_clone_index_column,
     ladder_target_provenance,
-    ladder_vs_ledger_household_dispersion,
+    ladder_vs_chronicle_household_dispersion,
     load_bound_spine_sidecar,
     load_uk_local_area_crosswalk,
     load_uk_national_frame,
@@ -935,21 +935,19 @@ def _run_candidate(
                 "reason": "the joint target inputs carry no Ledger facts.",
             }
         else:
-            joint_inputs["census_household_uprating"] = (
-                uk_census_household_uprating(
-                    joint_inputs["local_registry"],
-                    uk_ledger_households_total(
-                        facts, period=joint_inputs["calibration_year"]
-                    ),
-                    period=joint_inputs["calibration_year"],
-                )
+            joint_inputs["census_household_uprating"] = uk_census_household_uprating(
+                joint_inputs["local_registry"],
+                uk_ledger_households_total(
+                    facts, period=joint_inputs["calibration_year"]
+                ),
+                period=joint_inputs["calibration_year"],
             )
-        joint_inputs["household_dispersion"] = ladder_vs_ledger_household_dispersion(
+        joint_inputs["household_dispersion"] = ladder_vs_chronicle_household_dispersion(
             ladder, joint_inputs["local_registry"].specs
         )
-        if args.release_candidate and not joint_inputs[
-            "census_household_uprating"
-        ].get("applied"):
+        if args.release_candidate and not joint_inputs["census_household_uprating"].get(
+            "applied"
+        ):
             raise SystemExit(
                 "error: --release-candidate requires the A15 census household "
                 "uprating: "
@@ -1012,10 +1010,16 @@ def _run_candidate(
             return 0
 
         if args.households_only:
-            print("binding Chronicle census household targets...", file=sys.stderr, flush=True)
+            print(
+                "binding Chronicle census household targets...",
+                file=sys.stderr,
+                flush=True,
+            )
             household, problem, cross_grain = _build_bound_problem(
                 assignment,
                 local_registry=joint_inputs["local_registry"],
+                period=joint_inputs["calibration_year"],
+                census_household_uprating=joint_inputs.get("census_household_uprating"),
             )
             solve_frame = clone.frame
             restore = None
@@ -1061,9 +1065,7 @@ def _run_candidate(
                 reviewed_unbound_higher_targets=joint_inputs[
                     "reviewed_unbound_higher_targets"
                 ],
-                census_household_uprating=joint_inputs.get(
-                    "census_household_uprating"
-                ),
+                census_household_uprating=joint_inputs.get("census_household_uprating"),
             )
             args._rung_surface = rung_surface
         args._bound_families = tuple(bound_families)
@@ -1611,9 +1613,7 @@ def _build_joint_problem(
         ),
     }
     rosters = {
-        "constituency": tuple(
-            map(str, np.unique(assignment.ladder.constituency_code))
-        ),
+        "constituency": tuple(map(str, np.unique(assignment.ladder.constituency_code))),
         "la": tuple(map(str, np.unique(assignment.ladder.local_authority_code))),
     }
     problem = build_uk_rowwise_local_surface_matrix(
@@ -1725,7 +1725,7 @@ def _joint_dry_run_plan(
             for grain, rows in summaries.items()
         }
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "build_kind": "uk_rowwise_calibrated_candidate_plan",
         "dry_run": True,
         "survey_year": source_year,
@@ -1734,7 +1734,7 @@ def _joint_dry_run_plan(
             "spine": dict(input_artifact),
             "ladder": dict(ladder_artifact),
             "targets": {
-                "ledger": joint_inputs["artifact"].provenance(),
+                "chronicle": joint_inputs["artifact"].provenance(),
                 "paired_ladder_sha256": str(ladder_artifact["sha256"]),
             },
         },
@@ -1805,8 +1805,15 @@ def _build_bound_problem(
     assignment: _LadderAssignment,
     *,
     local_registry: TargetRegistry,
+    period: int | str,
+    census_household_uprating: Mapping[str, Any] | None = None,
 ) -> tuple[pd.DataFrame, UKRowwiseLocalMatrix, dict[str, Any]]:
-    """Bind Chronicle census household targets at constituency grain only."""
+    """Bind Chronicle census household targets at constituency grain only.
+
+    The constituency cells go through the same ``uk_local_target_surface``
+    pass as the joint scope, so the per-grain A15 factor applies here too and
+    its receipt reaches the manifest; the scope has no national controls.
+    """
     clone = assignment.result
     household = clone.frame.table("household").reset_index(drop=True)
     household_index = pd.Index(
@@ -1835,10 +1842,17 @@ def _build_bound_problem(
         raise ValueError(
             "households-only binding requires Chronicle constituency household specs."
         )
+    surface, cross_grain = uk_local_target_surface(
+        TargetRegistry(household_specs, country="uk"),
+        bound_national_target_ids=BOUND_NATIONAL_TARGETS,
+        period=period,
+        census_household_uprating=census_household_uprating,
+    )
+    surface = surface.sort_values("area_code", kind="mergesort").reset_index(drop=True)
     targets = pd.DataFrame(
         {
-            "code": [_spec_geography(spec)[1] for spec in household_specs],
-            "households": [float(spec.value) for spec in household_specs],
+            "code": surface["area_code"].astype(str).to_numpy(),
+            "households": surface["value"].to_numpy(dtype=np.float64),
         }
     )
     problem = build_uk_rowwise_local_matrix(
@@ -1848,22 +1862,26 @@ def _build_bound_problem(
         area_type="constituency",
         code_column="code",
     )
-    problem.target_frame["target_name"] = [spec.name for spec in household_specs]
-    problem.target_frame["contract_target_id"] = "ons.census.households"
+    target_identity = surface.set_index(surface["area_code"].astype(str))[
+        ["target_name", "contract_target_id"]
+    ]
+    joined_identity = problem.target_frame[["area_code"]].join(
+        target_identity,
+        on="area_code",
+        validate="many_to_one",
+    )
+    if joined_identity[["target_name", "contract_target_id"]].isna().any().any():
+        raise ValueError(
+            "households-only target identities do not cover every matrix area code."
+        )
+    problem.target_frame["target_name"] = joined_identity["target_name"].to_numpy()
+    problem.target_frame["contract_target_id"] = joined_identity[
+        "contract_target_id"
+    ].to_numpy()
     return (
         household,
         problem,
-        {
-            "bound_national_targets": list(BOUND_NATIONAL_TARGETS),
-            "bound_higher_targets": [],
-            "inconsistencies_in_force": [],
-            "groups": [],
-            "unbound_bridges": [],
-            "empty_legs_licensed": [],
-            "controls_without_lower_rows": [],
-            "fanout_targets_not_controls": [],
-            "absence": "Households-only scope has no national controls.",
-        },
+        {"bound_national_targets": list(BOUND_NATIONAL_TARGETS), **cross_grain},
     )
 
 
@@ -2165,7 +2183,7 @@ def _dry_run_plan(
     cross_grain: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "build_kind": "uk_rowwise_calibrated_candidate_plan",
         "dry_run": True,
         "candidate_scope": "adjudicated_partial",
@@ -2178,7 +2196,7 @@ def _dry_run_plan(
         ),
         "identity": {
             "targets": {
-                "ledger": args._joint_inputs_receipt["artifact"].provenance(),
+                "chronicle": args._joint_inputs_receipt["artifact"].provenance(),
                 "paired_ladder_sha256": str(ladder_artifact["sha256"]),
             }
         },
@@ -2416,7 +2434,7 @@ def _manifest(
         ]
     )
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "build_kind": "uk_rowwise_calibrated_candidate",
         "candidate_scope": "adjudicated_partial",
         "created_at": datetime.now(UTC).isoformat(),
@@ -2445,7 +2463,7 @@ def _manifest(
                 "matches_local_area_crosswalk_pin": True,
             },
             "targets": {
-                "ledger": args._joint_inputs_receipt["artifact"].provenance(),
+                "chronicle": args._joint_inputs_receipt["artifact"].provenance(),
                 "paired_ladder_sha256": str(ladder_artifact["sha256"]),
             },
             "code": {"git_commit": _git_commit(), "git_dirty": _git_dirty()},

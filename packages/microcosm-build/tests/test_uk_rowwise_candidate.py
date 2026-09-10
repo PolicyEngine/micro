@@ -46,15 +46,15 @@ def _empty_support_exclusions_for_synthetic_rosters(
 
     import microcosm.build.uk_runtime.battery_bindings as battery_bindings
 
-    real_loader = battery_bindings.load_uk_reviewed_exclusion_register
+    real_loader = battery_bindings.load_uk_local_area_support_exclusion_register
 
     def _loader(path, *, resource, **kwargs):
         if resource == "local_area_support_exclusions.json":
-            return {}
+            return {"exclusions": {}, "bound_despite_support_floor": {}}
         return real_loader(path, resource=resource, **kwargs)
 
     monkeypatch.setattr(
-        battery_bindings, "load_uk_reviewed_exclusion_register", _loader
+        battery_bindings, "load_uk_local_area_support_exclusion_register", _loader
     )
 
 
@@ -355,7 +355,9 @@ def _configure_households_only_inputs(
         "measure_exclusions": {},
         "reviewed_unbound_higher_targets": {},
     }
-    monkeypatch.setattr(builder, "_load_joint_target_inputs", lambda _args: joint_inputs)
+    monkeypatch.setattr(
+        builder, "_load_joint_target_inputs", lambda _args: joint_inputs
+    )
     return [
         *_mandatory_input_flags(input_h5, ladder_path),
         "--households-only",
@@ -416,9 +418,9 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
                 "2",
                 "--seed",
                 "7",
-                    "--epochs",
-                    "2",
-                    *household_flags,
+                "--epochs",
+                "2",
+                *household_flags,
             ]
         )
         == 0
@@ -494,7 +496,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert manifest["identity"]["targets"]["paired_ladder_sha256"] == (
         hashlib.sha256(ladder_path.read_bytes()).hexdigest()
     )
-    assert manifest["identity"]["targets"]["ledger"]["artifact_id"] == (
+    assert manifest["identity"]["targets"]["chronicle"]["artifact_id"] == (
         "synthetic-households-only-fixture"
     )
     assert manifest["household_dispersion"]["countries"]
@@ -637,8 +639,8 @@ def test_candidate_dry_run_plans_without_solve_or_write(
                 "2",
                 "--seed",
                 "7",
-                    "--dry-run",
-                    *household_flags,
+                "--dry-run",
+                *household_flags,
             ]
         )
         == 0
@@ -1132,7 +1134,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                     "geography_id": "E09000001",
                     "ledger_fact_period": "2023",
                 },
-            )
+            ),
         ],
         country="uk",
     )
@@ -1142,7 +1144,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
             "facts_sha256": "1" * 64,
             "manifest_sha256": "2" * 64,
             "artifact_id": "synthetic-joint-fixture",
-        }
+        },
     )
     joint_inputs = {
         "artifact": artifact,
@@ -1337,7 +1339,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
         == 0
     )
     f100 = json.loads((f100_out / builder.MANIFEST_FILENAME).read_text())
-    assert f100["schema_version"] == 2
+    assert f100["schema_version"] == 3
     # The written rowwise artifact carries the shared ``clone_index`` name on
     # every table: the compact national loader must refuse it (flattening
     # rule) and the rowwise reader must undo the export rename.
@@ -1648,12 +1650,11 @@ def test_households_only_targets_come_from_compiled_chronicle_registry(
         source_lineage_modulus=None,
     )
 
-    registry = TargetRegistry(
-        _household_specs_for_ladder(target_ladder), country="uk"
-    )
-    _, problem, _ = builder._build_bound_problem(
+    registry = TargetRegistry(_household_specs_for_ladder(target_ladder), country="uk")
+    _, problem, cross_grain = builder._build_bound_problem(
         assignment,
         local_registry=registry,
+        period=2025,
     )
 
     expected = sorted(
@@ -1662,9 +1663,52 @@ def test_households_only_targets_come_from_compiled_chronicle_registry(
         if spec.metadata["geography_level"] == "constituency"
     )
     assert sorted(problem.targets.tolist()) == expected
-    assert problem.target_frame["target_name"].str.startswith(
-        "ons.census.households@"
-    ).all()
+    assert cross_grain["census_household_uprating"]["applied"] is False
+    assert cross_grain["bound_national_targets"] == []
+
+    # The households-only scope applies the same per-grain A15 factor as the
+    # joint scope and carries its receipt into the manifest (Max's review).
+    uprating = {
+        "applied": True,
+        "period": 2025,
+        "grains": {
+            "constituency": {
+                "cells": len(expected),
+                "census_households_total": sum(expected),
+                "census_years": [2021, 2022],
+                "factor": 1.1,
+            }
+        },
+    }
+    _, uprated_problem, uprated_cross_grain = builder._build_bound_problem(
+        assignment,
+        local_registry=registry,
+        period=2025,
+        census_household_uprating=uprating,
+    )
+    assert sorted(uprated_problem.targets.tolist()) == pytest.approx(
+        [value * 1.1 for value in expected]
+    )
+    receipt = uprated_cross_grain["census_household_uprating"]
+    assert receipt["applied"] is True
+    assert receipt["household_cells"]["cells"] == len(expected)
+    assert receipt["household_cells"]["skipped_cells"] == 0
+    assert (
+        problem.target_frame["target_name"]
+        .str.startswith("ons.census.households@")
+        .all()
+    )
+    assert dict(
+        zip(
+            problem.target_frame["area_code"],
+            problem.target_frame["target_name"],
+            strict=True,
+        )
+    ) == {
+        str(spec.metadata["geography_id"]): spec.name
+        for spec in registry.specs
+        if spec.metadata["geography_level"] == "constituency"
+    }
 
 
 def test_candidate_dry_run_refuses_ladder_sidecar_collision(

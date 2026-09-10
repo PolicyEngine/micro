@@ -17,7 +17,7 @@ from microcosm.build.uk_runtime.geography_ladder import UkOaLadder
 
 __all__ = [
     "constituency_household_targets",
-    "ladder_vs_ledger_household_dispersion",
+    "ladder_vs_chronicle_household_dispersion",
     "ladder_target_provenance",
     "local_authority_household_targets",
 ]
@@ -52,7 +52,7 @@ def local_authority_household_targets(ladder: UkOaLadder) -> pd.DataFrame:
     return _household_targets(ladder.local_authority_code, ladder)
 
 
-def ladder_vs_ledger_household_dispersion(
+def ladder_vs_chronicle_household_dispersion(
     ladder: UkOaLadder,
     compiled_specs: Iterable[Any],
 ) -> dict[str, object]:
@@ -62,9 +62,9 @@ def ladder_vs_ledger_household_dispersion(
         "constituency": constituency_household_targets(ladder).set_index("code")[
             "households"
         ],
-        "local_authority": local_authority_household_targets(ladder).set_index(
-            "code"
-        )["households"],
+        "local_authority": local_authority_household_targets(ladder).set_index("code")[
+            "households"
+        ],
     }
     cells: list[dict[str, object]] = []
     for spec in compiled_specs:
@@ -93,8 +93,8 @@ def ladder_vs_ledger_household_dispersion(
         if country is None:
             raise ValueError(f"{name} has an unrecognised UK area code {area_code!r}.")
         ladder_value = float(ladder_targets.loc[area_code])
-        ledger_value = float(_spec_field(spec, "value", np.nan))
-        if not np.isfinite(ledger_value):
+        chronicle_value = float(_spec_field(spec, "value", np.nan))
+        if not np.isfinite(chronicle_value):
             raise ValueError(f"{name} has a non-finite Ledger household value.")
         cells.append(
             {
@@ -103,8 +103,8 @@ def ladder_vs_ledger_household_dispersion(
                 "area_code": area_code,
                 "country": country,
                 "ladder_households": ladder_value,
-                "ledger_households": ledger_value,
-                "delta": ladder_value - ledger_value,
+                "chronicle_households": chronicle_value,
+                "delta": ladder_value - chronicle_value,
             }
         )
     if not cells:

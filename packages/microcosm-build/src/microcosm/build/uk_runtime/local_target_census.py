@@ -286,29 +286,37 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "source_id": "ons_census2021_ts041_households",
         "publisher": "Office for National Statistics (via Nomis)",
         "product": (
-            "Census 2021 table TS041 (number of households), England and "
-            "Wales, compiled by Chronicle to constituency and local-authority "
-            "household facts."
+            "Nomis NM_2059_1 Census 2021 TS041 household counts at TYPE172 "
+            "(Westminster Parliamentary Constituencies, July 2024) and "
+            "TYPE424 (local authority districts, April 2023), compiled by "
+            "Chronicle."
         ),
-        "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip",
+        "url": (
+            "https://www.nomisweb.co.uk/api/v01/dataset/NM_2059_1.data.csv?"
+            "geography=TYPE172&date=latest&c2021_hh_1=0&measures=20100&"
+            "select=geography_name,geography_code,c2021_hh_1_name,"
+            "measures_name,obs_value"
+        ),
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2021-03-21",
         "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
         "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": "2026-09-09",
-        "notes": (
-            "The pinned Ledger fact feed carries the compiled household cells."
-        ),
+        "notes": ("The pinned Ledger fact feed carries the compiled household cells."),
     },
     {
         "source_id": "nrs_census2022_uv404_households",
         "publisher": "National Records of Scotland",
         "product": (
-            "Census 2022 index zip: Postcode_To_OA.csv census occupied "
-            "household counts (cell-key perturbed), compiled by Chronicle to "
-            "constituency and local-authority household facts."
+            "NRS Census 2022 UV404 tenure-household CSVs for United Kingdom "
+            "Parliamentary Constituency 2024 and Local_authority, hosted by "
+            "the UKDS CKAN archive and compiled by Chronicle."
         ),
-        "url": "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip",
+        "url": (
+            "https://ukds-ckan.s3.eu-west-1.amazonaws.com/2022/NRS/UV404/"
+            "Census_2022_UV404_Tenure_Households_United_Kingdom_"
+            "Parliamentary_Constituency_2024.csv"
+        ),
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2022-03-20",
         "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
@@ -323,10 +331,12 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "source_id": "nisra_census2021_households",
         "publisher": "Northern Ireland Statistics and Research Agency",
         "product": (
-            "Census 2021 table-builder HOUSEHOLD dataset at DZ21 grain — "
-            "compiled by Chronicle to constituency and local-authority facts."
+            "NISRA Census 2021 table-builder HOUSEHOLD tables at PARLCON24 "
+            "and LGD14, compiled by Chronicle."
         ),
-        "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21",
+        "url": (
+            "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=PARLCON24"
+        ),
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2021-03-21",
         "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
@@ -598,7 +608,11 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "mapping defect of 10 Data Zones, max 694, not perturbation). When "
             "a national same-concept control is bound, the standing cross-grain "
             "rule declared in uk_runtime.ledger_targets rescales both grains; "
-            "country wins."
+            "country wins. The census cells count the occupied-household "
+            "universe and pair only through the household-composition bridge, "
+            "never with dwelling stock; that cross-grain rescale applies once "
+            "the bridge is bound. Today it is reviewed-unbound, so the cells "
+            "bind as published after A15 uprating."
         ),
         "authority": (
             "ONS/NRS/NISRA statistical disclosure control documentation; "

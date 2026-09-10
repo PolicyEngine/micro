@@ -360,9 +360,7 @@ def _build_ni_frame(fetched: dict[str, dict[str, str]]) -> pd.DataFrame:
     """Join Northern Ireland's DZ21-grain ladder frame from NISRA sources."""
 
     hierarchy = load_ni_dz_hierarchy(_file_url(fetched, "ni_geojson"))
-    lookup = load_ni_dz_parlcon24_lookup(
-        _file_url(fetched, "ni_parlcon24_lookup")
-    )
+    lookup = load_ni_dz_parlcon24_lookup(_file_url(fetched, "ni_parlcon24_lookup"))
     ward_lookup = load_ni_dz_ward_lookup(_file_url(fetched, "ni_geojson"))
     ward_comparison = ward_lookup.merge(
         lookup[["oa_code", "ward_code"]],
@@ -371,8 +369,7 @@ def _build_ni_frame(fetched: dict[str, dict[str, str]]) -> pd.DataFrame:
         validate="one_to_one",
     )
     mismatch = ward_comparison[
-        ward_comparison["ward_code_geojson"]
-        != ward_comparison["ward_code_lookup"]
+        ward_comparison["ward_code_geojson"] != ward_comparison["ward_code_lookup"]
     ]
     if not mismatch.empty:
         raise ValueError(

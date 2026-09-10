@@ -244,7 +244,7 @@ def test_partially_bound_declared_partition_is_refused():
         )
 
 
-def test_reviewed_partial_partition_is_unbound_with_receipt_and_no_reconciliation():
+def test_reviewed_unbound_bridge_keeps_the_exact_signature_group():
     bridge = CrossGrainBridge(
         "partition",
         "households",
@@ -272,14 +272,17 @@ def test_reviewed_partial_partition_is_unbound_with_receipt_and_no_reconciliatio
             "part_a": _signature(),
             "part_b": _signature(),
             "part_c": _signature(),
+            "census_households": _signature(),
         },
         _rule(bridges=(bridge,)),
         reviewed_unbound_higher_targets=reviewed,
     )
 
-    pd.testing.assert_frame_equal(reconciled, original)
-    assert receipt["groups"] == []
-    assert receipt["inconsistencies_in_force"] == []
+    pd.testing.assert_frame_equal(surface, original)
+    assert reconciled["value"].tolist() == [10.0, 6.0, 4.0]
+    assert len(receipt["groups"]) == 1
+    assert receipt["groups"][0]["bridge_id"] is None
+    assert receipt["groups"][0]["legs"][0]["higher_target_ids"] == ["part_a"]
     assert receipt["unbound_bridges"] == [
         {
             "bridge_id": "partition",

@@ -191,7 +191,12 @@ def write_dense_bundle(
     candidate = {
         "identity": {
             "code": {"git_commit": "a" * 40, "git_dirty": False},
-            "ledger": {"facts_sha256": "b" * 64, "manifest_sha256": "c" * 64},
+            "targets": {
+                "chronicle": {
+                    "facts_sha256": "b" * 64,
+                    "manifest_sha256": "c" * 64,
+                }
+            },
         },
         "outputs": {
             "dataset": {"sha256": _sha(b"dense-h5-stand-in")},
@@ -282,6 +287,15 @@ def write_dense_bundle(
 
 def test_valid_dense_bundle_passes(tmp_path: Path) -> None:
     validate_release_dir(write_dense_bundle(tmp_path))
+
+
+def test_dense_bundle_rejects_stale_ledger_identity_key(tmp_path: Path) -> None:
+    release_dir = write_dense_bundle(tmp_path)
+    candidate_path = release_dir / "rowwise_candidate_manifest.json"
+    candidate = json.loads(candidate_path.read_text())
+    candidate["identity"]["ledger"] = candidate["identity"].pop("targets")["chronicle"]
+    candidate_path.write_text(json.dumps(candidate))
+    assert "identity.targets.chronicle" in _failures(release_dir)
 
 
 def test_dense_bundle_accepts_the_release_id_as_revision(tmp_path: Path) -> None:

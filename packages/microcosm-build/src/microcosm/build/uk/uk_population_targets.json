@@ -13651,7 +13651,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.occupancy",
+            "equals": "occupied"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {

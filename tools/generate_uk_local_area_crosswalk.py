@@ -143,9 +143,30 @@ def _level_payload(
     ladder_vintage = str(layer.get("vintage") or "")
     if not ladder_vintage:
         raise ValueError(f"UK OA ladder metadata is missing {ladder_layer} vintage.")
+    countries = layer.get("countries")
+    if not isinstance(countries, dict) or not countries:
+        raise ValueError(
+            f"UK OA ladder metadata is missing {ladder_layer} country sources."
+        )
+    ladder_layer_sources: dict[str, dict[str, str]] = {}
+    required_source_fields = ("source", "url", "sha256", "vintage")
+    for country, source in sorted(countries.items()):
+        if not isinstance(source, dict):
+            raise ValueError(
+                f"UK OA ladder {ladder_layer} source {country!r} must be an object."
+            )
+        missing = [field for field in required_source_fields if not source.get(field)]
+        if missing:
+            raise ValueError(
+                f"UK OA ladder {ladder_layer} source {country!r} is missing {missing}."
+            )
+        ladder_layer_sources[str(country)] = {
+            field: str(source[field]) for field in required_source_fields
+        }
     return {
         "ledger_geography_level": level,
         "ladder_layer": ladder_layer,
+        "ladder_layer_sources": ladder_layer_sources,
         "ladder_code_column": code_column,
         "ladder_vintage": ladder_vintage,
         "expected_vintage": EXPECTED_FACT_VINTAGE[level],

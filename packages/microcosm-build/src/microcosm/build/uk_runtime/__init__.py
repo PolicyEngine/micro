@@ -261,7 +261,7 @@ from microcosm.build.uk_runtime.hmrc_source_contract import (
 from microcosm.build.uk_runtime.ladder_targets import (
     constituency_household_targets,
     ladder_target_provenance,
-    ladder_vs_ledger_household_dispersion,
+    ladder_vs_chronicle_household_dispersion,
     local_authority_household_targets,
 )
 from microcosm.build.uk_runtime.ledger_targets import (
@@ -540,6 +540,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UKInputMassReference,
     UKQRFTailConcentrationPolicy,
     load_uk_input_mass_reference,
+    load_uk_local_area_support_exclusion_register,
     load_uk_reviewed_exclusion_register,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
@@ -813,7 +814,7 @@ __all__ = [
     "classify_hmrc_replay_targets",
     "compute_household_metrics",
     "constituency_household_targets",
-    "ladder_vs_ledger_household_dispersion",
+    "ladder_vs_chronicle_household_dispersion",
     "compile_uk_local_target_registry",
     "load_uk_local_area_crosswalk",
     "create_uk_spi_support_tables",
@@ -875,7 +876,7 @@ __all__ = [
     "local_authority_household_targets",
     "load_uk_local_target_census",
     "ladder_target_provenance",
-    "ladder_vs_ledger_household_dispersion",
+    "ladder_vs_chronicle_household_dispersion",
     "load_uk_national_frame",
     "load_uk_release_input_coverage_manifest",
     "committed_uk_local_target_census_path",
@@ -990,6 +991,7 @@ __all__ = [
     "UKZeroWeightStratumDeclaration",
     "load_uk_frs_release",
     "load_uk_input_mass_reference",
+    "load_uk_local_area_support_exclusion_register",
     "load_uk_reviewed_exclusion_register",
     "uk_degenerate_release_surface_gate",
     "uk_export_surface_gate",

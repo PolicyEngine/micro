@@ -110,6 +110,38 @@ Both Chronicle census grains uprate independently to the 2025 UK Ledger househol
 | Constituency | 650 | 28,061,271 | 1.0335597414671631 |
 | Local authority | 361 | 28,061,277 | 1.0335595204737118 |
 
+The former ladder denominator used `29,003,000 / 28,060,832 = 1.0335759110777614`
+(reported as `1.0335759`). The new per-grain Chronicle denominator therefore leaves the A17
+rule unchanged while moving the factor applied to all **1,436 tenure cells** from
+`1.0335759` to the local-authority factor `1.0335595204737118` (reported as `1.0335595`).
+The runtime receipt records this explicitly as: `microcosm#887 (per-grain Chronicle denominator
+supersedes #762 A15; A17 rule unchanged, factor moves from 1.0335759 to the LA-grain
+1.0335595)`.
+
+### Per-cell before/after evidence
+
+[`docs/evidence/uk-887/census-households-cells.json`](../docs/evidence/uk-887/census-households-cells.json)
+contains all 1,011 cells. For each area it records the raw ladder and Chronicle counts, the old
+ladder-uprated and new Chronicle-uprated values, and both deltas. The source-only evidence file
+has SHA-256 `0c219e643ea22d4f211f05cd8e642e7b250ab2de686ce0c9718bf91c91f649e0`.
+
+The raw `ladder − Chronicle` summary is the table above. After applying the old ladder factor to
+the ladder cell and the new grain factor to the Chronicle cell, the per-cell deltas are:
+
+| Country | Grain | Cells | Mean absolute uprated delta | Max absolute uprated delta | Net uprated delta |
+|---|---|---:|---:|---:|---:|
+| England | Constituency | 543 | 7.643980 | 30.678373 | +489.544862 |
+| England | Local authority | 296 | 9.752131 | 53.006703 | +492.656962 |
+| Wales | Constituency | 32 | 6.628907 | 14.805645 | +29.017324 |
+| Wales | Local authority | 22 | 8.042665 | 23.045174 | +29.315027 |
+| Scotland | Constituency | 57 | 51.182024 | 161.586182 | −535.127831 |
+| Scotland | Local authority | 32 | 59.924531 | 159.406569 | −537.673977 |
+| Northern Ireland | Constituency | 18 | 7.065898 | 17.161507 | +16.565646 |
+| Northern Ireland | Local authority | 11 | 8.734463 | 28.561668 | +15.701988 |
+
+María ruled the licensed f100 re-measure out of this review round. The f001 dry run remains the
+pre-merge evidence; an f100 re-measure is a licensed follow-up and was not attempted here.
+
 ## Independent verification (Claude, 2026-09-09, after the Codex pass)
 
 Re-run from the worktree on the final tree (including the added `axiom` binding on

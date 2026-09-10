@@ -130,6 +130,15 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
         }
         if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:
             assert source["ledger_fact_pin"]
+    assert "NM_2059_1" in household_sources["ons_census2021_ts041_households"]["url"]
+    assert "TYPE424" in household_sources["ons_census2021_ts041_households"]["product"]
+    assert "UV404" in household_sources["nrs_census2022_uv404_households"]["url"]
+    assert (
+        "Local_authority"
+        in household_sources["nrs_census2022_uv404_households"]["product"]
+    )
+    assert "v=PARLCON24" in household_sources["nisra_census2021_households"]["url"]
+    assert "LGD14" in household_sources["nisra_census2021_households"]["product"]
 
 
 def test_banded_fence_carries_the_national_authority() -> None:

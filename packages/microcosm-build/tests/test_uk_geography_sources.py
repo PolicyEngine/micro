@@ -504,6 +504,9 @@ def test_update_england_wales_lad_codes_rejects_blank_lad23_codes() -> None:
 
 
 def test_load_ni_dz_parlcon24_lookup(monkeypatch) -> None:
+    # The loader imports openpyxl before reading any bytes; the wheels lane
+    # installs no dev group, so skip there rather than fail on the import.
+    pytest.importorskip("openpyxl")
     monkeypatch.setattr(geography_sources, "NI_DZ2021_COUNT", 18)
     monkeypatch.setattr(
         geography_sources,
@@ -544,6 +547,7 @@ def test_load_ni_dz_parlcon24_lookup_refuses_invalid_rows(
     workbook_kwargs,
     message,
 ) -> None:
+    pytest.importorskip("openpyxl")
     monkeypatch.setattr(geography_sources, "NI_DZ2021_COUNT", 18)
     monkeypatch.setattr(
         geography_sources,

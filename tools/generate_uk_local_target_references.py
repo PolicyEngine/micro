@@ -15,6 +15,9 @@ from microcosm.build.target_reference_authoring import (
     author_area_target_references,
     target_references_resource,
 )
+from microcosm.build.uk_runtime.weighted_integrity import (
+    load_uk_local_area_support_exclusion_register,
+)
 
 DESCRIPTION = (
     "UK local-area Ledger target references for constituency and local-authority "
@@ -224,7 +227,9 @@ def _area_signed_deferrals(
     council_tax_ni_area_ids = ni_local_authorities
     council_tax_scotland_area_ids = scottish_local_authorities
     council_tax_city_band_a_area_ids = ("E09000001",)
-    support_floor_excluded_area_ids = ("E06000053", "E09000001")
+    support_floor_excluded_area_ids, support_floor_binding_families = (
+        _support_floor_register_scope()
+    )
     pipr_lad_absent_area_ids = (
         "E06000053",
         "E08000016",
@@ -439,10 +444,7 @@ def _area_signed_deferrals(
     for target in contract.get("targets", ()):
         if "local_authority" not in target.get("geography_levels", ()):
             continue
-        if target["target_id"] == "ons.census.households":
-            # This complete 361-cell family is the ruled per-grain uprating
-            # denominator; signing away support-floor areas would change both
-            # the denominator and B3's required closed target surface.
+        if str(target.get("family")) in support_floor_binding_families:
             continue
         add(
             target_id=str(target["target_id"]),
@@ -464,6 +466,25 @@ def _area_signed_deferrals(
             skip_declared=True,
         )
     return deferrals
+
+
+def _support_floor_register_scope() -> tuple[tuple[str, ...], frozenset[str]]:
+    """Return generator masks from the signed local-area support register."""
+
+    register = load_uk_local_area_support_exclusion_register(None)
+    area_ids: list[str] = []
+    for key in register["exclusions"]:
+        level, separator, area_id = key.partition("/")
+        if separator != "/" or level != "local_authority" or not area_id:
+            raise ValueError(
+                "local-area support exclusion keys used by the generator must "
+                f"have local_authority/<area_id> shape, got {key!r}."
+            )
+        area_ids.append(area_id)
+    return (
+        tuple(sorted(area_ids)),
+        frozenset(register["bound_despite_support_floor"]),
+    )
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ from microcosm.build.uk_runtime import (
     assemble_uk_oa_ladder,
     compute_household_metrics,
     constituency_household_targets,
-    ladder_vs_ledger_household_dispersion,
+    ladder_vs_chronicle_household_dispersion,
     load_uk_oa_ladder,
     local_authority_household_targets,
     metric_names,
@@ -31,9 +31,7 @@ from microcosm.build.uk_runtime import (
 from microcosm.calibrate import TargetSpec
 
 NISRA_HOUSEHOLD_FEED_ROWS = (
-    Path(__file__).parent
-    / "fixtures"
-    / "uk_nisra_pcon24_households_feed_rows.jsonl"
+    Path(__file__).parent / "fixtures" / "uk_nisra_pcon24_households_feed_rows.jsonl"
 )
 BUILT_LADDER = Path("build/uk/uk_oa_ladder_2021.npz")
 
@@ -138,7 +136,7 @@ def test_ladder_vs_nisra_constituency_household_dispersion() -> None:
         for fact in facts
     ]
 
-    report = ladder_vs_ledger_household_dispersion(
+    report = ladder_vs_chronicle_household_dispersion(
         load_uk_oa_ladder(BUILT_LADDER),
         specs,
     )
@@ -153,7 +151,7 @@ def test_ladder_vs_nisra_constituency_household_dispersion() -> None:
     assert sum(cell["ladder_households"] for cell in report["cells"]) == 768_813
 
 
-def test_ladder_vs_ledger_household_dispersion_refuses_bad_ni_mapping() -> None:
+def test_ladder_vs_chronicle_household_dispersion_refuses_bad_ni_mapping() -> None:
     ladder = SimpleNamespace(
         households=np.asarray([100.0]),
         constituency_code=np.asarray(["N05000001"], dtype=object),
@@ -174,7 +172,7 @@ def test_ladder_vs_ledger_household_dispersion_refuses_bad_ni_mapping() -> None:
     )
 
     with pytest.raises(ValueError, match="publisher oracle"):
-        ladder_vs_ledger_household_dispersion(ladder, [spec])
+        ladder_vs_chronicle_household_dispersion(ladder, [spec])
 
 
 def test_households_metric_is_in_the_computed_surface() -> None:
