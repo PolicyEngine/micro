@@ -225,8 +225,13 @@ original fixture teardowns and final code/resource checks: 647.19 CPU seconds,
 651.21 wall seconds and 570.9 MB peak RSS. This separately reviewed invocation
 used a 1,200 CPU-second budget; the earlier 600-second attempt remains recorded
 as incomplete. No memo or profiler was used. The [positive control evidence](../experiments/us-financial-successor-positive-20260910.json)
-checks financial replay and a subsequent weight-only change. Seven refusal and
-callback controls remain before accepting the complete admission path.
+checks financial replay and a subsequent weight-only change. The [seven remaining refusal and callback controls](../experiments/us-financial-successor-remaining-controls-20260910.json)
+now also pass with their original shared fixture and teardowns: 798.61 CPU seconds,
+802.89 wall seconds and 563.6 MB peak RSS. All eight original admission controls
+are accepted on the same source snapshot. A subsequent source review found an
+additional detached-view callback gap in the budget and weight-only views;
+targeted corrections and regression controls are in progress. Native calibration
+remains separate.
 
 A separate, bounded profile of the unchanged invented cold/required financial
 fixture passes its test, original teardown and all final code/resource checks:
@@ -249,9 +254,12 @@ remain recorded. A separate [one-call diagnostic](../experiments/us-acs-producer
 now passes without constructing a fixture: the original producer takes 0.656
 profiled wall seconds. Its 157 compiler calls take 0.238 seconds, including
 0.122 seconds inside 103 AST parses; those overlapping times must not be added.
-A bounded bytecode compilation cache is under source review, with fresh source
-reads and every loaded-function check retained. No new optimization is adopted;
-the remaining successor controls and native financial pilot remain pending.
+A bounded bytecode compilation cache now passes 25 invented controls and final
+code/resource checks, with fresh source reads and every loaded-function check
+retained. Its full-fixture performance comparison remains pending; no new
+optimization is adopted. The native financial cold pilot is running with the
+original financial code after a narrow test-harness null-sink ordering fix;
+its earlier startup refusal remains preserved and confers no data acceptance.
 
 Current CI separately reports stale source-attested spec/seed fingerprints.
 The worker resource identity test now follows the actual lazy import closure
