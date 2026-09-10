@@ -135,6 +135,12 @@ def validate_survey_calibration_diagnostics(
     final = score_targets(work, targets, weights=weights, target_loss_cap=10.0)
     _require(not initial.skipped and not final.skipped, "SKIPPED_TARGETS")
     options = {
+        # This fixed grouped profile supplies neither informed gates nor a
+        # target-record budget. Reconstruct the solver defaults independently.
+        "gate_initialization_supplied": False,
+        "budget_basis": "nonzero_count",
+        "feasible_draw_pi_hi": None,
+        "budget_search": None,
         "grouped_preserve_zeros": {
             "enabled": True,
             "fixed_zero_count": int(np.count_nonzero(bounds.incoming == 0)),

@@ -27,6 +27,22 @@ This guard enforces, and its tests certify, exactly these surfaces:
   modules' executable dataflow; true docstrings and annotation forms are
   deliberately exempt.
 
+Registered population treatments retain that raw origin-blind contract. Source
+authentication/composition, source-qualified pre-PUF model inputs and donor
+selection, and exact origin attachments are different phases: the reviewed
+fixture accounts for particular findings in particular function bodies there.
+It grants no new whole-module provenance exemption. Opaque numeric/profile
+selectors likewise have exact findings and finite-domain/validator bindings;
+their contracts do not permit source-origin access.
+
+The separate stage-reference tripwire binds supported local, qualified,
+import-alias and simple-assignment references, their enclosing caller bodies,
+and recursive entry chains. An unresolved US re-export is conservatively a
+same-name candidate, recorded as such for review. This is a syntax boundary,
+not whole-program reachability: arbitrary runtime dispatch, reflection and
+mutation of imported namespaces still require review. Binding caller bodies
+does protect changed selection/control flow around an unchanged supported call.
+
 Analysis is MODULE-LOCAL with single-hop name resolution. Three classes
 are out of scope by design, and naming them is the honest boundary.
 First, cross-module static dataflow -- constant tables imported from
@@ -56,7 +72,11 @@ from __future__ import annotations
 
 import ast
 import fnmatch
+import hashlib
+import json
 import re
+from collections import Counter
+from functools import cache
 from itertools import product
 from pathlib import Path
 from string import Formatter
@@ -78,6 +98,85 @@ _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
         "spine_assembly.py",
         "us_late_overlap_ownership.py",
         "us_late_producer_registry.py",
+    }
+)
+# Reviewed pool-tool import closure. Exact membership catches a replacement
+# module even when the total count stays unchanged.
+_EXPECTED_POOL_RUNTIME_MODULES = frozenset(
+    {
+        "_person_signal_summary.py",
+        "acs_income_universe.py",
+        "acs_inputs.py",
+        "acs_pums.py",
+        "acs_sources.py",
+        "acs_transfer.py",
+        "acs_transfer_bank.py",
+        "adult_care.py",
+        "alimony.py",
+        "asec_checkpoint.py",
+        "capital_gain_details.py",
+        "capital_gain_distributions.py",
+        "casualty_losses.py",
+        "child_support.py",
+        "childcare.py",
+        "congressional_district_geography.py",
+        "congressional_district_vintage.py",
+        "cps_carried.py",
+        "disability_benefits.py",
+        "domestic_production.py",
+        "education_assistance_source.py",
+        "education_inputs.py",
+        "educator_expenses.py",
+        "eligibility_inputs.py",
+        "energy_subsidy.py",
+        "farm_business_income.py",
+        "form_4952.py",
+        "geography_ladder.py",
+        "h5_io.py",
+        "hours_worked.py",
+        "housing_inputs.py",
+        "immigration.py",
+        "late_producer_dag.py",
+        "medicare_take_up.py",
+        "misc_itemized.py",
+        "multispine_pool.py",
+        "operator_boundary.py",
+        "operator_column_contracts.py",
+        "post_transfer_calibration.py",
+        "pregnancy.py",
+        "prior_year_income.py",
+        "public_assistance_type_source.py",
+        "puf_aggregate_records.py",
+        "puf_capital_gains_tail.py",
+        "puf_donor_io.py",
+        "puf_e01000_reconciliation.py",
+        "puf_interest_components.py",
+        "puf_qrf_chain.py",
+        "puf_source_agi.py",
+        "puf_support.py",
+        "puma_ladder.py",
+        "puma_ladder_sources.py",
+        "qbi_inputs.py",
+        "relationship_inputs.py",
+        "reported_coverage_source.py",
+        "retirement_contributions.py",
+        "retirement_distributions.py",
+        "salt_refund_income.py",
+        "scf_wealth.py",
+        "sipp_financial_assets.py",
+        "spine_agreement.py",
+        "spine_assembly.py",
+        "stacked_battery_contract.py",
+        "stacked_spine.py",
+        "support_provenance.py",
+        "take_up.py",
+        "take_up_contract.py",
+        "us_late_overlap_ownership.py",
+        "us_late_producer_registry.py",
+        "weeks_unemployed.py",
+        "wic_claim.py",
+        "worker_identity.py",
+        "workers_compensation.py",
     }
 )
 _RETIRED_LATE_ASSEMBLY_MODULES = frozenset(
@@ -217,6 +316,7 @@ _GATE_SOURCE_SCOPE_HELPER_CALLERS = {
 _OTHER_US_RUNTIME_MODULES = frozenset(
     {
         "__init__.py",
+        "_person_signal_summary.py",  # Gate-evidence summaries, no row treatment.
         # Exact source-universe validator/receipt owner; no population treatment.
         "acs_income_universe.py",
         "acs_inputs.py",
@@ -252,6 +352,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "misc_itemized.py",
         "nonzero_shares.py",
         "operator_boundary.py",  # Raw-stage validator; no population treatment.
+        "operator_column_contracts.py",  # Literal stage input/output declarations.
         "org_wages.py",
         "parity_reference.py",
         "pregnancy.py",
@@ -272,6 +373,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "reform_validation.py",
         "register_consistency.py",
         "relationship_inputs.py",
+        "reported_coverage_source.py",  # Pinned exact native-coverage restoration.
         "release_gate_preflight.py",
         "release_input_coverage.py",
         "release_target_parity.py",
@@ -310,8 +412,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "worker_identity.py",  # Portable primary-QRF worker identity; no population treatment.
     }
 )
+_STAGE_CONTRACTS_PATH = (
+    Path(__file__).with_name("fixtures") / "us_spine_stage_contracts.json"
+)
+_STAGE_CONTRACTS = json.loads(_STAGE_CONTRACTS_PATH.read_text())
 _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
-    _OTHER_US_RUNTIME_MODULES
+    _OTHER_US_RUNTIME_MODULES, _STAGE_CONTRACTS["module_roles"]
 )
 
 
@@ -3093,15 +3199,483 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
     )
 
 
+def _stage_ast_value(value):
+    """Portable syntax identity, excluding locations and absent grammar fields."""
+    if isinstance(value, ast.AST):
+        return [
+            type(value).__name__,
+            {
+                name: _stage_ast_value(item)
+                for name, item in ast.iter_fields(value)
+                if item is not None and item != []
+            },
+        ]
+    if isinstance(value, list):
+        return [_stage_ast_value(item) for item in value]
+    if isinstance(value, (str, int, bool)) or value is None:
+        return value
+    return [type(value).__name__, repr(value)]
+
+
+def _stage_ast_sha(node):
+    return hashlib.sha256(
+        json.dumps(
+            _stage_ast_value(node), sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
+
+
+@cache
+def _stage_nodes(source):
+    tree = ast.parse(source)
+    result = {"<module>": tree}
+
+    def visit(node, parents):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            parents = (*parents, node.name)
+            result[".".join(parents)] = node
+        elif not parents and isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    result["@" + target.id] = node
+        for child in ast.iter_child_nodes(node):
+            visit(child, parents)
+
+    visit(tree, ())
+    return result
+
+
+def _stage_scope(nodes, node):
+    candidates = [
+        (name, candidate)
+        for name, candidate in nodes.items()
+        if isinstance(candidate, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        and candidate.lineno <= node.lineno <= candidate.end_lineno
+    ]
+    return max(
+        candidates, key=lambda row: row[0].count("."), default=("<module>", None)
+    )[0]
+
+
+@cache
+def _stage_findings(source):
+    nodes = _stage_nodes(source)
+    tree = nodes["<module>"]
+    located = {}
+    for node in ast.walk(tree):
+        if hasattr(node, "lineno"):
+            located.setdefault((node.lineno, node.col_offset + 1), []).append(node)
+    result = []
+    for finding in _source_spine_accesses(source):
+        match = re.fullmatch(r"line (\d+):(\d+): (.*)", finding)
+        assert match is not None, finding
+        line, column, kind = int(match[1]), int(match[2]), match[3]
+        expected = ast.Subscript if kind.startswith("subscript") else ast.Call
+        positioned = located.get((line, column), ())
+        candidates = [node for node in positioned if isinstance(node, expected)]
+        candidates = candidates or list(positioned)
+        assert candidates, finding
+        # Chained subscripts can share a source location. Bind the enclosing
+        # expression as well as its descendants instead of guessing which
+        # same-position node the conservative raw visitor reported.
+        node = max(candidates, key=lambda item: len(tuple(ast.walk(item))))
+        result.append(
+            {
+                "scope": _stage_scope(nodes, node),
+                "kind": kind,
+                "expression_sha256": _stage_ast_sha(node),
+                "expression": ast.unparse(node),
+                "raw": finding,
+            }
+        )
+    return result
+
+
+def _stage_finding_key(finding):
+    return finding["kind"], finding["expression_sha256"]
+
+
+def _stage_module_name(path):
+    parts = path.parts
+    if "src" in parts:
+        parts = parts[parts.index("src") + 1 :]
+    else:
+        parts = path.relative_to(_REPOSITORY_ROOT).parts
+    result = ".".join((*parts[:-1], Path(parts[-1]).stem))
+    return result.removesuffix(".__init__")
+
+
+def _stage_repository_sources():
+    paths = [
+        *(_REPOSITORY_ROOT / "packages").glob("*/src/**/*.py"),
+        *(_REPOSITORY_ROOT / "tools").rglob("*.py"),
+    ]
+    return {_stage_module_name(path): path.read_text() for path in sorted(paths)}
+
+
+def _stage_import_aliases(module, source):
+    aliases = {}
+    for node in ast.walk(_stage_nodes(source)["<module>"]):
+        if isinstance(node, ast.Import):
+            for item in node.names:
+                aliases.setdefault(item.asname or item.name.split(".")[0], set()).add(
+                    item.name if item.asname else item.name.split(".")[0]
+                )
+        elif isinstance(node, ast.ImportFrom):
+            prefix = node.module or ""
+            if node.level:
+                prefix = ".".join(
+                    module.split(".")[: -node.level] + ([prefix] if prefix else [])
+                )
+            for item in node.names:
+                if item.name != "*":
+                    aliases.setdefault(item.asname or item.name, set()).add(
+                        prefix + "." + item.name
+                    )
+    return aliases
+
+
+def _stage_domain_dependencies(sources, roots):
+    """Bind finite constants through supported local/imported uppercase aliases.
+
+    Constant declarations are syntax-only roots, not callable scopes. Their
+    actual defining owners and alias dependency graph are checked separately
+    from the entry/caller graph. This does not evaluate arbitrary Python values.
+    """
+
+    def definition(label, seen=frozenset()):
+        if label in seen:
+            return set()
+        module, _, name = label.rpartition(".")
+        if module not in sources or not name.isupper():
+            return set()
+        if "@" + name in _stage_nodes(sources[module]):
+            return {module + "::@" + name}
+        result = set()
+        for alias in _stage_import_aliases(module, sources[module]).get(name, ()):
+            result.update(definition(alias, seen | {label}))
+        return result
+
+    result = {}
+    pending = list(roots)
+    while pending:
+        key = pending.pop()
+        if key in result:
+            continue
+        module, scope = key.split("::", 1)
+        node = _stage_nodes(sources[module]).get(scope) if module in sources else None
+        if node is None:
+            result[key] = ()
+            continue
+        aliases = _stage_import_aliases(module, sources[module])
+
+        def labels(value, *, module=module, aliases=aliases):
+            if isinstance(value, ast.Name):
+                return {module + "." + value.id, *aliases.get(value.id, ())}
+            if isinstance(value, ast.Attribute):
+                return {label + "." + value.attr for label in labels(value.value)}
+            return set()
+
+        dependencies = set()
+        for value in ast.walk(node):
+            if isinstance(value, (ast.Name, ast.Attribute)) and isinstance(
+                value.ctx, ast.Load
+            ):
+                for label in labels(value):
+                    dependencies.update(definition(label))
+        dependencies.discard(key)
+        result[key] = tuple(sorted(dependencies))
+        pending.extend(dependencies - result.keys())
+    return dict(sorted(result.items()))
+
+
+@cache
+def _stage_reference_syntax(source):
+    """Share immutable syntax across the reviewed closure and guard checks."""
+    nodes = _stage_nodes(source)
+    walked = tuple(ast.walk(nodes["<module>"]))
+    return (
+        nodes,
+        walked,
+        {id(child): node for node in walked for child in ast.iter_child_nodes(node)},
+        {
+            id(node): _stage_scope(nodes, node)
+            for node in walked
+            if hasattr(node, "lineno")
+        },
+    )
+
+
+def _stage_reference_inventory(sources, targets):
+    """Conservative local/import/qualified references, including simple aliases.
+
+    Unresolved US namespace hops are candidate references by their final name.
+    Arbitrary runtime dispatch/obfuscated getattr and whole-program dataflow remain
+    outside this tripwire. Class construction binds reviewed kernel run entries;
+    generic executor ``kernel.run`` dispatch does not identify a particular class.
+    """
+    labels = {
+        key.replace("::", "."): key
+        for key in targets
+        if not key.split("::", 1)[1].startswith("@")
+    }
+    by_leaf = {}
+    constructors = {}
+    for label, key in labels.items():
+        by_leaf.setdefault(label.rsplit(".", 1)[-1], set()).add(key)
+        if key.split("::", 1)[1].endswith(".run"):
+            constructors[label.rsplit(".", 1)[0]] = key
+    known_definitions = {
+        module + "." + name
+        for module, source in sources.items()
+        for name, node in _stage_nodes(source).items()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+    result = {key: [] for key in targets}
+    for module, source in sorted(sources.items()):
+        nodes, walked, parents, scopes = _stage_reference_syntax(source)
+        local_labels = {module + "." + name for name in nodes}
+        aliases = {}
+        for node in walked:
+            if isinstance(node, ast.Import):
+                for item in node.names:
+                    aliases.setdefault(
+                        item.asname or item.name.split(".")[0], set()
+                    ).add(item.name if item.asname else item.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                prefix = node.module or ""
+                if node.level:
+                    prefix = ".".join(
+                        module.split(".")[: -node.level] + ([prefix] if prefix else [])
+                    )
+                for item in node.names:
+                    if item.name != "*":
+                        aliases.setdefault(item.asname or item.name, set()).add(
+                            prefix + "." + item.name
+                        )
+
+        def resolve(node, scope, *, aliases=aliases, nodes=nodes, module=module):
+            if isinstance(node, ast.Name):
+                values = set(aliases.get(node.id, ()))
+                if node.id in {"self", "cls"}:
+                    pieces = scope.split(".")
+                    for stop in range(len(pieces), 0, -1):
+                        name = ".".join(pieces[:stop])
+                        if isinstance(nodes.get(name), ast.ClassDef):
+                            values.add(module + "." + name)
+                            break
+                pieces = scope.split(".") if scope != "<module>" else []
+                for stop in range(len(pieces), -1, -1):
+                    name = ".".join((*pieces[:stop], node.id))
+                    if name in nodes:
+                        values.add(module + "." + name)
+                        break
+                return values
+            if isinstance(node, ast.Attribute):
+                return {value + "." + node.attr for value in resolve(node.value, scope)}
+            if isinstance(node, ast.NamedExpr):
+                return resolve(node.value, scope)
+            return set()
+
+        # Monotone alias propagation over-approximates rebinding across scopes.
+        # This intentionally prefers an extra review over losing a possible call.
+        for _ in range(len(nodes) + 1):
+            changed = False
+            for node in walked:
+                if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                    continue
+                value = getattr(node, "value", None)
+                if value is None:
+                    continue
+                names = node.targets if isinstance(node, ast.Assign) else [node.target]
+                resolved = resolve(value, scopes[id(node)])
+                resolved = {
+                    item
+                    for item in resolved
+                    if item.count(".") < 16
+                    and (
+                        item.startswith(_US_RUNTIME_IMPORT_PREFIX + ".")
+                        or any(
+                            label == item or label.startswith(item + ".")
+                            for label in labels
+                        )
+                    )
+                }
+                for name in names:
+                    if isinstance(name, ast.Name):
+                        prior = aliases.setdefault(name.id, set())
+                        if not resolved <= prior:
+                            prior.update(resolved)
+                            changed = True
+            if not changed:
+                break
+        for node in walked:
+            if not isinstance(node, (ast.Name, ast.Attribute)) or not isinstance(
+                node.ctx, ast.Load
+            ):
+                continue
+            scope = scopes[id(node)]
+            resolved = resolve(node, scope)
+            matches = {labels[value] for value in resolved if value in labels}
+            resolutions = {key: "resolved" for key in matches}
+            parent = parents.get(id(node))
+            is_call = isinstance(parent, ast.Call) and parent.func is node
+            if is_call:
+                constructed = {
+                    constructors[value] for value in resolved if value in constructors
+                }
+                matches.update(constructed)
+                resolutions.update({key: "kernel-construction" for key in constructed})
+            unknown_us = {
+                value
+                for value in resolved
+                if value.startswith(_US_RUNTIME_IMPORT_PREFIX + ".")
+                and value not in local_labels
+                and value not in known_definitions
+            }
+            if not matches and unknown_us:
+                # A statically unresolved US re-export is a possible reference,
+                # never evidence that the helper is unreachable. A known foreign
+                # definition does not borrow an unrelated same-name contract;
+                # nor can it mask another unresolved candidate in an alias set.
+                for value in unknown_us:
+                    leaf = value.rsplit(".", 1)[-1]
+                    if leaf != "run":
+                        matches.update(by_leaf.get(leaf, ()))
+                resolutions.update({key: "unresolved-us-candidate" for key in matches})
+            if not matches:
+                continue
+            expression = parent if is_call else node
+            record = {
+                "caller": module + "::" + scope,
+                "usage": "call" if is_call else "reference",
+                "expression_sha256": _stage_ast_sha(expression),
+                "expression": ast.unparse(expression),
+            }
+            for target in matches:
+                result[target].append({**record, "resolution": resolutions[target]})
+    return {
+        target: sorted(
+            rows,
+            key=lambda row: (row["caller"], row["usage"], row["expression_sha256"]),
+        )
+        for target, rows in result.items()
+    }
+
+
+def _stage_reference_key(row):
+    return row["caller"], row["usage"], row["expression_sha256"], row["resolution"]
+
+
+def _stage_contract_failures(sources, document):
+    """Validate exact entry/caller chains and finite-domain validator bindings."""
+    errors = []
+    if document.get("schema_version") != 1:
+        errors.append("unsupported stage-contract schema")
+    targets = set(document["scopes"]) | set(document["bindings"])
+    if set(document["scopes"]) & set(document["bindings"]):
+        errors.append("overlapping access and supporting contracts")
+    domains = document.get("selector_domain_bindings", ())
+    if not domains or len(domains) != len(set(domains)) or not set(domains) <= targets:
+        errors.append("missing, repeated or unbound selector domains")
+    roots = document.get("selector_domain_roots", ())
+    dependencies = _stage_domain_dependencies(sources, roots)
+    if not roots or len(roots) != len(set(roots)) or not set(roots) <= set(domains):
+        errors.append("missing, repeated or unbound selector roots")
+    if set(dependencies) != set(domains) or dependencies != {
+        key: tuple(value)
+        for key, value in document.get("selector_domain_dependencies", {}).items()
+    }:
+        errors.append("changed finite-domain owner/dependencies")
+    references = _stage_reference_inventory(sources, targets)
+    reachable = set(document["scopes"]) | set(roots)
+    pending = list(reachable)
+    while pending:
+        key = pending.pop()
+        linked = set(dependencies.get(key, ())) | {
+            row["caller"] for row in references.get(key, ())
+        }
+        additions = linked - reachable
+        reachable.update(additions)
+        pending.extend(additions)
+    if targets - reachable:
+        errors.append(
+            "orphan supporting contracts: " + ", ".join(sorted(targets - reachable))
+        )
+    for key, contract in {**document["bindings"], **document["scopes"]}.items():
+        module, scope = key.split("::", 1)
+        node = _stage_nodes(sources[module]).get(scope) if module in sources else None
+        if node is None:
+            errors.append("missing scope: " + key)
+            continue
+        if _stage_ast_sha(node) != contract["body_sha256"]:
+            errors.append("changed body/domain: " + key)
+        if Counter(map(_stage_reference_key, references[key])) != Counter(
+            map(_stage_reference_key, contract["references"])
+        ):
+            errors.append("changed callers: " + key)
+        if any(row["caller"] not in targets for row in references[key]):
+            errors.append("unbound caller body: " + key)
+        if not contract.get("basis"):
+            errors.append("missing review basis: " + key)
+        if key in document["scopes"]:
+            if contract.get("access") not in {
+                "selector",
+                "provenance",
+            } or not contract.get("role"):
+                errors.append("missing reviewed phase/access role: " + key)
+            actual = [
+                row for row in _stage_findings(sources[module]) if row["scope"] == scope
+            ]
+            if Counter(map(_stage_finding_key, actual)) != Counter(
+                map(_stage_finding_key, contract["findings"])
+            ):
+                errors.append("changed or stale findings: " + key)
+            if contract["access"] == "selector" and any(
+                "unresolvable" not in row["kind"] for row in actual
+            ):
+                errors.append("selector contract cannot grant provenance: " + key)
+    return tuple(errors)
+
+
 def _non_owner_source_spine_accesses(
     module_name: str,
     source: str,
 ) -> tuple[str, ...]:
-    """Apply the guard unless the module is a reviewed provenance owner."""
+    """Apply raw scanning, accounting only for exact reviewed stage findings."""
 
     if module_name in _SOURCE_SPINE_PROVENANCE_OWNERS:
         return ()
-    return _source_spine_accesses(source)
+    relevant = {
+        key.split("::", 1)[1]: contract
+        for key, contract in _STAGE_CONTRACTS["scopes"].items()
+        if key.split("::", 1)[0]
+        == _US_RUNTIME_IMPORT_PREFIX + "." + module_name.removesuffix(".py")
+    }
+    if not relevant:
+        return _source_spine_accesses(source)
+    nodes = _stage_nodes(source)
+    findings = _stage_findings(source)
+    remaining = []
+    for scope, contract in relevant.items():
+        actual = [row for row in findings if row["scope"] == scope]
+        if (
+            scope not in nodes
+            or _stage_ast_sha(nodes[scope]) != contract["body_sha256"]
+        ):
+            remaining.append("changed or missing reviewed stage: " + scope)
+        elif Counter(map(_stage_finding_key, actual)) != Counter(
+            map(_stage_finding_key, contract["findings"])
+        ):
+            remaining.append("changed or stale reviewed findings: " + scope)
+        elif contract["access"] == "selector" and any(
+            "unresolvable" not in row["kind"] for row in actual
+        ):
+            remaining.append("selector contract cannot grant provenance: " + scope)
+        else:
+            findings = [row for row in findings if row["scope"] != scope]
+    return tuple(remaining + [row["raw"] for row in findings])
 
 
 def _called_function_names(source: str) -> set[str]:
@@ -3297,7 +3871,7 @@ def test_us_runtime_frame_rebuilds_preserve_immutable_metadata() -> None:
 
 
 def test_runtime_population_operators_are_source_spine_blind() -> None:
-    """Every operator obeys the strict-surface and contraband-name contract.
+    """Population operators stay blind; preparation uses exact phase contracts.
 
     The guard parses executable syntax rather than searching raw text, so
     comments, annotations, and docstrings may explain the invariant. Executable
@@ -3326,9 +3900,282 @@ def test_runtime_population_operators_are_source_spine_blind() -> None:
     assert not offenders, (
         "US runtime population operators must be source-spine blind. Route "
         "PUF-detail behavior with support clone indices; source-spine "
-        "provenance may be inspected only by the reviewed owner modules. "
+        "provenance may be inspected only by reviewed owners or exact reviewed "
+        "source/model preparation and attachment scopes. "
         f"Found: {offenders}"
     )
+
+
+def _current_handler_modules(source):
+    """Resolve the maintained literal handler table; refuse opaque registration."""
+    nodes = _stage_nodes(source)
+    registry = nodes["us_source_operation_handlers"]
+    returns = [node for node in ast.walk(registry) if isinstance(node, ast.Return)]
+    assert len(returns) == 1 and isinstance(returns[0].value, ast.Dict)
+    table = returns[0].value
+    assert all(
+        isinstance(key, ast.Constant) and isinstance(key.value, str)
+        for key in table.keys
+    )
+    assert len({key.value for key in table.keys}) == len(table.keys)
+    imports = {
+        alias.asname or alias.name: node.module
+        for node in ast.walk(nodes["<module>"])
+        if isinstance(node, ast.ImportFrom) and node.module
+        for alias in node.names
+    }
+    modules = {"source_runtime.py"}
+    for callback in table.values:
+        assert isinstance(callback, ast.Name), (
+            "handler registration needs explicit review"
+        )
+        if callback.id in nodes:
+            assert isinstance(
+                nodes[callback.id], (ast.FunctionDef, ast.AsyncFunctionDef)
+            )
+        else:
+            module = imports[callback.id]
+            assert module.startswith(_US_RUNTIME_IMPORT_PREFIX + ".")
+            modules.add(module.removeprefix(_US_RUNTIME_IMPORT_PREFIX + ".") + ".py")
+    # Local wrappers also delegate to imported helpers such as PUF aggregation.
+    # Their direct US implementation imports remain part of the raw scan.
+    modules.update(_imported_us_runtime_modules(source))
+    return frozenset(modules)
+
+
+def test_current_handler_registry_keeps_raw_population_operator_coverage():
+    modules = _current_handler_modules((_US_RUNTIME / "source_runtime.py").read_text())
+    assert not _unclassified_runtime_modules(set(modules))
+    assert not {
+        name: findings
+        for name in sorted(modules)
+        if (findings := _source_spine_accesses((_US_RUNTIME / name).read_text()))
+    }
+
+
+def test_reviewed_stage_contracts_bind_all_findings_callers_and_domains():
+    """The reviewed fixture records syntax evidence; CI never regenerates it."""
+    assert len(_STAGE_CONTRACTS["module_roles"]) == 107
+    assert len(_STAGE_CONTRACTS["scopes"]) == 87
+    assert (
+        sum(len(row["findings"]) for row in _STAGE_CONTRACTS["scopes"].values()) == 227
+    )
+    assert all(_STAGE_CONTRACTS["module_roles"].values())
+    assert not set(_STAGE_CONTRACTS["module_roles"]) & (
+        set(_OTHER_US_RUNTIME_MODULES) | set(_SPINE_BLIND_OPERATOR_MODULES)
+    )
+    assert not _stage_contract_failures(_stage_repository_sources(), _STAGE_CONTRACTS)
+
+
+@pytest.fixture
+def stage_contract_example():
+    """Small repositories make mutations causal without repeating the full scan."""
+    prefix = _US_RUNTIME_IMPORT_PREFIX + "."
+    owner, caller, domain = (
+        prefix + name for name in ("stage_fixture", "stage_entry", "stage_domain")
+    )
+    sources = {
+        owner: (
+            "from .stage_domain import PROFILE\n"
+            "COLUMNS = PROFILE\n"
+            "def project(table):\n"
+            '    return table["person_support_channel"]\n'
+        ),
+        caller: (
+            "from .stage_fixture import project as observed_projection\n"
+            "def prepare(table):\n"
+            "    return observed_projection(table)\n"
+        ),
+        domain: 'PROFILE = ("employment_income",)\n',
+    }
+    scope = owner + "::project"
+    roots = [owner + "::@COLUMNS"]
+    dependencies = _stage_domain_dependencies(sources, roots)
+    targets = {scope, caller + "::prepare", *dependencies}
+    references = _stage_reference_inventory(sources, targets)
+    contracts = {}
+    for key in sorted(targets):
+        module, name = key.split("::", 1)
+        contracts[key] = {
+            "body_sha256": _stage_ast_sha(_stage_nodes(sources[module])[name]),
+            "references": references[key],
+            "basis": "Synthetic authenticated-source projection and its bounded entry.",
+        }
+    access = contracts.pop(scope)
+    access.update(
+        role="source_authentication",
+        access="provenance",
+        findings=[
+            row for row in _stage_findings(sources[owner]) if row["scope"] == "project"
+        ],
+    )
+    document = {
+        "schema_version": 1,
+        "module_roles": {"stage_fixture.py": "source_authentication"},
+        "scopes": {scope: access},
+        "bindings": contracts,
+        "selector_domain_roots": roots,
+        "selector_domain_bindings": sorted(dependencies),
+        "selector_domain_dependencies": dependencies,
+    }
+    assert not _stage_contract_failures(sources, document)
+    return sources, document, owner, caller, domain
+
+
+@pytest.mark.parametrize(
+    "mutation", ["new_access", "new_function", "changed_body", "removed_scope"]
+)
+def test_stage_contract_rejects_changed_or_stale_access_scopes(
+    stage_contract_example, monkeypatch, mutation
+):
+    sources, document, owner, _, _ = stage_contract_example
+    source = sources[owner]
+    if mutation == "new_access":
+        source = source.replace(
+            "    return", "    table.person_support_channel\n    return"
+        )
+    elif mutation == "new_function":
+        source += '\ndef other(table):\n    return table["person_support_channel"]\n'
+    elif mutation == "changed_body":
+        source = source.replace("    return", "    table = table.copy()\n    return")
+    else:
+        source = source[: source.index("def project")]
+    monkeypatch.setitem(globals(), "_STAGE_CONTRACTS", document)
+    assert _non_owner_source_spine_accesses("stage_fixture.py", source)
+
+
+@pytest.mark.parametrize(
+    "style", ["direct", "import_alias", "qualified", "assignment_alias", "named_alias"]
+)
+def test_stage_contract_rejects_new_supported_callers(stage_contract_example, style):
+    sources, document, owner, _, _ = stage_contract_example
+    forms = {
+        "direct": f"from {owner} import project\ndef operate(t):\n    return project(t)\n",
+        "import_alias": f"from {owner} import project as borrowed\ndef operate(t):\n    return borrowed(t)\n",
+        "qualified": f"import {owner} as source\ndef operate(t):\n    return source.project(t)\n",
+        "assignment_alias": f"from {owner} import project\nborrowed = project\ndef operate(t):\n    return borrowed(t)\n",
+        "named_alias": f"from {owner} import project\ndef operate(t):\n    return (borrowed := project)(t)\n",
+    }
+    sources[_US_RUNTIME_IMPORT_PREFIX + ".future_operator"] = forms[style]
+    errors = _stage_contract_failures(sources, document)
+    assert "changed callers: " + owner + "::project" in errors
+    assert "unbound caller body: " + owner + "::project" in errors
+
+
+@pytest.mark.parametrize("resolution", ["known", "unknown", "mixed"])
+def test_stage_reference_fallback_distinguishes_known_foreign_definitions(
+    stage_contract_example, resolution
+):
+    sources, document, owner, _, _ = stage_contract_example
+    prefix = _US_RUNTIME_IMPORT_PREFIX + "."
+    sources[prefix + "stage_known"] = "def project(table):\n    return table\n"
+    imports = []
+    if resolution in {"known", "mixed"}:
+        imports.append("from .stage_known import project as candidate")
+    if resolution in {"unknown", "mixed"}:
+        imports.append("from .stage_unindexed import project as candidate")
+    sources[prefix + "stage_other_caller"] = (
+        "\n".join(imports) + "\ndef operate(table):\n    return candidate(table)\n"
+    )
+    errors = _stage_contract_failures(sources, document)
+    if resolution == "known":
+        assert not errors
+    else:
+        assert "changed callers: " + owner + "::project" in errors
+        assert "unbound caller body: " + owner + "::project" in errors
+
+
+def test_stage_contract_binds_control_flow_around_an_unchanged_call(
+    stage_contract_example,
+):
+    sources, document, owner, caller, _ = stage_contract_example
+    sources[caller] = sources[caller].replace(
+        "    return observed_projection(table)",
+        "    if table.shape[0] > 1:\n        return observed_projection(table)\n    return table",
+    )
+    errors = _stage_contract_failures(sources, document)
+    assert "changed body/domain: " + caller + "::prepare" in errors
+    assert "changed callers: " + owner + "::project" not in errors
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["protected_profile", "different_owner", "missing_domain", "duplicate_domain"],
+)
+def test_stage_contract_binds_imported_profile_definitions(
+    stage_contract_example, mutation
+):
+    sources, document, owner, _, domain = stage_contract_example
+    if mutation == "protected_profile":
+        sources[domain] = sources[domain].replace(
+            "employment_income", "person_support_channel"
+        )
+        expected = "changed body/domain: " + domain + "::@PROFILE"
+    elif mutation == "different_owner":
+        sources[domain + "_other"] = sources[domain]
+        sources[owner] = sources[owner].replace(
+            ".stage_domain import", ".stage_domain_other import"
+        )
+        expected = "changed finite-domain owner/dependencies"
+    elif mutation == "missing_domain":
+        document["selector_domain_bindings"].remove(domain + "::@PROFILE")
+        expected = "changed finite-domain owner/dependencies"
+    else:
+        document["selector_domain_bindings"].append(domain + "::@PROFILE")
+        expected = "missing, repeated or unbound selector domains"
+    assert expected in _stage_contract_failures(sources, document)
+
+
+def test_stage_selector_contract_cannot_grant_source_origin_authority(
+    stage_contract_example, monkeypatch
+):
+    sources, document, owner, _, _ = stage_contract_example
+    document["scopes"][owner + "::project"]["access"] = "selector"
+    monkeypatch.setitem(globals(), "_STAGE_CONTRACTS", document)
+    assert any(
+        "cannot grant provenance" in error
+        for error in _non_owner_source_spine_accesses(
+            "stage_fixture.py", sources[owner]
+        )
+    )
+
+
+def test_stage_contract_refuses_a_stale_finding_inventory(stage_contract_example):
+    sources, document, owner, _, _ = stage_contract_example
+    key = owner + "::project"
+    document["scopes"][key]["findings"] = []
+    assert "changed or stale findings: " + key in _stage_contract_failures(
+        sources, document
+    )
+
+
+def test_stage_contract_refuses_an_orphan_supporting_binding(stage_contract_example):
+    sources, document, owner, _, _ = stage_contract_example
+    sources[owner] += "\ndef unused(table):\n    return table\n"
+    key = owner + "::unused"
+    document["bindings"][key] = {
+        "body_sha256": _stage_ast_sha(_stage_nodes(sources[owner])["unused"]),
+        "references": [],
+        "basis": "A stale supporting declaration must not remain silently accepted.",
+    }
+    assert "orphan supporting contracts: " + key in _stage_contract_failures(
+        sources, document
+    )
+
+
+def test_population_operator_raw_guard_cannot_borrow_a_stage_exception(
+    stage_contract_example, monkeypatch
+):
+    sources, document, owner, _, _ = stage_contract_example
+    monkeypatch.setitem(globals(), "_STAGE_CONTRACTS", document)
+    assert not _non_owner_source_spine_accesses("stage_fixture.py", sources[owner])
+    assert _operator_source_channel_reads(sources[owner])
+
+
+def test_handler_registry_refuses_opaque_registration():
+    source = "def us_source_operation_handlers():\n    return {'future': lambda frame: frame}\n"
+    with pytest.raises(AssertionError, match="explicit review"):
+        _current_handler_modules(source)
 
 
 def test_registered_population_operators_do_not_read_any_source_channel() -> None:
@@ -3403,14 +4250,15 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 70, (
-            f"{tool.name} must reach the pinned 70-module runtime graph; "
-            f"reached {len(runtime_graph)}"
+        runtime_names = {path.name for path in runtime_graph}
+        assert runtime_names == _EXPECTED_POOL_RUNTIME_MODULES, (
+            f"{tool.name} must reach the exact reviewed 73-module runtime graph; "
+            f"added={sorted(runtime_names - _EXPECTED_POOL_RUNTIME_MODULES)}, "
+            f"missing={sorted(_EXPECTED_POOL_RUNTIME_MODULES - runtime_names)}"
         )
         assert not missing_modules, (
             f"{tool.name} imports unresolved US runtime modules: {missing_modules}"
         )
-        runtime_names = {path.name for path in runtime_graph}
         missing_required = sorted(_REQUIRED_POOL_RUNTIME_MODULES - runtime_names)
         assert not missing_required, (
             f"{tool.name} does not reach the canonical pool seam modules: "

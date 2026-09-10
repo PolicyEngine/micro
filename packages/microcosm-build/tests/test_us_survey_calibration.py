@@ -10,6 +10,9 @@ import test_us_national_age_counts as fixture
 import test_us_survey_age_artifact as age_fixture
 
 from microcosm.build.us_runtime import graph_survey_calibration as stage
+from microcosm.build.us_runtime import (
+    survey_calibration_diagnostics as diagnostic_check,
+)
 from microcosm.graph import ArtifactValue, KernelContext
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.kernel import Numeric, NumericScope
@@ -80,6 +83,67 @@ def test_real_solver_retains_zero_rows_and_returns_weights_only():
     assert diagnostics and output.receipt["fixed_zero_rows"] == 1
     assert output.receipt["release_eligible"] is False
     assert output.receipt["source_admission"] == "required_from_country_runner"
+
+
+@pytest.mark.parametrize(
+    "changed_option",
+    [
+        None,
+        ("gate_initialization_supplied", True),
+        ("budget_basis", "open_probability_mass"),
+        ("feasible_draw_pi_hi", 1.0),
+        ("budget_search", {}),
+    ],
+)
+def test_diagnostics_reconstruct_fixed_solver_options(changed_option):
+    value = context()
+    output = stage.SurveyAgeCalibrationKernel().run(value)
+    payload = output.artifacts["diagnostics"]
+    document = json.loads(payload)
+    fixed_options = {
+        "gate_initialization_supplied": False,
+        "budget_basis": "nonzero_count",
+        "feasible_draw_pi_hi": None,
+        "budget_search": None,
+    }
+    assert {name: document["options"][name] for name in fixed_options} == fixed_options
+    arguments = {
+        "counts_payload": value.artifacts["counts"].payload,
+        "bounds_payload": value.artifacts["bounds"].payload,
+        "weights": output.weights.values,
+        "registry": fixture.fixture_registry(),
+        "epochs": value.params["epochs"],
+        "learning_rate": value.params["learning_rate"],
+        "anchors": {
+            name: output.receipt[name]
+            for name in (
+                "budget_sha256",
+                "numeric_bounds_sha256",
+                "counts_sha256",
+                "accepted_weight_sha256",
+                "constraint_digest",
+                "weight_anchor",
+                "cap_enforcement",
+                "fixed_zero_rows",
+            )
+        },
+    }
+    # First validate the real output in every case, so mutation refusals cannot
+    # pass merely because the checker rejects all current solver diagnostics.
+    accepted_weights = output.weights.values.tobytes()
+    checked = diagnostic_check.validate_survey_calibration_diagnostics(
+        payload, **arguments
+    )
+    assert checked.pop("verification")["optimizer_rerun"] is False
+    assert canonical_json(checked) == payload
+    if changed_option is not None:
+        name, changed = changed_option
+        document["options"][name] = changed
+        with pytest.raises(ValueError, match="SURVEY_DIAGNOSTICS_RECOMPUTED_VALUES"):
+            diagnostic_check.validate_survey_calibration_diagnostics(
+                canonical_json(document), **arguments
+            )
+    assert output.weights.values.tobytes() == accepted_weights
 
 
 @pytest.mark.parametrize(
