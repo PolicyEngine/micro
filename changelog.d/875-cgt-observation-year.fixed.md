@@ -4,5 +4,6 @@ retain the replaced OBR cash forecast as optional diagnostic provenance with
 explicit availability. Retire its obsolete fit exemption, preserve its signed
 history, update live compile-parity receipts and publish aggregate fit evidence.
 
-Include the separate source-build prerequisite that passes FRS head/parent role
-inputs to the UC capital graph stage, using the shared upstream regression.
+Retain the merged upstream claimant-role graph prerequisite without duplicate
+commits. Compose the retired fit exemptions and document that the recorded
+national comparison predates main's changed fitting surface and gate disposition.

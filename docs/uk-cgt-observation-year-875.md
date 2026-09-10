@@ -21,8 +21,9 @@ For this accepted FY2024–25 deliverable, the three published individual
 observations replace the former trust-inclusive gains/count and OBR cash fit.
 This explicitly supersedes the former FY2025–26 solve disposition described in
 [#875](https://github.com/PolicyEngine/microcosm/issues/875) **for this observed-year
-acceptance unit**. It does not amend or close that issue, invalidate its earlier
-deliverable, or settle the general self-assessment liability-to-cash translation.
+acceptance unit**. The historical issue body and earlier deliverable remain part
+of the record; a scoped decision record does not close the issue or settle the
+general self-assessment liability-to-cash translation.
 The forward-year reconciliation remains separate work.
 
 The unchanged March 2026 OBR FY2025–26 cash forecast (£21.801546197bn) remains a
@@ -38,15 +39,24 @@ The former active `obr.capital_gains_tax@2025` fit exemption is retired because
 that row is no longer fitted. Its exact historical reason, approver,
 adjudication and dates are preserved in the
 [aggregate evidence](evidence/uk-cgt-889/calibration-comparison.json).
-This retirement creates no new human signature, renewal or expiry. All other
-exemptions and gate thresholds are unchanged; HMRC liability has no exemption.
+This retirement creates no new human signature, renewal or expiry. Merged #892
+independently retired the five UC/pension fit exemptions. Their composition with
+this PR leaves the active target-fit exemption register empty; gate thresholds
+are unchanged and HMRC liability has no exemption.
 
-The default roster remains 366 targets across 21 families. With `family_equal`,
+The recorded 9b5/cc9 comparison used 366 targets across 21 families. With `family_equal`,
 OBR has 19 rows instead of 20 and `hmrc_cgt` has three instead of two. Each retained
 OBR row changes from weight 1/420 to 1/399; gains/count change from 1/42 to 1/63;
 the replacement tax row changes from 1/420 to 1/63. These 22 changes follow family
 membership. The comparison therefore combines dating, individual scope, liability
 comparator and objective weighting; it is not an isolated causal year effect.
+
+**Applicability, 10 September 2026:** this PR is rebased onto main `141bface`,
+which includes #892 and #877. Main's two additional UC payment-tail measure
+exclusions reduce the expected default fitted roster to 364 of 415 references.
+Those exclusions apply before solving and are distinct from target-fit exemptions.
+The original 366-row objective, fitted weights and failed gate maps remain
+historical evidence. No fit or gate certification on the rebased head is claimed.
 
 ## Dating, revision and materialization
 
@@ -86,8 +96,9 @@ full local calibration.
 
 The lock remains PolicyEngine-UK 2.97.0 / Core 3.31.0. National targets use Chronicle
 `ec7169b5db40b9f54117c80f70f14efc1dd0fedd`; local targets retain the separate `6fb700e`
-artifact. The four CGT/OBR facts are identical across those feeds. Current #891
-paid UC source windows and family classification are preserved.
+artifact. The four CGT/OBR facts are identical across those feeds. The #891 paid
+UC source windows and family classification, and #892's explicit monthly-window
+metadata, are preserved.
 
 Source Tables 2/3 remain the 2025 publication's FY2023–24 distribution, mapped into
 the 2024 build. Donor selection, carrier count, gain amounts, ages and geography
@@ -96,16 +107,16 @@ trust-inclusive surface; the current target contract controls the three fitted
 individual observations. Distribution fences remain active. No source-vintage,
 tail, age or liability-model repair is implemented here.
 
-The required #883 graph prerequisite declares the two FRS claimant-role inputs
-and updates the graph fixture. While [#892](https://github.com/PolicyEngine/microcosm/pull/892)
-remains open, those inputs stay in this PR; its exact graph regression replaces
-the overlapping test and resolves that duplicated regression. The separate
-exemption-retirement changes still require composition if both PRs land.
-Once upstream includes the prerequisite, rebase and remove the duplicated
-prerequisite commits while retaining the upstream coverage.
+Merged [#892](https://github.com/PolicyEngine/microcosm/pull/892) supplies the #883
+graph prerequisite, its serialized fixture and the claimant-role regression.
+The rebase drops this PR's duplicate prerequisite commits and retains the upstream
+coverage. Merged #877's size-selection and checkpoint behavior, corrected local
+private-rent target composition and attested calibration identities are also
+preserved. This PR does not claim a new source build or full local calibration.
 
-The [current matched comparison](../experiments/889-cgt-observation-year.md)
+The [historical matched comparison](../experiments/889-cgt-observation-year.md)
 records the 9b5/ec7 candidate and cc9/ec7 control on the identical source. Its
 £108.032bn gains remain 9.41% below HMRC, despite liability and taxpayer totals
-being close. The older 30479731/6fb comparison is historical. Neither national
+being close. Both that comparison and the older 30479731/6fb comparison retain
+their original code and target-surface provenance. Neither historical national
 fit, diagnostic export nor unit tests certify a releasable dataset.

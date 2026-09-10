@@ -395,8 +395,13 @@ def _add_signed_rationale_notes(
                 if fixture_resource == "parity_fixture_production_2023.json"
                 else "2025 incumbent"
             )
+            inherited_change = (
+                "PR #891 contract with #892 source-window averaging"
+                if name.startswith("dwp.uc.households_children_")
+                else "PR #891 contract"
+            )
             row["reason"] = (
-                "Inherited PR #891 contract: current paid-UC counts use the "
+                f"Inherited {inherited_change}: current paid-UC counts use the "
                 "explicit January-December 2025 source windows on the ec7169 "
                 f"national feed. This compares that declaration with the frozen {baseline} "
                 "baseline; it does not redatum the observations to the comparison "

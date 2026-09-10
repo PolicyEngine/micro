@@ -2227,7 +2227,7 @@
    "ledger_value": 1190123.8333333333,
    "name": "dwp.uc.households_children_1",
    "period": 2025,
-   "reason": "Inherited PR #891 contract: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
+   "reason": "Inherited PR #891 contract with #892 source-window averaging: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
   },
   {
    "fixture_value": 1058967.0,
@@ -2235,7 +2235,7 @@
    "ledger_value": 1049895.5,
    "name": "dwp.uc.households_children_2",
    "period": 2025,
-   "reason": "Inherited PR #891 contract: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
+   "reason": "Inherited PR #891 contract with #892 source-window averaging: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
   },
   {
    "fixture_value": 473500.0,
@@ -2243,7 +2243,7 @@
    "ledger_value": 477887.6666666667,
    "name": "dwp.uc.households_children_3",
    "period": 2025,
-   "reason": "Inherited PR #891 contract: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
+   "reason": "Inherited PR #891 contract with #892 source-window averaging: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
   },
   {
    "fixture_value": 166790.0,
@@ -2251,7 +2251,7 @@
    "ledger_value": 170713.66666666666,
    "name": "dwp.uc.households_children_4",
    "period": 2025,
-   "reason": "Inherited PR #891 contract: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
+   "reason": "Inherited PR #891 contract with #892 source-window averaging: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
   },
   {
    "fixture_value": 75910.0,
@@ -2259,7 +2259,7 @@
    "ledger_value": 76320.08333333333,
    "name": "dwp.uc.households_children_5_or_more",
    "period": 2025,
-   "reason": "Inherited PR #891 contract: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
+   "reason": "Inherited PR #891 contract with #892 source-window averaging: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2025 incumbent baseline; it does not redatum the observations to the comparison year or create a new year ruling."
   },
   {
    "fixture_value": 231368.0,

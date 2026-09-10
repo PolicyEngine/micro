@@ -1,10 +1,19 @@
 # Observed FY2024–25 CGT calibration comparison
 
-The observed-year contract brings taxpayer count and liability close to the
-individual HMRC observations, while gains remain 9.41% low. These are national
-fits on one unchanged source H5. They combine the measurement-year correction,
+In the recorded 9b5/cc9 comparison, the observed-year contract brings taxpayer
+count and liability close to the individual HMRC observations, while gains remain
+9.41% low. These are historical national fits on one unchanged source H5. They
+combine the measurement-year correction,
 individual scope, liability comparator and automatic family weighting changes;
 they do not isolate the effect of any one change.
+
+**Applicability, 10 September 2026:** the rebase onto main `141bface` preserves
+merged #892 and #877. The original JSON, CSV, 366-row objective and gate maps below
+remain unchanged. Main now declares 51 measure exclusions, giving an expected
+364-row default fitting surface, and the combined target-fit exemption register
+is empty. The old two empty-band and five stale-exemption failures are historical
+run outcomes, not a verdict for the rebased surface. No current-head paired fit,
+unchanged fitted weights, release-gate pass or full local calibration is claimed.
 
 | Common FY2024–25 individual measure | HMRC target | Under control weights | Under candidate weights | Control error | Candidate error |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -56,9 +65,11 @@ forward-year gains level or replacement distribution prior is inferred.
 
 The JSON receipt archives the exact former `obr.capital_gains_tax@2025` signed
 exemption, including its original reason, approver and approval/expiry dates.
-The active register removes only that entry and supplies no exemption for HMRC
-liability. This records a scoped implementation disposition, not a new human
-signature, an amendment to issue #875, or closure of its reconciliation work.
+This PR retires that entry; merged #892 independently retired the other five
+fit exemptions, so the combined active register is empty. HMRC liability has no
+exemption. This records a scoped implementation disposition without a new human
+signature or closure of #875's reconciliation work. The historical issue body and
+signed ruling remain intact alongside any scoped follow-up decision record.
 
 The frozen incumbent parity fixture remains historical evidence. Current signed
 differences identify the new individual values, the added HMRC liability row and
@@ -82,7 +93,7 @@ Local Chronicle remains independently pinned to `6fb700e`.
 Both solves use 1,500 Adam updates, learning rate 0.02, seed 0, `family_equal`,
 free household mass, cap 10, no sparsity penalty and `best_feasible_loss` iterate
 selection (control epoch 1333; candidate 1422). The defaults are not overridden
-in the library. The effective fitted roster has 366 targets and 21 families.
+in the library. These recorded runs used 366 targets and 21 families.
 Under this treatment, 19 retained OBR weights change from 1/420 to 1/399;
 gains/count change from 1/42 to 1/63; cash-to-liability changes from 1/420 to 1/63.
 
@@ -106,8 +117,10 @@ Recomputing weighted outcomes or ESS from microdata requires the authenticated
 private captures; those records are not included in this public receipt.
 
 Post-run review repairs alter optional diagnostic availability, the active
-exemption register, parity explanations, tests and this evidence. They do not
-change the captured source, fitted target values or numerical result arrays.
-The original 30479731/6fb run remains historical; current claims use 9b5/cc9.
+exemption register, parity explanations, tests and documentation. They preserve
+the captured source and numerical result arrays. The subsequent main rebase also
+inherits a changed current fitting surface and calibration source identities;
+these historical results do not establish current-head numerical equivalence.
+Both the original 30479731/6fb run and the 9b5/cc9 comparison remain historical.
 Source-vintage, age support, tail allocation and the generic liability mechanism
 remain separate, unimplemented follow-ups.
