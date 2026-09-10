@@ -139,6 +139,7 @@ def _modules():
         sys.modules[support_source_id_column.__module__],
         sys.modules[clone.clone_us_frame_for_puf_support.__module__],
         geography,
+        geography.replay,
         financial_successor,
         geography.blocks,
         geography.atomic,

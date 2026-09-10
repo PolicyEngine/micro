@@ -199,8 +199,8 @@ def test_atomic_budget_refuses_preclone_assignment_candidate(atomic_budget):
     old_clone = reconstruction.puf_support.clone_us_frame_for_puf_support(
         old_geography, clone_attachment_fraction=1.0, clone_attachment_seed=0
     )
-    # Isolate obsolete placement/ownership from unrelated storage differences
-    # introduced by a direct clone versus a ContentStore materialization.
+    # Isolate obsolete placement values from unrelated storage differences
+    # and retain the actual postclone owners, design anchors and ledger.
     candidate = reconstruction._copy_population(run.clone_population)
     actual_households = candidate.frame.table("household")
     old_households = old_clone.table("household")
@@ -214,7 +214,11 @@ def test_atomic_budget_refuses_preclone_assignment_candidate(atomic_budget):
         "household_support_clone_index",
     ):
         assert old_households[identity].tolist() == actual_households[identity].tolist()
-    owners = dict(candidate.owners)
+    expected_owners = tuple(sorted(candidate.owners.items()))
+    old_blocks = old_households["census_block_geoid"].tolist()
+    actual_blocks = actual_households["census_block_geoid"].tolist()
+    assert all(type(value) is str for value in (*old_blocks, *actual_blocks))
+    assert any(a != b for a, b in zip(old_blocks, actual_blocks, strict=True))
     for column in geography_columns:
         reference = actual_households[column]
         actual_households[column] = pd.Series(
@@ -224,13 +228,12 @@ def test_atomic_budget_refuses_preclone_assignment_candidate(atomic_budget):
             name=column,
         )
         assert actual_households[column].dtype == reference.dtype
-        owners["household", column] = owner.clone.COMBINED_CLONE_NODE
-    object.__setattr__(candidate, "owners", owners)
+    assert tuple(sorted(candidate.owners.items())) == expected_owners
     arguments = _arguments(case)
     arguments["clone_population"] = candidate
     with pytest.raises(
         ValueError,
-        match="SURVEY_POPULATION_REPLAY_STRING_VALUE|SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT",
+        match="^SURVEY_POPULATION_REPLAY_STRING_VALUE$",
     ):
         owner.freeze_survey_origin_budget(**arguments)
 
