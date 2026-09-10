@@ -96,6 +96,10 @@ def _us_hierarchy_seed(
             resolved_category_label,
             provider_id,
         ),
+        # Programmatic US references use the category's reviewed display label
+        # when target compilation changes the period or combines facts. Direct,
+        # unchanged references still take their target label from Chronicle.
+        target_label=resolved_category_label,
     )
 
 
@@ -905,6 +909,7 @@ def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
         normalized["hierarchy"] = hierarchy_seed_from_catalog(
             hierarchy,
             category_id,
+            target_id=str(normalized.get("name") or ""),
         )
         references.append(LedgerTargetReference(**normalized))
     return tuple(references)

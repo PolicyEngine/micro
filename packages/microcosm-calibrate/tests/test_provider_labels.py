@@ -13,18 +13,23 @@ from microcosm.calibrate import (
 
 def test_current_us_providers_have_labels() -> None:
     current_source_ids = {
+        "bea",
         "bea_nipa",
         "cbo",
+        "census_acs",
         "census_pep",
         "census_stc",
         "cms_aca",
         "cms_medicaid",
         "cms_medicare",
+        "cms_nhe",
+        "federal_reserve",
         "federal_reserve_z1",
         "hhs_acf_liheap",
         "hhs_acf_tanf",
         "irs_soi",
         "jct",
+        "ssa",
         "ssa_ssi_monthly",
         "ssa_supplement",
         "unspecified",

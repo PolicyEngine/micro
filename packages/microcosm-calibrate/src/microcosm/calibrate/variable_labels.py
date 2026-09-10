@@ -30,6 +30,10 @@ def _immutable_registry(
 
 US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_registry(
     {
+        "bea": {
+            "nipa_proprietors_income": "Proprietors' income",
+            "nipa_wages_and_salaries": "Wages and salaries",
+        },
         "bea_nipa": {
             "proprietors_income_with_inventory_valuation_and_capital_consumption_adjustments": (
                 "Proprietors' income"
@@ -37,6 +41,7 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "wages_and_salaries": "Wages and salaries",
         },
         "cbo": {
+            "cbo": "Economic projections",
             "adjusted_gross_income_projection": "Adjusted gross income projection",
             "net_business_income_projection": "Net business income projection",
             "net_capital_gain_projection": "Net capital gain projection",
@@ -45,6 +50,9 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             ),
             "wages_and_salaries_projection": "Wages and salaries projection",
         },
+        "census_acs": {
+            "resident_population": "Resident population",
+        },
         "census_pep": {
             "resident_population": "Resident population",
         },
@@ -52,15 +60,18 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "individual_income_tax_collections": ("Individual income tax collections"),
         },
         "cms_aca": {
+            "cms_aca": "ACA marketplace",
             "aptc_consumers": "APTC consumers",
             "marketplace_plan_selections": "Marketplace plan selections",
         },
         "cms_medicaid": {
+            "cms_medicaid": "Medicaid and CHIP",
             "total_chip_enrollment": "Total CHIP enrollment",
             "total_medicaid_chip_enrollment": "Total Medicaid and CHIP enrollment",
             "total_medicaid_enrollment": "Total Medicaid enrollment",
         },
         "cms_medicare": {
+            "cms_medicare": "Medicare",
             "part_b_premium_income": "Part B premium income",
         },
         "federal_reserve_z1": {
@@ -68,12 +79,17 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
                 "Households and nonprofit organizations net worth"
             ),
         },
+        "federal_reserve": {
+            "federal_reserve": "Household finances",
+        },
         "hhs_acf_liheap": {
+            "hhs_acf_liheap": "LIHEAP",
             "households_served_by_state_programs": (
                 "Households served by state programs"
             ),
         },
         "hhs_acf_tanf": {
+            "hhs_acf_tanf": "TANF",
             "cash_assistance_expenditures": "Cash assistance expenditures",
         },
         "irs_soi": {
@@ -98,10 +114,15 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
                 "Itemized taxable income deductions"
             ),
             "medical_expense_deduction": "Medical expense deduction",
+            "miscellaneous_income": "Miscellaneous income",
+            "miscellaneous_losses": "Miscellaneous losses",
             "non_sch_d_capital_gains": "Non-Schedule D capital gains",
             "ordinary_dividend_income": "Ordinary dividend income",
             "partnership_and_s_corp_income": "Partnership and S corporation income",
             "qualified_dividends": "Qualified dividends",
+            "qualified_business_income_deduction": (
+                "Qualified business income deduction"
+            ),
             "real_estate_taxes": "Real estate taxes",
             "refundable_ctc": "Refundable CTC",
             "rent_and_royalty_net_income": "Rent and royalty net income",
@@ -111,6 +132,7 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "taxable_interest_income": "Taxable interest income",
             "taxable_pension_income": "Taxable pension income",
             "taxable_social_security": "Taxable Social Security",
+            "tax_filer_individual_count": "Individuals represented by tax returns",
             "tip_income": "Tip income",
             "unemployment_compensation": "Unemployment compensation",
         },
@@ -127,6 +149,11 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "ssa.ssi_payment": "SSI payments",
             "ssa.ssi_recipient": "SSI recipients",
         },
+        "ssa": {
+            "ssa": "Social Security",
+            "ssi_payments": "SSI payments",
+            "ssi_recipients": "SSI recipients",
+        },
         "unspecified": {
             "selection_mass_protection.keogh_distributions": (
                 "Keogh distributions selection-mass constraint"
@@ -134,6 +161,7 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
         },
         "usda_snap": {
             "average_monthly_households": "Average monthly households",
+            "usda_snap": "SNAP",
             "total_benefits": "Total benefits",
         },
     }

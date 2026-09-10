@@ -1080,6 +1080,8 @@ def _requires_microcosm_target_label(
     if len(facts) != 1 or reference.value_operation != "identity":
         return True
     fact = facts[0]
+    if _fact_key(fact).startswith("microcosm.derived_fact."):
+        return True
     fact_period = _at(fact, "period", "value")
     if fact_period is None:
         return True

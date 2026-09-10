@@ -57,6 +57,12 @@ def test_translate_cd_facts_conserves_values_and_records_lineage() -> None:
     assert set(by_geography) == {"5001900US0601", "5001900US0602"}
     assert by_geography["5001900US0601"]["value"] == pytest.approx(75.0)
     assert by_geography["5001900US0602"]["value"] == pytest.approx(85.0)
+    assert by_geography["5001900US0601"]["geography"]["name"] == (
+        "CA congressional district 1"
+    )
+    assert by_geography["5001900US0602"]["layout"]["groupby_value_label"] == (
+        "CA congressional district 2"
+    )
     merged_lineage = by_geography["5001900US0602"]["lineage"]
     assert merged_lineage["target_geography_vintage"] == "119th_congress"
     assert (
@@ -588,6 +594,7 @@ def _soi_cd_fact(
         f"{SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID}.{source_row_id}.{measure_id}"
     )
     return {
+        "label": f"Test label for {source_record_id}",
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{source_row_id}.{measure_id}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:{source_row_id}.{measure_id}",
         "legacy_fact_key": f"ledger.fact.v1:{source_row_id}.{measure_id}",
@@ -597,15 +604,30 @@ def _soi_cd_fact(
         "geography": {
             "level": geography_level,
             "id": geography_id,
+            "name": f"Test geography {geography_id}",
             "vintage": "117th_congress",
         },
         "entity": {"name": "tax_unit"},
         "aggregation": {"method": "sum"},
         "dimensions": {"income_range": "all", "filing_status": "all"},
+        "dimension_labels": {
+            "filing_status": "Filing status",
+            "income_range": "Income range",
+            "irs_soi.congressional_district": "Congressional district",
+        },
+        "dimension_value_labels": {
+            "filing_status": {"all": "All filing statuses"},
+            "income_range": {"all": "All income ranges"},
+            "irs_soi.congressional_district": {
+                source_row_id: f"Test district {source_row_id}"
+            },
+        },
         "layout": {
             "record_set_id": SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID,
             "groupby_dimension": "irs_soi.congressional_district",
+            "groupby_dimension_label": "Congressional district",
             "groupby_value_id": source_row_id,
+            "groupby_value_label": f"Test district {source_row_id}",
             "measure_id": measure_id,
             "source_row_id": source_row_id,
         },
@@ -659,6 +681,7 @@ def _soi_state_fact(
 ) -> dict[str, object]:
     source_record_id = f"irs_soi.ty2023.state_agi.{source_row_id}.{measure_id}"
     return {
+        "label": f"Test label for {source_record_id}",
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{source_row_id}.{measure_id}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:{source_row_id}.{measure_id}",
         "legacy_fact_key": f"ledger.fact.v1:{source_row_id}.{measure_id}",
@@ -668,15 +691,28 @@ def _soi_state_fact(
         "geography": {
             "level": "state",
             "id": geography_id,
+            "name": f"Test geography {geography_id}",
             "vintage": "state_fips",
         },
         "entity": {"name": "tax_unit"},
         "aggregation": {"method": "sum"},
         "dimensions": {"income_range": "all", "filing_status": "all"},
+        "dimension_labels": {
+            "filing_status": "Filing status",
+            "income_range": "Income range",
+            "irs_soi.state": "State",
+        },
+        "dimension_value_labels": {
+            "filing_status": {"all": "All filing statuses"},
+            "income_range": {"all": "All income ranges"},
+            "irs_soi.state": {source_row_id: f"Test state {source_row_id}"},
+        },
         "layout": {
             "record_set_id": "irs_soi.ty2023.state_agi",
             "groupby_dimension": "irs_soi.state",
+            "groupby_dimension_label": "State",
             "groupby_value_id": source_row_id,
+            "groupby_value_label": f"Test state {source_row_id}",
             "measure_id": measure_id,
             "source_row_id": source_row_id,
         },
@@ -707,12 +743,17 @@ def _packaged_reference_facts() -> list[dict[str, object]]:
 def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
     source_record_id = reference.ledger_source_record_id or reference.name
     return {
+        "label": f"Test label for {source_record_id}",
         "lineage": {"source_record_id": source_record_id},
         "value": value,
         "period": {"type": "tax_year", "value": reference.period},
         "entity": {"name": reference.entity},
         "aggregation": {"method": "sum"},
-        "geography": {"level": "country", "id": "0100000US"},
+        "geography": {
+            "level": "country",
+            "id": "0100000US",
+            "name": "United States",
+        },
         "dimensions": {},
         "layout": {
             "record_set_id": f"{reference.family}.record_set",
