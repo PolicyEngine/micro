@@ -14,6 +14,29 @@ exports. Enrichment clones inherit their household's assigned location. The PUF
 operator acts on the combined survey frame. A separate ASEC–PUF base is not the
 intended architecture.
 
+National and local analysis share one fully constructed, enriched Frame. The
+analysis branch begins after harmonization, atomic geography assignment, cloning
+and imputation. Calibration changes weights; L0 controls sparsity. An export can
+select a geographic scope and remove zero-weight households, but must preserve
+every retained record's input values, knownness, entity relationships and assigned
+geography. There is no separate national or local enrichment operation. A source
+or mapping correction produces a new common parent Frame for both views.
+
+Release verification must bind each full or pruned export to that parent's
+identity and its calibration target/weight specification, compare retained
+inputs by stable entity ID, and reject changed inputs, dangling entity links or
+regenerated geography. Weight and scope changes are explicit exceptions; record
+values are not. This is the required contract, not a claim that all of these
+checks have already passed on the release candidate. The separate legacy
+ACS-local hours omission in [#765](https://github.com/PolicyEngine/microcosm/issues/765)
+illustrates the drift this common construction path removes.
+
+Pre-calibration source quality and post-calibration export integrity are distinct
+checks. Joint calibration may change an origin's contribution or set its weights
+to zero. A pruned export must not be required to make every survey origin
+independently resemble a national population, or to rerun imputation to satisfy
+such a requirement.
+
 The optional ten-node survey prefix now assigns a block before cloning, and its
 thirteen-node age-calibration extension passes cold execution and required
 replay on invented originals. A twenty-node extension now carries atomic
@@ -164,6 +187,10 @@ from the benchmark's accepted baseline.
 
 The following work remains open:
 
+The [US and UK release path](us-uk-release-path.md) puts these implementation
+items in the complete population-quality, calibration and consumer-release
+sequence. Passing component controls is one step in that sequence.
+
 1. Extend the accepted native twenty-node atomic and financial cold/replay
    pilot to the complete survey scale. Its
    invented cold/required replay, complete retained
@@ -214,21 +241,29 @@ The following work remains open:
 These are active workstreams. No release, merge or deployment is implied by this
 draft, and the source changes do not relax the outstanding acceptance checks.
 
-The two-route numerical finalization layer now passes 45 invented controls,
+The two-route numerical finalization layer now passes 46 invented controls,
 including 110 actual target fits, 220 applications and comparisons against the
 maintained whole-cohort finalizer for both routes together and either route
 alone. The tests also refuse changed donor row order, weights and late raw or
-donor mutations. This verifies the numerical layer; the canonical donor CREATE,
-typed model ancestry and complete survey attachment remain separate graph checks.
+donor mutations. The v2 numerical receipt seals the complete finalized candidate
+before return and refuses a change during receipt encoding. This verifies the
+numerical layer; typed model ancestry and complete survey attachment remain
+separate graph checks.
 The first canonical donor CREATE attempt failed during kernel construction
 because its live-code checker followed a circular function closure. The
 [failed observation](../experiments/us-puf55-canonical-create-failed-20260910.json)
 is preserved. The cycle correction passed its ten new marker controls, but
 the [39-case follow-up](../experiments/us-puf55-canonical-cycle39-failed-20260910.json)
 still refused before CREATE because the code-state snapshot changed during
-initialization. That exact changing member is being diagnosed; neither donor
-version is adopted, and the native full PUF host remains pending.
-See the [numerical evidence](../experiments/us-puf55-two-route-numerical-20260910.json).
+initialization. The changing member was the serialized Python code object;
+the corrected marker retains the actual code object and its immutable fields.
+After correcting three obsolete test accesses to the public PopulationView API,
+all 47 canonical CREATE/converter controls pass, including cold execution,
+required replay and teardown. The corrected numerical and canonical sources are
+adopted locally. These checks use invented donors; the native full PUF host
+remains pending. See the
+[46-control numerical evidence](../experiments/us-puf55-numerical-output-seal-46-controls-20260910.json)
+and [47-control canonical evidence](../experiments/us-puf55-canonical-create-47-controls-20260910.json).
 
 All 149 selected calibration controls now pass on the combined US/UK solver,
 including grouped bounds, fixed zero support, informed gates, budget search,

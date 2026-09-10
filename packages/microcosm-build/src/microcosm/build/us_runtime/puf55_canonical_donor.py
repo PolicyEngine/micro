@@ -28,6 +28,7 @@ def canonical_puf55_donor_from_artifact(
     *,
     expected_artifact_sha256: str,
     expected_growth_scheme: str = "family_observed",
+    profile=enrichment.PUF55_SURVEY_SS,
 ):
     """Return the ordered donor and descriptive projection metadata.
 
@@ -36,9 +37,18 @@ def canonical_puf55_donor_from_artifact(
     before relabeling the total as a predictor. It is transported tax-return
     income, not an observed current-year total or a beneficiary component.
 
+    The explicit eight-predictor profile omits this total from conditioning;
+    both profiles retain the same 55 targets, source rows, weights and capacity.
+    Both still validate the complete canonical artifact and its carrier recipe.
+
     The returned table has the source RECID axis. Its mutable values and this
     metadata do not constitute an authenticated graph edge or release receipt.
     """
+    if type(profile) is not enrichment.PufOutputProfile or profile not in (
+        enrichment.PUF55_SURVEY_SS,
+        enrichment.PUF55_SURVEY_SS_NO_TOTAL,
+    ):
+        raise ValueError("PUF55_DONOR_PROFILE")
     if (
         type(payload) is not bytes
         or type(expected_artifact_sha256) is not str
@@ -62,7 +72,6 @@ def canonical_puf55_donor_from_artifact(
     ):
         raise ValueError("PUF55_DONOR_SS_CARRIER")
 
-    profile = enrichment.PUF55_SURVEY_SS
     index = pd.Index(arrays["RECID"], name="tax_unit_id")
     tax_unit = pd.DataFrame(
         {
@@ -72,7 +81,15 @@ def canonical_puf55_donor_from_artifact(
             "puf_person_incidence_capacity": arrays["puf_person_incidence_capacity"],
             **{name: arrays[name] for name in profile.targets},
             **{name: arrays[name] for name in enrichment.PUF59.source_predictors},
-            enrichment.SURVEY_SS_TOTAL_PREDICTOR: arrays["social_security_retirement"],
+            **(
+                {
+                    enrichment.SURVEY_SS_TOTAL_PREDICTOR: arrays[
+                        "social_security_retirement"
+                    ]
+                }
+                if profile is enrichment.PUF55_SURVEY_SS
+                else {}
+            ),
         },
         index=index,
     )
@@ -108,7 +125,11 @@ def canonical_puf55_donor_from_artifact(
         "ordered_columns": list(donor.columns),
         "row_axis": "source RECID, tax-return grain",
         "social_security_total": {
-            "predictor": enrichment.SURVEY_SS_TOTAL_PREDICTOR,
+            "predictor": (
+                enrichment.SURVEY_SS_TOTAL_PREDICTOR
+                if profile is enrichment.PUF55_SURVEY_SS
+                else None
+            ),
             "raw_field": "E02400",
             "origin": "modeled_transport",
             "growth_scheme": expected_growth_scheme,

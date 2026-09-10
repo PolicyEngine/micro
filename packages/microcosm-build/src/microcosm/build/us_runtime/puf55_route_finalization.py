@@ -19,9 +19,11 @@ import pandas as pd
 from microcosm.fit import model_input
 
 from . import full_puf_enrichment as full
+from . import graph_full_puf_enrichment as physical
 from . import support_provenance as provenance
 
 PROTOCOL = "microcosm.us.puf55-route-raw-merge.v1"
+FINALIZATION_PROTOCOL = "microcosm.us.puf55-route-finalization.v2"
 PROFILES = (full.PUF55_SURVEY_SS, full.PUF55_SURVEY_SS_NO_TOTAL)
 
 
@@ -307,6 +309,14 @@ def _model_donor_frame(model_donor):
     return frame
 
 
+def _candidate_frame_sha256(frame):
+    """Complete physical candidate seal, not Population or source issuance."""
+    _require(type(frame) is full.Frame, "FINALIZATION_RESULT_TYPE")
+    return physical._population_stamp(
+        physical.Population.from_frame(frame, "puf55_route_numerical_candidate")
+    )
+
+
 def _finalize_puf55_routes(frame, *, recipient_matrices, routes, seed):
     """Validate two trusted raw/model chains, then finalize the whole cohort once.
 
@@ -474,9 +484,13 @@ def _finalize_puf55_routes(frame, *, recipient_matrices, routes, seed):
         }
         for row in retained
     ]
+    # This immutable digest crosses the function-return boundary with the
+    # candidate. A caller must compare it before capturing its own baseline.
+    candidate_sha256 = _candidate_frame_sha256(candidate)
     receipt = full.codec.encode_json(
         {
-            "protocol": "microcosm.us.puf55-route-finalization.v1",
+            "protocol": FINALIZATION_PROTOCOL,
+            "candidate_frame_sha256": candidate_sha256,
             "routes": evidence,
             "raw_merge_receipt_sha256": full.codec.sha(merge_receipt),
             "common_donor_columns": list(common_columns),
@@ -493,5 +507,12 @@ def _finalize_puf55_routes(frame, *, recipient_matrices, routes, seed):
             "release_eligible": False,
         }
     )
-    _require(len(receipt) <= 128 * 1024, "RECEIPT_SIZE")
+    _require(type(receipt) is bytes and len(receipt) <= 128 * 1024, "RECEIPT_SIZE")
+    # Receipt encoding is a final callback boundary. Keep every prior retained
+    # input check and reject a changed candidate before handing it to the host.
+    check_inputs()
+    _require(
+        _candidate_frame_sha256(candidate) == candidate_sha256,
+        "FINALIZATION_CANDIDATE_CHANGED",
+    )
     return candidate, receipt

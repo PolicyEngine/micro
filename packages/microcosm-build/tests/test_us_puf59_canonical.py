@@ -416,12 +416,67 @@ def test_puf59_canonical_source_and_artifact_controls():
             "puf55_source_bytes_unchanged",
             artifact.encode_canonical_puf59(candidate) == packed,
         )
+        explicit, explicit_metadata = donor55.canonical_puf55_donor_from_artifact(
+            packed,
+            expected_artifact_sha256=digest,
+            profile=enrichment.PUF55_SURVEY_SS,
+        )
+        check(
+            "puf55_default_nine_profile_unchanged",
+            explicit.equals(projected) and explicit_metadata == metadata,
+        )
+        eight, eight_metadata = donor55.canonical_puf55_donor_from_artifact(
+            packed,
+            expected_artifact_sha256=digest,
+            profile=enrichment.PUF55_SURVEY_SS_NO_TOTAL,
+        )
+        check(
+            "puf55_eight_exact_projection_without_source_or_target_change",
+            eight.equals(projected.drop(columns=[enrichment.SURVEY_SS_TOTAL_PREDICTOR]))
+            and tuple(eight.columns)
+            == (
+                *enrichment.PUF55_SURVEY_SS_NO_TOTAL.predictors,
+                *profile.targets,
+                "weight",
+                "puf_person_incidence_capacity",
+            )
+            and artifact.encode_canonical_puf59(candidate) == packed,
+        )
+        check(
+            "puf55_eight_omission_is_explicit_and_grants_no_authority",
+            eight_metadata["profile"] == enrichment.PUF55_SURVEY_SS_NO_TOTAL.value
+            and eight_metadata["ordered_columns"] == list(eight.columns)
+            and eight_metadata["social_security_total"]["predictor"] is None
+            and eight_metadata["social_security_total"]["raw_field"] == "E02400"
+            and eight_metadata["artifact_sha256"] == digest
+            and eight_metadata["source_receipt_sha256"] == candidate.receipt["sha256"]
+            and eight_metadata["source_authority_granted"] is False
+            and eight_metadata["release_eligible"] is False,
+        )
         refuses(
             "puf55_expected_artifact_identity_required",
             lambda packed=packed: donor55.canonical_puf55_donor_from_artifact(
                 packed, expected_artifact_sha256="0" * 64
             ),
             "PUF55_DONOR_ARTIFACT_IDENTITY",
+        )
+
+    for invalid_profile in (
+        enrichment.PUF59,
+        enrichment.FULL65,
+        enrichment.PUF55_SURVEY_SS_NO_TOTAL.value,
+        None,
+    ):
+        refuses(
+            "puf55_explicit_closed_profile_required",
+            lambda invalid_profile=invalid_profile: (
+                donor55.canonical_puf55_donor_from_artifact(
+                    packed,
+                    expected_artifact_sha256=digest,
+                    profile=invalid_profile,
+                )
+            ),
+            "PUF55_DONOR_PROFILE",
         )
 
     # Correctly rehashed, internally consistent artifacts still cannot change
@@ -452,6 +507,16 @@ def test_puf59_canonical_source_and_artifact_controls():
             "puf55_changed_carrier_contract_refused",
             lambda altered=altered: donor55.canonical_puf55_donor_from_artifact(
                 altered, expected_artifact_sha256=hashlib.sha256(altered).hexdigest()
+            ),
+            "PUF55_DONOR_SS_CARRIER",
+        )
+
+        refuses(
+            "puf55_eight_cannot_bypass_carrier_contract",
+            lambda altered=altered: donor55.canonical_puf55_donor_from_artifact(
+                altered,
+                expected_artifact_sha256=hashlib.sha256(altered).hexdigest(),
+                profile=enrichment.PUF55_SURVEY_SS_NO_TOTAL,
             ),
             "PUF55_DONOR_SS_CARRIER",
         )

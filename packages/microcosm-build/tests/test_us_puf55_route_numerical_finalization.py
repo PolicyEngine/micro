@@ -234,6 +234,10 @@ def test_two_real_chains_finalize_once_on_the_complete_original_cohort(
         )
     _assert_preserved(case.frame, candidate)
     receipt = full.codec.decode_json(payload)
+    assert receipt["protocol"] == "microcosm.us.puf55-route-finalization.v2"
+    assert receipt["candidate_frame_sha256"] == bridge._candidate_frame_sha256(
+        candidate
+    )
     assert receipt["recipient_rows"] == 4 and receipt["finalizer_calls"] == 1
     assert receipt["model_consumed_donor_values_checked"] is True
     assert [row["profile"] for row in receipt["routes"]] == [
@@ -266,6 +270,10 @@ def test_one_nonempty_route_uses_same_whole_cohort_finalizer(
     route = _apply(case.fitted[route_index], case.ids[::-1])
     candidate, payload = _call(frame, (route,))
     receipt = full.codec.decode_json(payload)
+    assert receipt["protocol"] == "microcosm.us.puf55-route-finalization.v2"
+    assert receipt["candidate_frame_sha256"] == bridge._candidate_frame_sha256(
+        candidate
+    )
     assert receipt["recipient_rows"] == 4 and len(receipt["routes"]) == 1
     assert receipt["routes"][0]["profile"] == bridge.PROFILES[route_index].value
     raw, _ = bridge.merge_puf55_route_draws(
@@ -562,3 +570,52 @@ def test_finalizer_return_cannot_change_retained_raw_or_donor(numerical_routes, 
     finally:
         sys.setprofile(old)
     assert fired
+
+
+def test_receipt_encoding_cannot_change_the_already_sealed_candidate(numerical_routes):
+    case = numerical_routes
+    fired, calls = [], []
+
+    def trace(frame, event, arg):
+        if (
+            event == "call"
+            and frame.f_code
+            is full.support.finalize_us_puf_tax_detail_predictions.__code__
+        ):
+            calls.append(1)
+        caller = frame.f_back
+        if (
+            event == "return"
+            and frame.f_code is full.codec.encode_json.__code__
+            and caller is not None
+            and caller.f_code is bridge._finalize_puf55_routes.__code__
+            and "candidate_sha256" in caller.f_locals
+            and not fired
+        ):
+            candidate = caller.f_locals["candidate"]
+            table = candidate.person
+            mask = full.support.puf_tax_detail_clone_mask(table, entity="person")
+            row = np.flatnonzero(mask)[0]
+            target = "employment_income_before_lsr"
+            assert target in bridge.PROFILES[0].person_outputs
+            assert table[target].dtype == np.dtype("float64")
+            column = table.columns.get_loc(target)
+            before = table.iloc[row, column]
+            assert np.isfinite(before)
+            table.iloc[row, column] = before + 123.0
+            assert (
+                np.isfinite(table.iloc[row, column])
+                and table.iloc[row, column] != before
+            )
+            fired.append(1)
+
+    previous = sys.getprofile()
+    sys.setprofile(trace)
+    try:
+        with pytest.raises(
+            ValueError, match="^PUF55_ROUTE_FINALIZATION_CANDIDATE_CHANGED$"
+        ):
+            _call(case.frame, case.routes)
+    finally:
+        sys.setprofile(previous)
+    assert fired == calls == [1]
