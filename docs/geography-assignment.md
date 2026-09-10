@@ -1,10 +1,16 @@
 # Geography assignment in the population graph
 
-Design decision, 9 September 2026: assign one small census area to each household
-after constructing and harmonizing the survey spine. Derive larger geographies
-from that area using identified, versioned mappings. PUF and other enrichment
-clones inherit the location. Geographic support expansion, if needed, is a
-separate declared population operation with explicit identities and weights.
+Design decision, corrected 10 September 2026: finish constructing the full survey
+multispine, including its initial support and PUF clones, then assign one small
+census area to each resulting household. Derive larger geographies from that
+area using identified, versioned mappings. Distinct clones may receive different
+areas subject to their observed source constraints. The assigned location then
+remains fixed through subsequent enrichment, calibration and analysis views.
+
+The earlier block-before-clone implementation and its passing controls remain
+historical evidence. They do not demonstrate this corrected ordering. Geographic
+assignment must use a stable post-clone identity, including a clone discriminator
+where original-source identity alone is shared by multiple households.
 
 This document records the intended contract and the implementation gap. It does
 not certify a new geographic source, assignment run or population file.
@@ -37,12 +43,12 @@ paths while the shared operators and country adapters receive their own checks.
 
 ```mermaid
 flowchart LR
-  S[Combined survey spine] --> A[Assign one small area per household]
+  S[Complete survey multispine including clones] --> A[Assign one small area per resulting household]
   C[Observed survey geography constraints] --> A
   L[Versioned small-area support] --> A
   A --> D[Derive larger geographies]
   M[Versioned geographic mappings] --> D
-  D --> E[Enrichment clones inherit location]
+  D --> E[Subsequent enrichment retains location]
   E --> R[Rules and calibration]
   R --> P[Pruned analysis file retains location]
 ```
@@ -87,8 +93,10 @@ the [Census PUMA guidance](https://www.census.gov/programs-surveys/geography/gui
 - Bind each draw to a stable household identity, seed and assignment definition.
   Reordering rows or selecting an existing household must not redraw its location.
   Changed source support or boundary mappings produce a new identified revision.
-- Assign household members and enrichment clones consistently. Materialized
-  county, district and other fields must agree with the selected anchor's mapping.
+- Assign household members consistently with their resulting household. Initial
+  clones have distinct draw identities and may receive different anchors.
+  Materialized county, district and other fields must agree with that household's
+  selected anchor. Source geography remains a separate observed constraint.
 - Show assignment and derivation as separate operations in the graph. Expose the
   source constraints, support, sampling weights, mapping conventions and judgment
   annotations in the inspector.

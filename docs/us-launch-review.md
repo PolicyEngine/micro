@@ -7,15 +7,16 @@ release verification have not passed together.
 
 ## Architecture and review order
 
-The intended construction order is ACS + CPS ASEC → combined survey multispine →
-household Census block assignment → derived larger geographies → PUF clone and
-donor enrichment → rules evaluation and calibration → verified full and pruned
-exports. Enrichment clones inherit their household's assigned location. The PUF
+The intended construction order is ACS + CPS ASEC → complete survey multispine
+including its initial support/PUF clones → household Census block assignment →
+derived larger geographies → donor enrichment → rules evaluation and calibration
+→ verified full and pruned exports. Each resulting household retains its assigned
+location through the later stages. The PUF
 operator acts on the combined survey frame. A separate ASEC–PUF base is not the
 intended architecture.
 
 National and local analysis share one fully constructed, enriched Frame. The
-analysis branch begins after harmonization, atomic geography assignment, cloning
+analysis branch begins after harmonization, cloning, atomic geography assignment
 and imputation. Calibration changes weights; L0 controls sparsity. An export can
 select a geographic scope and remove zero-weight households, but must preserve
 every retained record's input values, knownness, entity relationships and assigned
@@ -37,7 +38,7 @@ to zero. A pruned export must not be required to make every survey origin
 independently resemble a national population, or to rerun imputation to satisfy
 such a requirement.
 
-The optional ten-node survey prefix now assigns a block before cloning, and its
+The earlier ten-node survey prefix assigns a block before cloning, and its
 thirteen-node age-calibration extension passes cold execution and required
 replay on invented originals. A twenty-node extension now carries atomic
 geography through current financial imputation and required replay. Native
@@ -47,6 +48,11 @@ operator is a separate path. See
 [Geography assignment](geography-assignment.md) for the country contracts,
 implementation and source boundaries.
 
+The 10 September sequencing correction requires the full initial multispine and
+its clones before block assignment, allowing each resulting household its own
+constrained draw. The accepted ten/twenty-node runs retain their original order;
+the corrected order needs its own implementation and replay checks.
+
 | Area | Main source entry points | What to review |
 | --- | --- | --- |
 | Graph execution and storage | `packages/microcosm-graph/src/microcosm/graph/{decl,executor,manifest,store,codecs,schema}.py` | Typed inputs and outputs, ownership, artifact ancestry, cache identity and nullable round trips |
@@ -54,7 +60,7 @@ implementation and source boundaries.
 | Combined survey and clone | `us_runtime/{graph_composed_population,graph_survey_population,graph_combined_clone}.py` | ACS and ASEC composition before the clone; native versus detail channels |
 | Enrichment | `us_runtime/{full_puf_enrichment,graph_full_puf_enrichment,graph_current_survey_puf_transfer}.py` | Target ordering, conditioning, observed-value preservation and complete replay |
 | Conditional models | `packages/microcosm-fit/src/microcosm/fit/{qrf_target,graph_legacy_train,graph_legacy_apply_matrix}.py` | Reusable model artifacts, deterministic draws and target regimes |
-| Geography | `atomic_geography.py`; `us_runtime/{atomic_block_support,atomic_block_api_sources,survey_atomic_geography,graph_atomic_survey_population}.py` | Block-first assignment, observed-source constraints, versioned mappings and clone inheritance; the older joint-cell operator remains separate |
+| Geography | `atomic_geography.py`; `us_runtime/{atomic_block_support,atomic_block_api_sources,survey_atomic_geography,graph_atomic_survey_population}.py` | Atomic block assignment, observed-source constraints, versioned mappings and stable clone identities; moving assignment after cloning remains in progress |
 | Survey mass and calibration | `us_runtime/{survey_origin_budget,graph_survey_budget,graph_survey_calibration}.py`; `packages/microcosm-calibrate/src/microcosm/calibrate/{group_bounds,solve}.py` | Original survey mass, grouped bounds, fixed support and existing ungrouped solver behavior |
 | Compatibility | `packages/microcosm-build/src/microcosm/build/{frame_checkpoint,us_runtime/__init__}.py` | Current-main APIs, checkpoint metadata and existing country consumers |
 
@@ -65,6 +71,32 @@ before deciding how to land it. Shared runtime changes overlap with
 [#873](https://github.com/PolicyEngine/microcosm/pull/873) and Anthony's
 [#885](https://github.com/PolicyEngine/microcosm/pull/885). Their final contracts
 need reconciliation; this draft does not supersede either review.
+
+## Parallel review and dependencies
+
+Completion of this integration draft is not a prerequisite for all UK work.
+Depend on identified shared changes where necessary, with independently reviewed
+PRs and compatible interfaces. Keep the US native build, UK candidate repair,
+source/target reconciliation and shared runtime work moving in parallel.
+
+| Reviewer | Review focus in this draft | Work that can continue independently |
+| --- | --- | --- |
+| Anthony | Shared graph/Frame contracts, artifact and replay behavior, calibration changes, and overlap with #885/#873; agree the implementation to retain and the smallest shared prerequisites to land | Runtime standardization and UK staging telemetry; a complete US PUF build is not their prerequisite |
+| Maria | UK-facing shared calibration behavior, source/input contracts and proposed atomic-geography adapter; identify compatibility requirements for the current UK candidate | #900, Chronicle/lookup reconciliation, UK support/fit diagnosis and candidate validation; these do not depend on native US PUF integration |
+| US integration owner | Resolve overlap, maintain exact compatibility evidence, complete the US population and release checks, and extract shared changes agreed in review | US-specific source preparation, imputation, quality diagnostics and progressive local builds |
+
+Review the shared contracts first and record each dependency as a named change
+with a pinned revision. Country work can remain based on current main; do not
+rebase it onto this entire moving integration branch merely to participate in
+review. Extract an agreed shared prerequisite into a smaller PR when a consumer
+actually needs it, with compatibility checks for both countries.
+
+The shared post-clone geography interface is under revision following the
+10 September ordering correction. Consumers adopting that new path should agree
+on its interface before wiring it. Existing target/source repairs can proceed on
+their reviewed base. Passing this draft's invented controls does not certify
+Maria's UK candidate, and the final US release need not gate her independent
+source and calibration work. No whole-PR merge is implied by this review map.
 
 ## Verification and review scope
 

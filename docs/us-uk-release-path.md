@@ -12,10 +12,12 @@ Each country should have one fully constructed population from which full and
 smaller analysis files are derived. Record the survey, monetary, policy and
 boundary reference periods explicitly; do not infer them from a filename.
 
-After harmonization, assign one atomic area to each household and derive larger
-geographies from versioned mappings. Geographic support expansion, when needed,
-precedes assignment and has explicit identities and weights. Subsequent
-enrichment clones inherit the assigned location. Once enrichment is complete,
+After constructing and harmonizing the complete multispine, including its
+initial clones, assign one atomic area to each resulting household and derive
+larger geographies from versioned mappings. Distinct clones may receive different
+areas, constrained by observed source geography and keyed by stable clone
+identity. Subsequent enrichment retains the assigned location. Once construction
+and enrichment are complete,
 calibration changes household weights; scope selection and pruning retain the
 original values, missingness and relationships for every retained household.
 
@@ -30,13 +32,22 @@ common source population alone does not guarantee identical estimates.
 | --- | --- | --- | --- |
 | Source and period coverage | ACS and ASEC survey multispine; PUF tax detail; SCF and other required auxiliary sources; declared aging | Raw FRS 2024–25; SPI/HMRC, WAS, LCFS/ETB and other required stages; declared uprating | Source register, licensed-input boundaries, source definitions, missingness, units and periods; every applicable input has a producer |
 | Complete population | Harmonized relationships and tax/benefit units; geography; financial and PUF enrichment; remaining benefit, disability, housing and asset inputs | Integrated FRS stages and current relationship/claimant definitions; income, wealth, consumption and benefit inputs | Small real end-to-end build; source-channel coverage; plausible distributions and joints; no silent engine-default substitutions |
-| Geographic support | Block assignment before enrichment cloning; versioned county/PUMA/CD derivation; enough household types in each district | Shared atomic-area assignment and derivation for each nation; adequate constituency/LA support | Observed geography respected; stable household draws; clone/export inheritance; support and fit measured at advertised levels |
+| Geographic support | Block assignment after initial multispine cloning; versioned county/PUMA/CD derivation; enough household types in each district | Shared atomic-area assignment after full spine cloning, and derivation for each nation; adequate constituency/LA support | Observed geography respected; distinct stable clone draws; subsequent location invariance; support and fit measured at advertised levels |
 | Model and calibration | Locked US model; national/state/CD target matrix from identified facts | Locked UK model and companion input changes; national/local matrix with corrected UC and other target definitions | Baseline engine evaluation, calibrated population, target-level errors, support/weight diagnostics and explicit outstanding failures |
 | Independent quality | Held-out distributions and geographic cells; tax/benefit totals and representative reforms; comparison with the incumbent | Current release battery, held-out areas and complete incumbent comparison; resolve remaining support and target-fit failures | Candidate-specific reports; explained regressions; thresholds agreed before choosing a candidate |
 | Scale and compact views | Increase local build size after smaller checks; derive and refit the intended full/sparse family | Choose a size that meets local support and quality needs; complete compact/exact-count release evidence | Measured time, memory and cache replay; retained-input invariance; full/compact error and performance comparisons |
 | Release and consumption | Exact-file dashboard, methods/papers, immutable package and real PolicyEngine loading | Exact-file dashboard and certification; immutable cut, loader/pointer integration and PolicyEngine-UK adoption | Fresh export/readback, reproducible manifest and checksums, consumer calculation smoke test, reviewed release and rollback path |
 
 ## Current position
+
+| Stage | US demonstrated result | UK demonstrated result |
+| --- | --- | --- |
+| Population construction | Small real ACS/ASEC composition, clone and financial enrichment pass; complete PUF and remaining inputs pending | Real FRS 2024–25 spine and earlier whole-spine parity; latest integrated stage set needs fresh coverage and verification |
+| Geography | Earlier pre-clone block assignment and inheritance pass in the small real build; corrected post-clone order and complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared stable post-clone owner not integrated |
+| Calibration | Solver controls pass; fully enriched native national/CD solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
+| Independent quality | Complete-candidate engine outcomes, holdouts and reform validation pending | Prior comparisons and diagnostics exist; the recorded 55k candidates skipped holdout evaluation and do not establish release quality |
+| Full/compact files | Small prefix export and required replay pass; complete enriched release family pending | Size-selection implementation and measured candidates exist; current accepted full/compact local family pending |
+| Delivery | No accepted new-architecture release or default consumer adoption | Assembly implementation and historical assembled cuts exist; current certification and default promotion pending |
 
 The US new graph has passed a small real survey → block assignment → clone →
 financial-enrichment build and required replay. The combined survey population
@@ -55,8 +66,10 @@ does not satisfy today's release battery. See
 [the current dense release runbook](uk-dense-release-assembly-runbook-762.md).
 
 The current UK route clones for geographic support and then uses the existing
-OA ladder. It has not adopted the new shared, household-keyed atomic geography
-graph immediately after harmonization. Maria's
+OA ladder. It has not adopted the new shared atomic geography graph keyed to
+stable post-clone household identity. Its existing placement after cloning is
+consistent with the user's 10 September ordering correction; the source,
+identity and shared-operator migration remain separate work. Maria's
 [PR #900](https://github.com/PolicyEngine/microcosm/pull/900) updates Chronicle
 household targets and the Northern Ireland lookup; that source work does not
 by itself migrate the assignment owner. Anthony's
