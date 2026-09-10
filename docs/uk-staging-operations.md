@@ -139,7 +139,7 @@ artifacts are permitted; population H5 files, NumPy archives, source survey
 tables, row-level extracts, archives, credentials, and environment data are
 rejected before remote storage is called.
 
-## Smoke and exact-count verification
+## Smoke verification
 
 The UK spine command keeps fractional input sampling for scale tests. The
 `--smoke` option marks its H5, sidecar, and staging records as non-release. It
@@ -169,25 +169,6 @@ The workflow `.github/workflows/integration-tests.yml` runs on manual dispatch
 and every pull request to `main`, without a path filter. Its commands live in
 `tools/run_integration_tests.sh`. The test reports total elapsed time and the
 elapsed time for each transformation.
-
-Exact household cardinality belongs to national calibration, after the complete
-spine pool and target matrix exist. Supply all three selection options together:
-
-```bash
-uv run python tools/calibrate_uk_national_dataset.py \
-  <required calibration inputs and outputs> \
-  --exact-k <household-count-or-N> \
-  --exact-k-pi-hi 0.95 \
-  --seed 17
-```
-
-For `K` below the input household count, calibration learns inclusion
-probabilities on the complete pool, draws a seeded fixed-size Sampford support,
-normalizes the selected input weights by their inclusion probabilities, and
-refits ordinary calibration on exactly `K` households. For `K` equal to the
-input count—or when the command receives `--exact-k N`—it keeps the full support
-and still refits the weights. The build record includes the requested count,
-realized count, seed, selection receipt, and refit-baseline diagnostics.
 
 An authenticated staging transport check completed on 2026-09-09 using the
 earlier source-family-count interface and the superseded shared-file layout. It

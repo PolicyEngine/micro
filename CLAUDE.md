@@ -84,12 +84,6 @@ repository access check with:
 HF_STAGING_READ_TOKEN= bash tools/run_integration_tests.sh
 ```
 
-The spine command's fractional sampler is only for input-scale tests. Exact
-household counts use `tools/calibrate_uk_national_dataset.py --exact-k` after
-the complete spine and target matrix exist. As in the US command, pass a
-positive count or `N` to `--exact-k`, and supply `--exact-k-pi-hi` and an
-explicit `--seed` with it.
-
 ## The PR-CI / certification boundary
 
 PR CI is secrets-free and never touches restricted microdata. Green PR checks
