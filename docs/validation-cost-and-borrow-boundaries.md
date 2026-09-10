@@ -32,7 +32,11 @@ Similarly, an AST cache would hold mutable objects, unlike compiled code. It nee
 
 The same review raised kernel-registry sharing, registration order and recipient ordering. These require owner-level checks before being treated as bugs. For example, each financial run currently constructs a fresh survey prefix internally; it does not accept an existing prefix for a second extension. The PUF raw-route merger separately derives and verifies the complete receiving tax-unit axis before restoring row order. Neither observation alone proves every composition boundary correct.
 
-The immediate implementation priorities remain the budget returned-view correction, actual public PUF recipient and graph checks, authenticated donor/model binding, one whole-cohort PUF finalization and attachment, then native calibration and release verification. Performance work proceeds alongside those tasks.
+The budget returned-view correction is now adopted. Detached documents and grouped bounds are constructed after the last borrowed I/O, then checked against the issued payload and retained owners. Four targeted controls passed, including nine callback branches; the post-run verification rechecked 501 source/owned files, 5,983 model-code files and 12 resources. The earlier eight financial-successor controls remain evidence for their original source revision. These are separate component runs, not twelve tests of one integrated revision. See [the correction experiment](../experiments/us-budget-detached-view-correction-20260910.json).
+
+A second Fable source review found no confirmed correctness or ownership bug in the public PUF recipient interface. It recommended explicit cold-cache reuse assertions, exact comparisons with the original issuers, and clearer documentation of the original-source reads required by the recipient kernels. The frozen two-positive pilot remains unchanged; those additions belong to subsequent controls.
+
+The immediate implementation priorities remain actual public PUF recipient and graph checks, authenticated donor/model binding, one whole-cohort PUF finalization and attachment, then native calibration and release verification. Performance work proceeds alongside those tasks.
 
 ## Review scope
 

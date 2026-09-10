@@ -42,6 +42,7 @@ from microcosm.graph.population import (
 from . import graph_combined_clone as clone
 from . import graph_survey_population as graph
 from . import survey_atomic_geography as geography
+from . import survey_financial_successor as financial_successor
 from . import survey_population_preparation as source
 from .graph_sources import frame_column_declarations
 from .support_provenance import support_clone_index_column, support_source_id_column
@@ -138,6 +139,7 @@ def _modules():
         sys.modules[support_source_id_column.__module__],
         sys.modules[clone.clone_us_frame_for_puf_support.__module__],
         geography,
+        financial_successor,
         geography.blocks,
         geography.atomic,
         geography.atomic_graph,
@@ -223,6 +225,12 @@ def _live():
                 )
             ),
         )
+    )
+    result["financial_successor_contract"] = (
+        financial_successor.PROTOCOL,
+        financial_successor.FINANCIAL_SUCCESSOR_TYPE.name,
+        financial_successor.FINANCIAL_SUCCESSOR_TYPE.schema_version,
+        financial_successor.MAX_PAYLOAD_BYTES,
     )
     return result
 
@@ -623,6 +631,11 @@ def _final_budget_state(state):
         # Finish support I/O before the same pure owner/Population final seals.
         # Re-reading exact pinned bytes grants no publisher provenance.
         geography._read_support(state.geography_config)
+    _pure_budget_state(state)
+
+
+def _pure_budget_state(state):
+    """Check retained source/Population state without a new file borrow."""
     entry = _preparation_entry(
         state.preparation, state.preparation_payload, state.preparation_entry
     )
@@ -734,6 +747,71 @@ def _issue(cls, payload, state):
     return value
 
 
+def _check_view_constraint(constraint, document):
+    """Bind every derived numerical field to an already requalified issued view."""
+    reason = "FINAL_BUDGET_VIEW_CONSTRAINT"
+    _require(type(constraint) is group_bounds.GroupedUpperBounds, reason)
+    ids = tuple(document["household_ids"])
+    groups = document["group_indices"]
+    bounds_hex = [row["upper_float64_hex"] for row in document["origins"]]
+    # This is the maintained constraint's stable-ID reduction order. These
+    # expected buckets come from the issued document, not constructor output.
+    buckets = [[] for _ in bounds_hex]
+    for index in sorted(
+        range(len(ids)), key=lambda i: (isinstance(ids[i], str), ids[i])
+    ):
+        buckets[groups[index]].append(index)
+
+    def immutable_array(value, expected, dtype):
+        payload = np.asarray(expected, dtype=dtype).tobytes()
+        return (
+            type(value) is np.ndarray
+            and value.dtype.str == dtype
+            and value.shape == (len(expected),)
+            and value.strides == (8,)
+            and not value.flags.writeable
+            and not value.flags.owndata
+            and type(value.base) is bytes
+            and value.base == payload
+            and value.tobytes() == payload
+        )
+
+    digest_payload = {
+        "contract": "stable-household-fsum-group-upper-v1",
+        "household_ids": ids,
+        "group_indices": groups,
+        "absolute_bounds_hex": bounds_hex,
+    }
+    expected_digest = _sha(
+        json.dumps(
+            digest_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode()
+    )
+    _require(
+        type(constraint.household_ids) is tuple
+        and len(constraint.household_ids) == len(ids)
+        and all(
+            type(actual) is type(expected) and actual == expected
+            for actual, expected in zip(constraint.household_ids, ids, strict=True)
+        )
+        and immutable_array(constraint.group_indices, groups, "<i8")
+        and immutable_array(
+            constraint.absolute_bounds,
+            [float.fromhex(value) for value in bounds_hex],
+            "<f8",
+        )
+        and type(constraint._members) is tuple
+        and len(constraint._members) == len(buckets)
+        and all(
+            immutable_array(actual, expected, "<i8")
+            for actual, expected in zip(constraint._members, buckets, strict=True)
+        )
+        and type(constraint.constraint_digest) is str
+        and constraint.constraint_digest == expected_digest,
+        reason,
+    )
+
+
 @dataclass(frozen=True)
 class SamplingOriginBudget:
     payload: bytes
@@ -743,20 +821,37 @@ class SamplingOriginBudget:
 
     def checked_view(self):
         entry = _entry(self, SamplingOriginBudget)
-        document, digest = json.loads(entry[1]), _sha(entry[1])
-        constraint = _validate_budget(entry[2], entry[1])
-        result = CheckedSamplingOriginBudget(
+        # Keep full source/Frame/bound requalification. Its returned mutable
+        # constraint crosses I/O and must not supply the outgoing value borrow.
+        _validate_budget(entry[2], entry[1])
+        _final_budget_state(entry[2])
+        _require(_entry(self, SamplingOriginBudget) is entry, "FINAL_BUDGET_SEAL")
+        # These are the actual issued bytes just independently requalified,
+        # not a caller-supplied decoded document or replacement source owner.
+        document = json.loads(entry[1])
+        constraint = group_bounds.GroupedUpperBounds(
+            document["household_ids"],
+            document["group_indices"],
+            [float.fromhex(row["upper_float64_hex"]) for row in document["origins"]],
+        )
+        constraint.check(
+            entry[2].expanded.frame.weights_for("household").values, positive=False
+        )
+        # A decoder-return callback may mutate a real owner or the decoded
+        # document; validate both after construction, without borrowing again.
+        _pure_budget_state(entry[2])
+        _require(_entry(self, SamplingOriginBudget) is entry, "FINAL_BUDGET_SEAL")
+        _require(_json(document) == entry[1], "FINAL_BUDGET_VIEW_DOCUMENT")
+        _check_view_constraint(constraint, document)
+        return CheckedSamplingOriginBudget(
             entry[1],
-            digest,
+            _sha(entry[1]),
             document,
             constraint,
             entry[2].preparation,
             entry[2].allocated,
             entry[2].expanded,
         )
-        _final_budget_state(entry[2])
-        _require(_entry(self, SamplingOriginBudget) is entry, "FINAL_BUDGET_SEAL")
-        return result
 
     def to_bytes(self):
         return self.checked_view().payload
@@ -894,6 +989,50 @@ class _SuccessorState:
     previous_binding: object
     previous_identity: tuple
     current_identity: tuple
+    previous_binding_entry: tuple | None = None
+
+
+def _financial_budget_values(state):
+    """Rebuild numerical values purely from the freshly checked actual owner.
+
+    The earlier defensive budget view crosses the financial owner's I/O and
+    cannot supply constraints afterward. These exact owner inputs were checked
+    by that borrow; this helper neither reissues source authority nor reads files.
+    """
+    entry = _entry(state.budget, SamplingOriginBudget)
+    _require(entry is state.budget_entry, "FINANCIAL_BUDGET_ISSUANCE")
+    original = entry[2]
+    preparation = _preparation_entry(
+        original.preparation,
+        original.preparation_payload,
+        original.preparation_entry,
+    )
+    retained = preparation[2]
+    source._pure_final(retained)
+    view = source.CheckedSurveyPopulationView(
+        preparation[1],
+        retained.context,
+        retained.frame,
+        retained.plan,
+        json.loads(preparation[1]),
+    )
+    instructions = graph.allocation_instructions(
+        view.selection_plan, view.receipt["origins"]["households"]
+    )
+    _, _, allocation, _, _ = graph._allocation_output(
+        view.frame, view.context, instructions, _sha(view.payload)
+    )
+    payload, constraint = _document(
+        view,
+        original.allocated,
+        original.expanded,
+        instructions,
+        allocation,
+        _BYTES,
+        original.geography_binding,
+    )
+    _require(payload == entry[1], "FINANCIAL_BUDGET_RECONSTRUCTION")
+    return constraint, json.loads(payload)["origins"], _sha(payload)
 
 
 def _successor_document(state, budget_view):
@@ -903,8 +1042,36 @@ def _successor_document(state, budget_view):
         "LIVE_POPULATION_REQUIRED",
     )
     initial = _entry(state.budget, SamplingOriginBudget)[2].expanded
-    _require(state.previous_binding is None, "UNSUPPORTED_REFINEMENT")
-    _require(previous is initial, "INITIAL_PREVIOUS_REQUIRED")
+    previous_binding_sha256 = None
+    if state.previous_binding is None:
+        _require(previous is initial, "INITIAL_PREVIOUS_REQUIRED")
+        constraint = budget_view.grouped_bounds
+        rows = budget_view.document["origins"]
+        budget_sha256 = budget_view.digest
+    else:
+        _require(
+            type(state.previous_binding)
+            is financial_successor.SamplingOriginFinancialSuccessor,
+            "UNSUPPORTED_REFINEMENT",
+        )
+        state.previous_binding.checked_view()
+        financial_entry = financial_successor._entry(state.previous_binding)
+        _require(
+            financial_entry is state.previous_binding_entry,
+            "FINANCIAL_PREVIOUS_ISSUANCE",
+        )
+        retained = financial_entry[2]
+        financial_successor._pure_state(retained)
+        _require(
+            retained.budget is state.budget
+            and retained.budget_entry is state.budget_entry
+            and retained.previous is initial
+            and retained.current is previous,
+            "FINANCIAL_PREVIOUS_ANCESTRY",
+        )
+        initial = retained.current
+        previous_binding_sha256 = _sha(financial_entry[1])
+        constraint, rows, budget_sha256 = _financial_budget_values(state)
     _same_nonweight(initial.frame, previous.frame)
     _same_nonweight(initial.frame, current.frame)
     graph._check_design_anchors(previous, initial.design_weights["household"])
@@ -938,13 +1105,11 @@ def _successor_document(state, budget_view):
         kind=WeightKind.CALIBRATED,
         ledger=ledger,
     )
-    constraint = budget_view.grouped_bounds
     constraint.check(previous.frame.weights_for("household").values, positive=False)
     totals = constraint.check(
         current.frame.weights_for("household").values, positive=False
     )
     # Explicit necessary per-row reference bound, in addition to group U.
-    rows = budget_view.document["origins"]
     for position, group in enumerate(constraint.group_indices):
         _require(
             float(current.frame.weights_for("household").values[position])
@@ -953,8 +1118,8 @@ def _successor_document(state, budget_view):
         )
     return {
         "protocol": SUCCESSOR_PROTOCOL,
-        "budget_sha256": budget_view.digest,
-        "previous_binding_sha256": None,
+        "budget_sha256": budget_sha256,
+        "previous_binding_sha256": previous_binding_sha256,
         "previous_version": previous.version,
         "current_version": current.version,
         "previous_frame_sha256": source._frame_identity(previous.frame),
@@ -972,10 +1137,16 @@ def _state_unchanged(state):
         and _population_identity(state.current) == state.current_identity,
         "FINAL_SUCCESSOR_POPULATION_SEAL",
     )
+    if state.previous_binding is not None:
+        _require(
+            financial_successor._entry(state.previous_binding)
+            is state.previous_binding_entry,
+            "FINAL_FINANCIAL_PREVIOUS_ISSUANCE",
+        )
 
 
 def _checked_successor_document(state, budget_view):
-    """Only the actual initial IMPORTANCE to CALIBRATED transition is supported."""
+    """Only an admitted IMPORTANCE to CALIBRATED transition is supported."""
     _state_unchanged(state)
     payload = _json(_successor_document(state, budget_view))
     _state_unchanged(state)
@@ -991,6 +1162,31 @@ def _final_successor_state(state):
     budget_state = state.budget_entry[2]
     _final_budget_state(budget_state)
     _state_unchanged(state)
+    if state.previous_binding is not None:
+        financial_successor._pure_state(state.previous_binding_entry[2])
+    _require(_live() == _LIVE, "FINAL_PRODUCER_SEAL")
+    _preparation_entry(
+        budget_state.preparation,
+        budget_state.preparation_payload,
+        budget_state.preparation_entry,
+    )
+    _require(
+        _entry(state.budget, SamplingOriginBudget) is state.budget_entry,
+        "FINAL_UPSTREAM_BUDGET_SEAL",
+    )
+
+
+def _pure_successor_state(state):
+    """Seal a newly decoded successor view without repeating borrowed I/O."""
+    _require(
+        _entry(state.budget, SamplingOriginBudget) is state.budget_entry,
+        "FINAL_UPSTREAM_BUDGET_SEAL",
+    )
+    budget_state = state.budget_entry[2]
+    _pure_budget_state(budget_state)
+    _state_unchanged(state)
+    if state.previous_binding is not None:
+        financial_successor._pure_state(state.previous_binding_entry[2])
     _require(_live() == _LIVE, "FINAL_PRODUCER_SEAL")
     _preparation_entry(
         budget_state.preparation,
@@ -1012,7 +1208,6 @@ class SamplingOriginSuccessor:
 
     def checked_view(self):
         entry = _entry(self, SamplingOriginSuccessor)
-        document, digest = json.loads(entry[1]), _sha(entry[1])
         state = entry[2]
         view = state.budget.checked_view()
         expected = _checked_successor_document(state, view)
@@ -1022,18 +1217,21 @@ class SamplingOriginSuccessor:
             _checked_successor_document(state, final) == entry[1],
             "FINAL_SUCCESSOR_SEAL",
         )
-        result = CheckedSamplingOriginSuccessor(
+        _final_successor_state(state)
+        _require(_entry(self, SamplingOriginSuccessor) is entry, "FINAL_SUCCESSOR_SEAL")
+        document = json.loads(entry[1])
+        _pure_successor_state(state)
+        _require(_entry(self, SamplingOriginSuccessor) is entry, "FINAL_SUCCESSOR_SEAL")
+        _require(_json(document) == entry[1], "FINAL_SUCCESSOR_VIEW_DOCUMENT")
+        return CheckedSamplingOriginSuccessor(
             entry[1],
-            digest,
+            _sha(entry[1]),
             document,
             state.budget,
             state.previous,
             state.current,
             state.previous_binding,
         )
-        _final_successor_state(state)
-        _require(_entry(self, SamplingOriginSuccessor) is entry, "FINAL_SUCCESSOR_SEAL")
-        return result
 
     def to_bytes(self):
         return self.checked_view().payload
@@ -1056,8 +1254,14 @@ def admit_survey_weight_only_population(
     budget, *, previous, current, previous_binding=None
 ):
     # The actual graph permits only strictly forward weight-kind transitions.
-    # Keeping this keyword fail-closed makes deferred refinement explicit.
-    _require(previous_binding is None, "UNSUPPORTED_REFINEMENT")
+    # A financial predecessor is one narrowly issued nonweight transition;
+    # arbitrary bindings and calibrated refinements remain unsupported.
+    _require(
+        previous_binding is None
+        or type(previous_binding)
+        is financial_successor.SamplingOriginFinancialSuccessor,
+        "UNSUPPORTED_REFINEMENT",
+    )
     _require(type(previous) is Population, "LIVE_POPULATION_REQUIRED")
     _require(
         previous.frame.weights_for("household").kind is WeightKind.IMPORTANCE,
@@ -1073,6 +1277,9 @@ def admit_survey_weight_only_population(
         previous_binding,
         _population_identity(previous),
         _population_identity(current),
+        None
+        if previous_binding is None
+        else financial_successor._entry(previous_binding),
     )
     payload = _checked_successor_document(state, view)
     final = budget.checked_view()

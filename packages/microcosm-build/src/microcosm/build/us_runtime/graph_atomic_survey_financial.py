@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sys
+import weakref
 from dataclasses import dataclass, replace
 from types import FunctionType, SimpleNamespace
 
@@ -31,6 +32,8 @@ codec = financial.codec
 survey = atomic.survey
 reconstruction = atomic.reconstruction
 require = values.require
+RUN_PROTOCOL = "microcosm.us.atomic-survey-financial-run.v1"
+_ISSUED_RUNS = {}
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,316 @@ class AtomicSurveyFinancialRunValues:
     sources: dict
     projection: bytes
     matrix: bytes
+
+    def checked_view(self):
+        """Recheck a completed actual run; public dataclass copies are unissued."""
+        return check_atomic_survey_financial_run(self)
+
+
+@dataclass(frozen=True)
+class CheckedAtomicSurveyFinancialRun:
+    """Descriptive values; authority remains in the actual issued run handle."""
+
+    payload: bytes
+    digest: str
+    population: Population
+
+
+@dataclass(frozen=True)
+class _FinancialRunState:
+    prefix: object
+    prefix_objects: tuple
+    preparation_entry: tuple
+    financial_population: Population
+    populations: tuple
+    manifest: object
+    manifest_bytes: bytes
+    prefix_manifest_bytes: bytes
+    compiled: object
+    declaration: str
+    prefix_declaration: str
+    store: object
+    kernels: object
+    source_items: tuple
+    config_bytes: bytes
+    projection: bytes
+    matrix: bytes
+    pins: bytes
+    n_estimators: int
+    demographic_conditioning: bool
+    source_keys: tuple
+    keys: tuple
+    implementations: tuple
+    artifact_hashes: tuple
+    manifest_populations: tuple
+    prefix_manifest_populations: tuple
+    live: dict
+
+
+def _manifest_population_seals(manifest, compiled):
+    """Include transient attached Frames, which portable JSON deliberately omits."""
+    return tuple(
+        (
+            version,
+            reconstruction._population_stamp(
+                Population.from_frame(
+                    manifest.population(version),
+                    version,
+                    mass_ledger=manifest.mass_ledger(version),
+                )
+            ),
+        )
+        for version in sorted(set(compiled.versions.values()))
+    )
+
+
+def _run_entry(run):
+    entry = _ISSUED_RUNS.get(id(run))
+    require(
+        type(run) is AtomicSurveyFinancialRunValues
+        and entry is not None
+        and entry[0]() is run,
+        "UNISSUED_FINANCIAL_RUN",
+    )
+    return entry
+
+
+def _run_document(run, state):
+    """Portable ancestry omits timing/cache hits and private physical seals."""
+    return codec.encode_json(
+        {
+            "protocol": RUN_PROTOCOL,
+            "graph_sha256": codec.sha(state.declaration.encode()),
+            "manifest_key": state.manifest.key,
+            "preparation_sha256": codec.sha(state.preparation_entry[1]),
+            "geography_config_sha256": codec.sha(state.config_bytes),
+            "projection_sha256": codec.sha(state.projection),
+            "matrix_sha256": codec.sha(state.matrix),
+            "host_edges": codec.decode_json(state.pins),
+            "node_keys": dict(state.keys),
+            "artifact_payload_sha256": [list(row) for row in state.artifact_hashes],
+            "financial_frame_sha256": values.source._frame_identity(
+                run.financial_population.frame
+            ),
+            "financial_version": run.financial_population.version,
+            "financial_owners": sorted(
+                (e, c, writer)
+                for (e, c), writer in run.financial_population.owners.items()
+            ),
+            "owned_columns": list(values.OUTPUTS),
+            "demographic_conditioning": state.demographic_conditioning,
+            "n_estimators": state.n_estimators,
+            "release_eligible": False,
+        }
+    )
+
+
+def _pure_run(run, entry):
+    """Check retained graph/source/Population state after all external I/O."""
+    require(_run_entry(run) is entry, "FINAL_FINANCIAL_RUN_ISSUANCE")
+    state = entry[2]
+    prefix = state.prefix
+    require(
+        run.prefix is prefix
+        and run.financial_population is state.financial_population
+        and run.manifest is state.manifest
+        and run.compiled is state.compiled
+        and run.store is state.store
+        and run.kernels is state.kernels
+        and run.projection == state.projection
+        and run.matrix == state.matrix
+        and tuple(sorted(run.sources.items())) == state.source_items
+        and tuple(sorted(prefix.sources.items())) == state.source_items
+        and all(
+            a is b
+            for a, b in zip(
+                (
+                    prefix.preparation,
+                    prefix.manifest,
+                    prefix.compiled,
+                    prefix.store,
+                    prefix.kernels,
+                    prefix.sources,
+                    prefix.geography_config,
+                ),
+                state.prefix_objects,
+                strict=True,
+            )
+        )
+        and values.host.survey_budget._config_payload(prefix.geography_config)
+        == state.config_bytes
+        and run.manifest.to_json_bytes() == state.manifest_bytes
+        and prefix.manifest.to_json_bytes() == state.prefix_manifest_bytes
+        and graph_to_json(run.compiled.graph) == state.declaration
+        and graph_to_json(prefix.compiled.graph) == state.prefix_declaration
+        and run.compiled == compile_graph(run.compiled.graph)
+        and prefix.compiled == compile_graph(prefix.compiled.graph),
+        "FINANCIAL_RUN_BINDINGS_CHANGED",
+    )
+    require(
+        _manifest_population_seals(run.manifest, run.compiled)
+        == state.manifest_populations
+        and _manifest_population_seals(prefix.manifest, prefix.compiled)
+        == state.prefix_manifest_populations,
+        "FINANCIAL_RUN_ATTACHED_POPULATION_CHANGED",
+    )
+    require(
+        values.source._ISSUED.get(id(prefix.preparation)) is state.preparation_entry
+        and prefix.preparation.payload == state.preparation_entry[1],
+        "FINANCIAL_RUN_SOURCE_CHANGED",
+    )
+    values.source._pure_final(state.preparation_entry[2])
+    for name, population, stamp in state.populations:
+        actual = (
+            run.financial_population if name == "financial" else getattr(prefix, name)
+        )
+        require(
+            actual is population and reconstruction._population_stamp(actual) == stamp,
+            "FINANCIAL_RUN_POPULATION_CHANGED",
+        )
+    require(
+        _run_document(run, state) == entry[1] and _live() == state.live,
+        "FINAL_FINANCIAL_RUN_SEAL",
+    )
+    require(_run_entry(run) is entry, "FINAL_FINANCIAL_RUN_ISSUANCE")
+
+
+def check_atomic_survey_financial_run(run):
+    """Requalify existing artifacts and live owners without fitting or execution."""
+    entry = _run_entry(run)
+    _pure_run(run, entry)
+    state, prefix = entry[2], entry[2].prefix
+    _, source_keys = _source_paths_and_keys(run.compiled, run.sources, run.store)
+    keys, implementations = _all_node_keys(run.compiled, run.kernels, source_keys)
+    require(
+        tuple(sorted(source_keys.items())) == state.source_keys
+        and tuple(sorted(keys.items())) == state.keys
+        and tuple(sorted(implementations.items())) == state.implementations,
+        "FINANCIAL_RUN_IMPLEMENTATIONS_CHANGED",
+    )
+    loaded = _artifacts(
+        run.manifest, run.compiled, run.store, run.kernels, keys, implementations
+    )
+    require(
+        tuple(
+            sorted(
+                (node, name, codec.sha(payload))
+                for (node, name), payload in loaded.items()
+            )
+        )
+        == state.artifact_hashes,
+        "FINANCIAL_RUN_ARTIFACT_CHANGED",
+    )
+    # These exact fitted artifacts were checked at actual execution/required
+    # replay before issuance. Rechecking their identities needs no new pickle
+    # decode or fit; the materialized verifier freshly derives current values.
+    financial.verify_materialized_current_survey_predictors(
+        prefix.preparation,
+        prefix.allocated_population,
+        prefix.clone_population,
+        population=run.financial_population,
+        projection=state.projection,
+        matrix=state.matrix,
+        matrix_producer_key=keys[financial.PROJECTION_NODE],
+        raw_draws=tuple(
+            loaded[f"{financial.APPLY_PREFIX}.{i:03d}", "raw_draw"] for i in range(3)
+        ),
+        apply_states=tuple(
+            loaded[f"{financial.APPLY_PREFIX}.{i:03d}", "apply_state"] for i in range(3)
+        ),
+        host_pins=codec.decode_json(state.pins),
+        n_estimators=state.n_estimators,
+        demographic_conditioning=state.demographic_conditioning,
+        geography_config=prefix.geography_config,
+    )
+    result = CheckedAtomicSurveyFinancialRun(
+        entry[1], codec.sha(entry[1]), run.financial_population
+    )
+    _pure_run(run, entry)
+    return result
+
+
+def _issue_run(
+    result,
+    *,
+    preparation_entry,
+    pins,
+    n_estimators,
+    demographic_conditioning,
+    source_keys,
+    keys,
+    implementations,
+    loaded,
+    live,
+):
+    """Called only after this runner's complete materialization/replay checks."""
+    prefix = result.prefix
+    populations = tuple(
+        (name, population, reconstruction._population_stamp(population))
+        for name, population in (
+            *(
+                (name, getattr(prefix, name))
+                for name in (
+                    "allocated_population",
+                    "geography_population",
+                    "clone_population",
+                )
+            ),
+            ("financial", result.financial_population),
+        )
+    )
+    state = _FinancialRunState(
+        prefix,
+        (
+            prefix.preparation,
+            prefix.manifest,
+            prefix.compiled,
+            prefix.store,
+            prefix.kernels,
+            prefix.sources,
+            prefix.geography_config,
+        ),
+        preparation_entry,
+        result.financial_population,
+        populations,
+        result.manifest,
+        result.manifest.to_json_bytes(),
+        prefix.manifest.to_json_bytes(),
+        result.compiled,
+        graph_to_json(result.compiled.graph),
+        graph_to_json(prefix.compiled.graph),
+        result.store,
+        result.kernels,
+        tuple(sorted(result.sources.items())),
+        prefix.geography_config.to_bytes(),
+        result.projection,
+        result.matrix,
+        codec.encode_json(pins),
+        n_estimators,
+        demographic_conditioning,
+        tuple(sorted(source_keys.items())),
+        tuple(sorted(keys.items())),
+        tuple(sorted(implementations.items())),
+        tuple(
+            sorted(
+                (node, name, codec.sha(payload))
+                for (node, name), payload in loaded.items()
+            )
+        ),
+        _manifest_population_seals(result.manifest, result.compiled),
+        _manifest_population_seals(prefix.manifest, prefix.compiled),
+        live,
+    )
+    identifier = id(result)
+
+    def forget(reference):
+        entry = _ISSUED_RUNS.get(identifier)
+        if entry is not None and entry[0] is reference:
+            _ISSUED_RUNS.pop(identifier, None)
+
+    reference = weakref.ref(result, forget)
+    _ISSUED_RUNS[identifier] = (reference, _run_document(result, state), state)
+    _pure_run(result, _run_entry(result))
 
 
 def _live():
@@ -80,6 +393,7 @@ def _live():
                         )
     result["financial_contract"] = values.source._runtime_marker(
         (
+            RUN_PROTOCOL,
             values.FEATURES,
             values.DEMOGRAPHIC_FEATURES,
             values.TARGETS,
@@ -553,4 +867,16 @@ def run_atomic_survey_financial(
             "ATOMIC_FINAL_LEDGER",
         )
     survey._check_node_states(manifest, states)
+    _issue_run(
+        result,
+        preparation_entry=entry,
+        pins=pins,
+        n_estimators=n_estimators,
+        demographic_conditioning=demographic_conditioning,
+        source_keys=source_keys,
+        keys=keys,
+        implementations=implementations,
+        loaded=loaded,
+        live=live,
+    )
     return result if return_values else manifest
