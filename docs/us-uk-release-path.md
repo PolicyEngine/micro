@@ -46,7 +46,7 @@ common source population alone does not guarantee identical estimates.
 | Geography | Earlier pre-clone block assignment and inheritance pass in the small real build; corrected post-clone order and complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
 | Calibration | Solver controls pass; fully enriched native national/CD solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
 | Independent quality | Complete-candidate engine outcomes, holdouts and reform validation pending | Prior comparisons and diagnostics exist; the recorded 55k candidates skipped holdout evaluation and do not establish release quality |
-| Full/compact files | Small prefix export and required replay pass; complete enriched release family pending | Size-selection implementation and measured candidates exist; current accepted full/compact local family pending |
+| Full/compact files | Small prefix replay and 36 supplied-parent full/pruned/local export checks pass; complete enriched release family pending | Size-selection implementation and measured candidates exist; current accepted full/compact local family pending |
 | Delivery | No accepted new-architecture release or default consumer adoption | Assembly implementation and historical assembled cuts exist; current certification and default promotion pending |
 
 The US new graph has passed a small real survey → block assignment → clone →

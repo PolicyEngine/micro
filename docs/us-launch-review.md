@@ -38,6 +38,17 @@ to zero. A pruned export must not be required to make every survey origin
 independently resemble a national population, or to rerun imputation to satisfy
 such a requirement.
 
+The supplied-parent export comparison now passes 36 focused checks, including
+actual checkpoint write/readback, complete household selection, unchanged input
+values and missingness, signed and unsigned stable IDs, and full/pruned/local
+weight and scope handling. A household with zero original weight can receive
+positive calibrated weight without mutating its parent or other entity weights.
+The comparison binds the full ordered weight vector and specification, including
+rows outside the selected scope. It deliberately reports calibration ancestry
+and release eligibility as unverified: the owning build must establish those
+and seal its inputs across export I/O. See the
+[scoped export acceptance](../experiments/us-common-frame-export36-20260910.json).
+
 The earlier ten-node survey prefix assigns a block before cloning, and its
 thirteen-node age-calibration extension passes cold execution and required
 replay on invented originals. A twenty-node extension now carries atomic
