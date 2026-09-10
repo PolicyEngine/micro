@@ -238,7 +238,12 @@ The paired full-fixture run also passed correctness and final checks, but took
 319.79 wall seconds versus 308.26 for the baseline. The memo added eligibility
 work and demonstrated no speed improvement, so its implementation was not
 adopted. The exact experimental patch and [paired comparison](../experiments/us-acs-code-memo-comparison-20260910.json)
-remain recorded. Further profiling is narrowing the original verification cost;
+remain recorded. A separate [one-call diagnostic](../experiments/us-acs-producer-profile-20260910.json)
+now passes without constructing a fixture: the original producer takes 0.656
+profiled wall seconds. Its 157 compiler calls take 0.238 seconds, including
+0.122 seconds inside 103 AST parses; those overlapping times must not be added.
+A bounded bytecode compilation cache is under source review, with fresh source
+reads and every loaded-function check retained. No new optimization is adopted;
 the remaining successor controls and native financial pilot remain pending.
 
 Current CI separately reports stale source-attested spec/seed fingerprints.

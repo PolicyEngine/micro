@@ -202,7 +202,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13", "3.14"]
+        python-version: ["3.13", "3.14.4"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -214,6 +214,47 @@ jobs:
         run: |
           mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list shared-spec)
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+
+      - name: Derive candidate spec and seed identities (diagnostic only)
+        id: spec_seed_diagnostics
+        if: ${{ always() && matrix.python-version == '3.14.4' }}
+        timeout-minutes: 15
+        env:
+          DIAG_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DIAG_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DIAG_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DIAG_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+          VECLIB_MAXIMUM_THREADS: "1"
+          NUMEXPR_NUM_THREADS: "1"
+          BLIS_NUM_THREADS: "1"
+          POPULACE_FIT_N_JOBS: "1"
+          POPULACE_FIT_PREDICT_WORKERS: "1"
+        run: |
+          export DIAG_CHECKOUT_SHA="$(git rev-parse --verify HEAD)"
+          export DIAG_UV_VERSION="$(uv --version)"
+          uv run --no-sync python tools/spec_seed_identity_diagnostics.py \
+            --output-dir "$RUNNER_TEMP/spec-seed-diagnostics"
+      - name: Retain bounded candidate identity evidence
+        if: ${{ always() && matrix.python-version == '3.14.4' && steps.spec_seed_diagnostics.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: spec-seed-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-py3.14.4
+          path: |
+            ${{ runner.temp }}/spec-seed-diagnostics/candidate-digests.json
+            ${{ runner.temp }}/spec-seed-diagnostics/seed-protocol.json
+            ${{ runner.temp }}/spec-seed-diagnostics/seed-map.json
+            ${{ runner.temp }}/spec-seed-diagnostics/seed-bindings.json
+            ${{ runner.temp }}/spec-seed-diagnostics/environment-and-source.json
+            ${{ runner.temp }}/spec-seed-diagnostics/diagnostic-status.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+          include-hidden-files: false
 
   engine-us:
     needs: changes
