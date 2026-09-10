@@ -521,6 +521,84 @@ def versions(lock: dict) -> dict[str, str]:
     return actual
 
 
+def omit_absent_stdlib_zip() -> bool:
+    """Omit only CPython's exact absent ZIP search entry; admit no archive read."""
+    candidate = str(
+        Path(sys.base_prefix)
+        / "lib"
+        / f"python{sys.version_info.major}{sys.version_info.minor}.zip"
+    )
+    if candidate not in sys.path:
+        return False
+    try:
+        os.lstat(candidate)
+    except FileNotFoundError:
+        # lstat, rather than exists, distinguishes an absent path from a broken
+        # symlink. All other entries and their order remain unchanged.
+        sys.path[:] = [entry for entry in sys.path if entry != candidate]
+        return True
+    return False
+
+
+class _CpuOnlyCudaBindingsFinder:
+    """Use Torch's real optional ImportError fallback during its import only."""
+
+    def __init__(self):
+        self.attempts = 0
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname != "cuda.bindings":
+            return None
+        self.attempts += 1
+        require(self.attempts <= 8, "CUDA_BINDINGS_PROBE_LIMIT")
+        raise ModuleNotFoundError(
+            "cuda.bindings excluded by CPU-only diagnostic bootstrap",
+            name="cuda.bindings",
+        )
+
+
+@contextlib.contextmanager
+def cpu_only_torch_import(bootstrap: dict):
+    """Temporarily exclude optional CUDA bindings, never replace a Torch module."""
+    require(
+        "torch" not in sys.modules
+        and not any(
+            name == "cuda.bindings" or name.startswith("cuda.bindings.")
+            for name in sys.modules
+        ),
+        "TORCH_BOOTSTRAP_PRELOADED",
+    )
+    finder = _CpuOnlyCudaBindingsFinder()
+    sys.meta_path.insert(0, finder)
+    try:
+        yield
+    finally:
+        # Remove this exact finder on both success and failure, retaining any
+        # legitimate finder changes made by ordinary dependency imports.
+        sys.meta_path[:] = [entry for entry in sys.meta_path if entry is not finder]
+        bootstrap["cuda_bindings_import_attempts"] = finder.attempts
+        bootstrap["temporary_finder_removed"] = not any(
+            entry is finder for entry in sys.meta_path
+        )
+
+
+def verify_cpu_only_torch_import(bootstrap: dict) -> None:
+    utilities = sys.modules.get("torch.cuda._utils")
+    require(
+        bootstrap["temporary_finder_removed"] is True
+        and 1 <= bootstrap["cuda_bindings_import_attempts"] <= 8
+        and utilities is not None
+        and getattr(utilities, "_HAS_CUDA_BINDINGS", None) is False
+        and getattr(utilities, "_cuda_bindings_runtime", False) is None
+        and not any(
+            name == "cuda.bindings" or name.startswith("cuda.bindings.")
+            for name in sys.modules
+        ),
+        "TORCH_CPU_FALLBACK",
+    )
+    bootstrap["torch_optional_bindings_fallback_verified"] = True
+
+
 def thread_controls(torch) -> dict[str, object]:
     controls = {
         "environment": {name: os.environ.get(name) for name in THREAD_ENV},
@@ -627,6 +705,7 @@ def derive(
     installed: dict[str, str],
     torch,
     controls: dict[str, object],
+    bootstrap: dict[str, object],
 ) -> dict[str, bytes]:
     # The exact helper is imported; pytest collection and its tests are never run.
     sys.path.insert(0, str(root / "packages/microcosm-build/tests"))
@@ -697,6 +776,7 @@ def derive(
         "lock_sha256": LOCK_SHA256,
         "distributions": installed,
         "thread_controls": controls,
+        "dependency_bootstrap": bootstrap,
         "source_sha256": before,
         "upload_action_commit": UPLOAD_ACTION_SHA,
         "seed_modules": list(modules),
@@ -731,6 +811,7 @@ def derive(
     payloads["diagnostic-status.json"] = encoded(
         {
             "completed": True,
+            "dependency_bootstrap": bootstrap,
             "status": "candidate_values_only",
             "coverage_pass": False,
             "payload_sha256": {name: digest(data) for name, data in payloads.items()},
@@ -784,7 +865,17 @@ def main() -> int:
             }
         )
         publish(output, initial)
+        bootstrap = {
+            "policy": "cpu_only_torch_optional_cuda_bindings_exclusion_v1",
+            "finder_scope": "torch_import_only",
+            "stdlib_zip_entry": "exact_base_prefix_lib_python_version_zip",
+            "absent_stdlib_zip_omitted": False,
+            "cuda_bindings_import_attempts": 0,
+            "temporary_finder_removed": True,
+            "torch_optional_bindings_fallback_verified": False,
+        }
         try:
+            bootstrap["absent_stdlib_zip_omitted"] = omit_absent_stdlib_zip()
             run = coordinates()
             before = source_stamps(root)
             lock = tomllib.loads((root / "uv.lock").read_text())
@@ -795,14 +886,18 @@ def main() -> int:
                 contextlib.redirect_stdout(quiet),
                 contextlib.redirect_stderr(quiet),
             ):
-                # Import/configure the locked numerical dependency within the same
-                # audit boundary, before any maintained project module is loaded.
-                import torch
+                # Keep real locked Torch/thread controls under the same audit
+                # boundary, explicitly taking its optional CUDA bindings fallback.
+                with cpu_only_torch_import(bootstrap):
+                    import torch
 
+                verify_cpu_only_torch_import(bootstrap)
                 torch.set_num_threads(1)
                 torch.set_num_interop_threads(1)
                 controls = thread_controls(torch)
-                payloads = derive(root, owned, run, before, installed, torch, controls)
+                payloads = derive(
+                    root, owned, run, before, installed, torch, controls, bootstrap
+                )
             require(not refusals, "BOUNDARY_REFUSAL")
             exit_code = 0
         except Exception as error:
@@ -814,6 +909,7 @@ def main() -> int:
                     "status": "refused",
                     "phase": phase,
                     "code": code,
+                    "dependency_bootstrap": bootstrap,
                     "first_boundary_refusal": (
                         json.loads(first_refusal[0]) if first_refusal else None
                     ),
@@ -852,6 +948,7 @@ def main() -> int:
                 "status": "refused",
                 "phase": "publish",
                 "code": "OUTPUT_REFUSED",
+                "dependency_bootstrap": bootstrap,
                 "first_boundary_refusal": (
                     json.loads(first_refusal[0]) if first_refusal else None
                 ),
