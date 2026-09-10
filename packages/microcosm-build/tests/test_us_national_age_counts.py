@@ -795,13 +795,16 @@ class FixtureImportance(FixtureSource):
 def graph_fixture(output, warm=False):
     """Cold and warm run the same on-disk fixture and real production kernels."""
 
-    from microcosm.build.transfer_example import _source_frame_path
-
     output = Path(output)
     store = ContentStore(output / "store")
     if not warm:
         frame = fixture_frame(kind=WeightKind.DESIGN, scale=2.0)
-        path = _source_frame_path(store, frame)
+        # This key is local to the fresh invented fixture store. Warm replay
+        # consumes the same content-verified object through its persisted path.
+        source_key = hashlib.sha256(
+            b"test.us-national-age-counts.source.v1"
+        ).hexdigest()
+        path = store.put_frame(source_key, frame)
         (output / "source-path.txt").write_text(str(path))
     path = Path((output / "source-path.txt").read_text())
     count, calibration = national_age_calibration_nodes(

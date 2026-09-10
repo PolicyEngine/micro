@@ -216,7 +216,91 @@ def coordinates() -> dict[str, str]:
     return result
 
 
-def install_boundary(root: Path, owned: Path, output: Path) -> list[str]:
+def refusal_path_context(value: object, roots: tuple[tuple[str, Path], ...]) -> dict:
+    """Classify an already supplied path without resolving, opening or statting it.
+
+    Only bounded source-like paths under named code/system anchors are shown.
+    Other names, data files and credential/log-like paths remain redacted.
+    This function changes neither path resolution nor permission decisions.
+    """
+    if not isinstance(value, (str, bytes, Path)):
+        return {"scope": "descriptor_or_nonpath", "path": None}
+    path = Path(os.fsdecode(value))
+    scope, relative = "unlisted", None
+    if not path.is_absolute():
+        scope = "relative"
+    else:
+        for label, anchor in roots:
+            if path.is_relative_to(anchor):
+                scope, relative = label, path.relative_to(anchor).as_posix()
+                break
+    source_suffixes = {
+        ".py",
+        ".pyc",
+        ".so",
+        ".dylib",
+        ".json",
+        ".toml",
+        ".yaml",
+        ".yml",
+    }
+    suffix = path.suffix.lower()
+    text = relative if relative is not None else path.name
+    private_name = re.search(
+        r"(^|[/_.-])(secret|credentials?|password|tokens?|private|keys?|b19001|b25003|occupied)([/_.-]|$)",
+        text.lower(),
+    )
+    shown = (
+        text
+        if suffix in source_suffixes
+        and not private_name
+        and re.fullmatch(r"[A-Za-z0-9_./+@-]{1,240}", text)
+        and all(part not in ("", ".", "..") for part in Path(text).parts)
+        else None
+    )
+    return {
+        "scope": scope,
+        "path": shown,
+        "path_form": "anchor_relative" if relative is not None else "basename_only",
+        "source_like": suffix in source_suffixes,
+        "name_redacted": shown is None,
+    }
+
+
+def read_refusal_context(code, event, path, requested, roots) -> bytes:
+    """Bounded code coordinates only: no locals, source lines or exception text."""
+    frames = []
+    frame = sys._getframe(1)
+    visited = 0
+    while frame is not None and visited < 32 and len(frames) < 8:
+        visited += 1
+        filename = refusal_path_context(frame.f_code.co_filename, roots)
+        name = frame.f_code.co_name
+        if filename.get("path") is not None and (
+            re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name)
+            or name in {"<module>", "<listcomp>", "<dictcomp>", "<genexpr>", "<lambda>"}
+        ):
+            frames.append({"file": filename, "function": name, "line": frame.f_lineno})
+        frame = frame.f_back
+    result = {
+        "code": code,
+        "event": event,
+        "requested": refusal_path_context(requested, roots),
+        "resolved": refusal_path_context(path, roots),
+        "frames": frames,
+        "stack_truncated": frame is not None,
+        "paths_are_metadata_only": True,
+    }
+    del frame
+    payload = encoded(result)
+    if len(payload) > 4096:
+        payload = encoded({"code": code, "event": event, "context": "size_bound"})
+    return payload
+
+
+def install_boundary(
+    root: Path, owned: Path, output: Path, *, first_refusal: list[bytes] | None = None
+) -> list[str]:
     refusals: list[str] = []
     blocked_files = (
         ".h5",
@@ -253,9 +337,32 @@ def install_boundary(root: Path, owned: Path, output: Path) -> list[str]:
         Path("/proc/self/maps"),
     }
 
-    def refuse(code: str) -> None:
+    context_roots = (
+        ("repository", root),
+        ("owned", owned),
+        ("output", output),
+        ("environment", Path(sys.prefix)),
+        ("base_environment", Path(sys.base_prefix)),
+        ("system_usr", Path("/usr")),
+        ("system_opt", Path("/opt")),
+        ("system_lib", Path("/lib")),
+        ("system_etc", Path("/etc")),
+    )
+
+    def refuse(code: str, *, event=None, path=None, requested=None) -> None:
         if not refusals:
             refusals.append(code)
+            if first_refusal is not None:
+                try:
+                    first_refusal.append(
+                        read_refusal_context(
+                            code, event, path, requested, context_roots
+                        )
+                    )
+                except Exception:
+                    first_refusal.append(
+                        encoded({"code": code, "context": "unavailable"})
+                    )
         raise RefusalError(code)
 
     def operation_path(
@@ -332,7 +439,7 @@ def install_boundary(root: Path, owned: Path, output: Path) -> list[str]:
                 and path not in read_files
                 and not any(path.is_relative_to(p) for p in read_roots)
             ):
-                refuse("READ_SCOPE")
+                refuse("READ_SCOPE", event="open", path=path, requested=args[0])
 
     sys.addaudithook(audit)
     return refusals
@@ -628,7 +735,8 @@ def main() -> int:
             signal.SIGALRM, lambda *_: (_ for _ in ()).throw(RefusalError("WALL"))
         )
         signal.alarm(900)
-        refusals = install_boundary(root, owned, output)
+        first_refusal: list[bytes] = []
+        refusals = install_boundary(root, owned, output, first_refusal=first_refusal)
         # Dependency-created temporaries must stay inside this invocation's scope.
         tempfile.tempdir = str(owned)
         os.environ["TMPDIR"] = str(owned)
@@ -671,6 +779,9 @@ def main() -> int:
                     "status": "refused",
                     "phase": phase,
                     "code": code,
+                    "first_boundary_refusal": (
+                        json.loads(first_refusal[0]) if first_refusal else None
+                    ),
                     "coverage_pass": False,
                 }
             )
@@ -698,6 +809,9 @@ def main() -> int:
                 "status": "refused",
                 "phase": "publish",
                 "code": "OUTPUT_REFUSED",
+                "first_boundary_refusal": (
+                    json.loads(first_refusal[0]) if first_refusal else None
+                ),
                 "coverage_pass": False,
             }
         )

@@ -215,9 +215,19 @@ jobs:
           mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list shared-spec)
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
 
+  spec-seed-diagnostics:
+    # Produce bounded diagnosis immediately, independently of the full suite.
+    # This remains required by ci-ok and never updates assertion goldens.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.14.4"
+      - name: Sync workspace with US and UK engines
+        run: uv sync --all-packages --locked --extra us --extra uk
       - name: Derive candidate spec and seed identities (diagnostic only)
         id: spec_seed_diagnostics
-        if: ${{ always() && matrix.python-version == '3.14.4' }}
         timeout-minutes: 15
         env:
           DIAG_WORKFLOW_SHA: ${{ github.workflow_sha }}
@@ -235,12 +245,13 @@ jobs:
           POPULACE_FIT_N_JOBS: "1"
           POPULACE_FIT_PREDICT_WORKERS: "1"
         run: |
-          export DIAG_CHECKOUT_SHA="$(git rev-parse --verify HEAD)"
-          export DIAG_UV_VERSION="$(uv --version)"
+          DIAG_CHECKOUT_SHA="$(git rev-parse --verify HEAD)"
+          DIAG_UV_VERSION="$(uv --version)"
+          export DIAG_CHECKOUT_SHA DIAG_UV_VERSION
           uv run --no-sync python tools/spec_seed_identity_diagnostics.py \
             --output-dir "$RUNNER_TEMP/spec-seed-diagnostics"
       - name: Retain bounded candidate identity evidence
-        if: ${{ always() && matrix.python-version == '3.14.4' && steps.spec_seed_diagnostics.outcome != 'skipped' }}
+        if: ${{ always() && steps.spec_seed_diagnostics.outcome != 'skipped' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: spec-seed-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-py3.14.4
@@ -386,7 +397,7 @@ jobs:
     # dependency-skip lets a failed `changes` take the engine lanes down without
     # any required check going red: a lane skip is accepted only when
     # classification itself succeeded.
-    needs: [changes, lint, fast, engine-shared, engine-us, engine-uk, wheels]
+    needs: [changes, lint, fast, engine-shared, spec-seed-diagnostics, engine-us, engine-uk, wheels]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -401,6 +412,7 @@ jobs:
           require_success lint           "${{ needs.lint.result }}"
           require_success fast           "${{ needs.fast.result }}"
           require_success engine-shared  "${{ needs['engine-shared'].result }}"
+          require_success spec-seed-diagnostics "${{ needs['spec-seed-diagnostics'].result }}"
           require_success wheels         "${{ needs.wheels.result }}"
           for lane in "engine-us:${{ needs['engine-us'].result }}" "engine-uk:${{ needs['engine-uk'].result }}"; do
             name="${lane%%:*}"; result="${lane#*:}"
