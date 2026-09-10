@@ -43,7 +43,7 @@ common source population alone does not guarantee identical estimates.
 | Stage | US demonstrated result | UK demonstrated result |
 | --- | --- | --- |
 | Population construction | Small real ACS/ASEC composition, clone and financial enrichment pass; complete PUF and remaining inputs pending | Real FRS 2024–25 spine and earlier whole-spine parity; latest integrated stage set needs fresh coverage and verification |
-| Geography | Earlier pre-clone block assignment and inheritance pass in the small real build; corrected post-clone order and complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared stable post-clone owner not integrated |
+| Geography | Earlier pre-clone block assignment and inheritance pass in the small real build; corrected post-clone order and complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
 | Calibration | Solver controls pass; fully enriched native national/CD solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
 | Independent quality | Complete-candidate engine outcomes, holdouts and reform validation pending | Prior comparisons and diagnostics exist; the recorded 55k candidates skipped holdout evaluation and do not establish release quality |
 | Full/compact files | Small prefix export and required replay pass; complete enriched release family pending | Size-selection implementation and measured candidates exist; current accepted full/compact local family pending |
@@ -75,6 +75,17 @@ household targets and the Northern Ireland lookup; that source work does not
 by itself migrate the assignment owner. Anthony's
 [PR #896](https://github.com/PolicyEngine/microcosm/pull/896) provides staging
 telemetry and synthetic smoke evidence, not a calibrated release.
+
+The shared UK adapter now has accepted supplied-array tests for England/Wales
+Output Areas, Scottish Output Areas and Northern Ireland Data Zones. These
+checks cover source conventions, observed-region constraints, stable post-clone
+identity and row-order/subset invariance. Ordinary UK imports also preserve the
+public export contract without eagerly loading unrelated stages or country
+engines. All 52 checks passed with unchanged source bytes and no unexpected
+access attempts; see the [scoped acceptance record](../experiments/uk-atomic-area-lazy52-20260910.json).
+No native UK area source, whole-spine build or calibration result is certified
+by those checks. Maria can use these shared primitives in the existing UK graph
+integration rather than starting a second country runtime.
 
 UK release coverage must be re-established on the chosen integrated build and
 locked model. The declared 145-input contract's older candidate evidence must
