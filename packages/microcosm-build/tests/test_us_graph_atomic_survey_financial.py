@@ -1,7 +1,8 @@
-"""Twenty actual graph nodes over invented, source-issued survey fixtures."""
+"""Nineteen actual graph nodes over invented, source-issued survey fixtures."""
 
 import hashlib
 import sys
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,6 +12,8 @@ from test_us_current_asec_demographics import _demographic_arguments
 from test_us_graph_atomic_survey_population import _support_payload
 
 from microcosm.build.us_runtime import graph_atomic_survey_financial as runner
+from microcosm.graph import ArtifactType, ArtifactValue, NumericScope
+from microcosm.graph.keys import opaque_artifact_key
 
 financial = runner.financial
 values = financial.values
@@ -45,12 +48,29 @@ def known_financial_run(tmp_path_factory):
             values.source.verify_survey_population_preparation(run.prefix.preparation)
 
 
-def test_twenty_node_financial_cold_and_required_replay(known_financial_run):
+def test_nineteen_node_financial_cold_and_required_replay(known_financial_run):
     case = known_financial_run
     assert case.cold.manifest.key == case.warm.manifest.key
     assert all(n.hit for n in case.warm.manifest.nodes.values())
     for run in (case.cold, case.warm):
-        assert len(run.compiled.order) == 20
+        assert len(run.compiled.order) == 19
+        edge = financial._geography_edge()
+        assert edge.producer in run.compiled.predecessors[financial.DONOR_NODE]
+        gate = run.manifest.node(edge.producer)
+        assert gate.opaque_artifacts[edge.artifact] == opaque_artifact_key(
+            gate.key, edge.artifact
+        )
+        assert run.store.load_bytes(
+            gate.opaque_artifacts[edge.artifact]
+        ) == financial.codec.encode_json(
+            financial.codec.decode_json(run.projection)["atomic_geography"][
+                "validation_receipt"
+            ]
+        )
+        assert run.prefix.clone_population is run.prefix.geography_population
+        assert "census_block_geoid" not in run.prefix.expanded_population.frame.table(
+            "household"
+        )
         assert set(run.compiled.order) == {
             *run.prefix.compiled.order,
             financial.PROJECTION_NODE,
@@ -124,9 +144,7 @@ def test_twenty_node_financial_cold_and_required_replay(known_financial_run):
             for column in values.OUTPUTS:
                 assert rows[column].notna().all()
                 assert rows[column].nunique() == 1
-        runner.survey._same_frame(
-            after.frame, run.manifest.population(after.version)
-        )
+        runner.survey._same_frame(after.frame, run.manifest.population(after.version))
     runner.atomic.same_replayed_population(
         case.cold.financial_population, case.warm.financial_population
     )
@@ -233,3 +251,44 @@ def test_final_owner_return_cannot_mutate_materialized_geography(known_financial
     finally:
         sys.setprofile(previous)
     assert fired == [True]
+
+
+@pytest.mark.parametrize(
+    "defect,reason",
+    (
+        ("payload", "GEOGRAPHY_VALIDATION_BINDING"),
+        ("producer", "GEOGRAPHY_VALIDATION_BINDING"),
+        ("type", "DETAIL_ARTIFACT_IDENTITY"),
+    ),
+)
+def test_financial_donor_requires_actual_geography_gate(
+    known_financial_run, defect, reason
+):
+    run = known_financial_run.cold
+    node = run.compiled.graph.node(financial.DONOR_NODE)
+    artifacts = {}
+    for edge in node.artifact_inputs:
+        producer = run.manifest.node(edge.producer)
+        key = producer.opaque_artifacts[edge.artifact]
+        artifacts[edge.name] = ArtifactValue(
+            run.store.load_bytes(key), edge.type, key, producer.key, NumericScope()
+        )
+    # A detached consumer-context negative, using actual source-owned run keys.
+    # This does not pretend that constructing ArtifactValue issues an authority.
+    edge = financial._geography_edge()
+    original = artifacts[edge.name]
+    if defect == "payload":
+        artifacts[edge.name] = replace(original, payload=original.payload + b" ")
+    elif defect == "producer":
+        other = "0" * 64 if original.producer_key != "0" * 64 else "1" * 64
+        artifacts[edge.name] = replace(
+            original, producer_key=other, key=opaque_artifact_key(other, edge.artifact)
+        )
+    else:
+        artifacts[edge.name] = replace(
+            original, type=ArtifactType("invented.wrong_gate", 1)
+        )
+    context = SimpleNamespace(node=node, sources={}, artifacts=artifacts)
+    kernel = run.kernels.get(financial.CurrentSurveyPredictorDonorFilterKernel.ref)
+    with pytest.raises(ValueError, match=reason):
+        kernel._qualified(context)

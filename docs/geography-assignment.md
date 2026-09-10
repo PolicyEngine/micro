@@ -12,8 +12,16 @@ historical evidence. They do not demonstrate this corrected ordering. Geographic
 assignment must use a stable post-clone identity, including a clone discriminator
 where original-source identity alone is shared by multiple households.
 
-This document records the intended contract and the implementation gap. It does
-not certify a new geographic source, assignment run or population file.
+The corrected order now passes 70 controls on invented inputs, plus a separate
+default-path compatibility check. The nine-node survey prefix expands the initial
+clones before assignment; its nineteen-node financial and twelve-node age
+extensions retain the assigned geography. Draw identity combines
+`survey_geography_origin_key` with `household_support_clone_index`, so renumbering
+households does not redraw their location. A typed validation artifact orders
+financial enrichment after the geography gate. See the
+[scoped acceptance](../experiments/us-postclone-geography-70-controls-20260910.json).
+Native execution of this corrected order and population-quality acceptance
+remain pending. The older results below retain their original source scope.
 
 ## Declarative country capability
 
@@ -155,9 +163,9 @@ The US development composed graph attaches geography after harmonization, but
 `us_runtime/graph_geography.py` selects a joint tract/congressional-district cell
 and emits PUMA, county and district. It does not assign a Census block. Its prior
 national source and joint-support checks therefore do not establish block-first
-acceptance. The current survey/clone graph needs an explicit block assignment
-and derivation connection before enrichment. Block support and current district
-mapping require source review before acquisition or execution.
+acceptance. The separate atomic survey graph now provides that block assignment
+and derivation connection before enrichment. Its population-only national block
+support and source review are recorded below.
 
 The UK already has an area-based ladder in `uk_runtime/geography_ladder.py`.
 Its sampler selects a constituency within FRS region using household counts,
@@ -182,10 +190,10 @@ household counts or support for subsequent construction in unpopulated 2020
 blocks. All 13 invented tests passed, including missing/inconsistent mapping
 refusals and subset-stable assignment. Receipt SHA256:
 `404deb7666b3ac9b8a654181228c545ab95c131f30a1fbe65a2e15d5a08a4c4c`.
-Actual normalized block support and attachment before the survey clone remain
-pending; these tests do not establish native geographic fit.
+These initial adapter tests do not establish native geographic fit. Subsequent
+national support and native pilot results are recorded below.
 
-`us_runtime/graph_atomic_survey_clone.py` now declares the combined sequence:
+The earlier `us_runtime/graph_atomic_survey_clone.py` declared this sequence:
 shared import, assignment, derivation and integrity gate, then the existing
 combined-survey support clone and an inherited-mapping gate. The graph compiler
 makes the clone depend on every member of its base version, including the
@@ -205,7 +213,7 @@ through the actual source issuers. Their receipts are recorded in
 `experiments/us-survey-geography-source-controls-20260909.json` and
 `experiments/us-survey-geography-graph-controls-20260909.json`.
 
-`us_runtime/graph_atomic_survey_population.py` connects that observed projection
+The earlier `us_runtime/graph_atomic_survey_population.py` connected that projection
 to block assignment, geographic derivation, the integrity gate and the combined
 survey clone. It retains the raw allocation separately from the enriched
 pre-clone population, even though both share the allocation version identifier.
@@ -215,9 +223,9 @@ refusals. The test population contains six survey households before cloning and
 twelve afterward. The exact tested revisions and remaining checks are recorded
 in `experiments/us-atomic-survey-population-controls-20260909.json`.
 
-The calibration budget and age-calibration runner now consume this optional
-prefix and independently reconstruct it from the raw allocation. Eight budget
-controls pass, as does the complete thirteen-node age graph through fresh
+The earlier calibration budget and age runner consumed this optional prefix
+and independently reconstructed it from the raw allocation. Eight budget
+controls passed, as did the complete thirteen-node age graph through fresh
 execution and required replay. A separate compatibility control verifies that
 the existing predictor and PUF-host qualifiers still accept the default survey
 prefix. See the corresponding `us-atomic-budget-semantic-8`,

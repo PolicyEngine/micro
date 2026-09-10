@@ -38,6 +38,17 @@ to zero. A pruned export must not be required to make every survey origin
 independently resemble a national population, or to rerun imputation to satisfy
 such a requirement.
 
+The supplied-parent export comparison now passes 36 focused checks, including
+actual checkpoint write/readback, complete household selection, unchanged input
+values and missingness, signed and unsigned stable IDs, and full/pruned/local
+weight and scope handling. A household with zero original weight can receive
+positive calibrated weight without mutating its parent or other entity weights.
+The comparison binds the full ordered weight vector and specification, including
+rows outside the selected scope. It deliberately reports calibration ancestry
+and release eligibility as unverified: the owning build must establish those
+and seal its inputs across export I/O. See the
+[scoped export acceptance](../experiments/us-common-frame-export36-20260910.json).
+
 The earlier ten-node survey prefix assigns a block before cloning, and its
 thirteen-node age-calibration extension passes cold execution and required
 replay on invented originals. A twenty-node extension now carries atomic
@@ -48,10 +59,29 @@ operator is a separate path. See
 [Geography assignment](geography-assignment.md) for the country contracts,
 implementation and source boundaries.
 
-The 10 September sequencing correction requires the full initial multispine and
-its clones before block assignment, allowing each resulting household its own
-constrained draw. The accepted ten/twenty-node runs retain their original order;
-the corrected order needs its own implementation and replay checks.
+The 10 September sequencing correction now passes 70 inventoried controls on
+invented inputs, across seven separately guarded runs, plus one separate default
+compatibility case. The nine-node prefix completes its initial clones before
+block assignment; the nineteen-node financial extension and twelve-node age
+extension retain that geography through cold execution and required replay.
+Assignment uses the qualified original-source key and stable clone discriminator,
+so changing row order or numeric household coordinates does not redraw the same
+clone. Observed state/PUMA constraints, input knownness, entity links, complete
+population ownership and weights remain checked. Different clones may draw
+different blocks; an occasional shared block is valid.
+
+The financial donor FILTER requires the exact typed geography-validation artifact
+and retains original ASEC DESIGN weights. The shared gate emits this artifact
+only when requested, preserving its default API for UK consumers. Two test-only
+corrections repair the CREATE source declaration and isolate the obsolete-order
+budget counterexample from unrelated serialized storage differences; production
+matches the independently reviewed candidate. See the
+[scoped postclone acceptance](../experiments/us-postclone-geography-70-controls-20260910.json).
+
+The earlier ten/twenty-node native runs retain their original order. Native
+postclone execution, the new-order PUF host, held-out model quality, national/local
+fiscal calibration and full release acceptance remain pending. The age control
+uses invented targets and does not establish that complete calibration path.
 
 | Area | Main source entry points | What to review |
 | --- | --- | --- |
@@ -60,7 +90,7 @@ the corrected order needs its own implementation and replay checks.
 | Combined survey and clone | `us_runtime/{graph_composed_population,graph_survey_population,graph_combined_clone}.py` | ACS and ASEC composition before the clone; native versus detail channels |
 | Enrichment | `us_runtime/{full_puf_enrichment,graph_full_puf_enrichment,graph_current_survey_puf_transfer}.py` | Target ordering, conditioning, observed-value preservation and complete replay |
 | Conditional models | `packages/microcosm-fit/src/microcosm/fit/{qrf_target,graph_legacy_train,graph_legacy_apply_matrix}.py` | Reusable model artifacts, deterministic draws and target regimes |
-| Geography | `atomic_geography.py`; `us_runtime/{atomic_block_support,atomic_block_api_sources,survey_atomic_geography,graph_atomic_survey_population}.py` | Atomic block assignment, observed-source constraints, versioned mappings and stable clone identities; moving assignment after cloning remains in progress |
+| Geography | `atomic_geography.py`; `us_runtime/{atomic_block_support,atomic_block_api_sources,survey_atomic_geography,graph_atomic_survey_population}.py` | Atomic block assignment after complete initial cloning, observed-source constraints, versioned mappings, stable clone identities and the optional typed validation prerequisite |
 | Survey mass and calibration | `us_runtime/{survey_origin_budget,graph_survey_budget,graph_survey_calibration}.py`; `packages/microcosm-calibrate/src/microcosm/calibrate/{group_bounds,solve}.py` | Original survey mass, grouped bounds, fixed support and existing ungrouped solver behavior |
 | Compatibility | `packages/microcosm-build/src/microcosm/build/{frame_checkpoint,us_runtime/__init__}.py` | Current-main APIs, checkpoint metadata and existing country consumers |
 
@@ -105,12 +135,13 @@ Record shared dependencies as named changes with pinned revisions. Extract a
 smaller shared prerequisite where useful, while preserving compatibility with
 Maria's intentional stack. Proposed sequencing does not certify or merge any PR.
 
-The shared post-clone geography interface is under revision following the
-10 September ordering correction. Consumers adopting that new path should agree
-on its interface before wiring it. Existing target/source repairs can proceed on
-their reviewed base. Passing this draft's invented controls does not certify
-Maria's UK candidate, and the final US release need not gate her independent
-source and calibration work. No whole-PR merge is implied by this review map.
+The shared post-clone geography interface now has a tested additive validation
+artifact contract. The default gate API remains unchanged; UK registration can
+adopt the optional typed prerequisite independently of the US stage ordering.
+Existing target/source repairs can proceed on their reviewed base. Passing this
+draft's invented controls does not certify Maria's UK candidate, and the final
+US release need not gate her independent source and calibration work. No
+whole-PR merge is implied by this review map.
 
 ## Verification and review scope
 

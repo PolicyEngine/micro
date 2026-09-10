@@ -150,119 +150,140 @@ def _assert_complete_clone(before, after):
     }
 
 
-def test_cold_and_required_replay_keep_raw_allocation_and_inherit_geography(
-    known_atomic_run,
-):
+def test_cold_and_required_replay_assign_after_complete_clone(known_atomic_run):
     case = known_atomic_run
     assert case.cold.manifest.key == case.warm.manifest.key
     assert all(record.hit for record in case.warm.manifest.nodes.values())
-    # The wrapper first verifies its prefix, then adds geography and clone nodes.
-    # Only those additions are cold in the complete graph's first execution.
     assert all(
         not record.hit
         for name, record in case.cold.manifest.nodes.items()
         if name not in {survey.CREATE_NODE, survey.ALLOCATION_NODE}
     )
-    for field in ("allocated_population", "geography_population", "clone_population"):
+    for field in (
+        "allocated_population",
+        "observed_population",
+        "expanded_population",
+        "geography_population",
+        "clone_population",
+    ):
         replay.same_replayed_population(
             getattr(case.cold, field), getattr(case.warm, field)
         )
-
     support = atomic.decode_atomic_support(case.payload)
     for run in (case.cold, case.warm):
-        raw, geography = run.allocated_population, run.geography_population
-        order = run.compiled.order
+        raw, observed_population = run.allocated_population, run.observed_population
+        expanded, geography = run.expanded_population, run.geography_population
+        assert run.clone_population is geography
+        assert raw.version == observed_population.version == survey.ALLOCATION_NODE
+        assert expanded.version == geography.version == clone.COMBINED_CLONE_NODE
+        assert len(run.compiled.order) == 9
         stages = (
             survey.ALLOCATION_NODE,
             projection.NODE,
+            clone.COMBINED_CLONE_NODE,
+            clone.COMBINED_CLONE_CLAIM_NODE,
             "geography.assign",
             "geography.derive",
             "geography.gate",
-            clone.COMBINED_CLONE_NODE,
-            "geography.clone_gate",
         )
-        positions = tuple(order.index(name) for name in stages)
+        positions = tuple(run.compiled.order.index(name) for name in stages)
         assert positions == tuple(sorted(positions))
-        assert raw is not geography and raw.frame is not geography.frame
-        assert raw.version == geography.version == survey.ALLOCATION_NODE
+        assert (
+            clone.COMBINED_CLONE_CLAIM_NODE
+            in run.compiled.predecessors["geography.assign"]
+        )
         rebuilt = reconstruction.reconstruct_atomic_survey_geography(
             run.preparation, raw, case.config
         )
-        replay.same_replayed_population(rebuilt.population, geography)
+        for expected, actual in (
+            (rebuilt.observed_population, observed_population),
+            (rebuilt.expanded_population, expanded),
+            (rebuilt.population, geography),
+        ):
+            replay.same_replayed_population(expected, actual)
         receipt, definition = (
             json.loads(rebuilt.receipt),
             json.loads(rebuilt.definition),
         )
+        assert receipt["protocol"] == "microcosm.us.atomic-survey-reconstruction.v2"
+        assert receipt["assignment_identity"] == list(
+            reconstruction.composition.ASSIGNMENT_IDENTITY
+        )
         assert rebuilt.support_payload == case.payload
         assert receipt["support_sha256"] == case.config.support_sha256
-        for field in (
+        for name in (
             "publisher_provenance_established",
             "source_admission_issued",
             "population_admission_issued",
             "release_eligible",
         ):
-            assert receipt[field] is False
+            assert receipt[name] is False
         assigned = tuple(definition["outputs"].values())
         derived = tuple(layer["output"] for layer in definition["systems"][0]["layers"])
-        extra = (*observed.COLUMNS, *assigned, *derived)
-        assert not set(extra) & set(raw.frame.table("household"))
-        assert set(geography.frame.table("household")) - set(
+        assert not set((*observed.COLUMNS, *assigned, *derived)) & set(
             raw.frame.table("household")
-        ) == set(extra)
-        for entity in raw.frame.entities:
-            pd.testing.assert_frame_equal(
-                geography.frame.table(entity).loc[:, raw.frame.table(entity).columns],
-                raw.frame.table(entity),
-                check_exact=True,
+        )
+        assert not set((*assigned, *derived)) & set(expanded.frame.table("household"))
+        _assert_complete_clone(observed_population, expanded)
+        # Both ordinary projection steps preserve every incumbent cell, entity,
+        # membership, axis, weight, design anchor and context field exactly.
+        for before, after, added in (
+            (raw, observed_population, observed.COLUMNS),
+            (expanded, geography, (*assigned, *derived)),
+        ):
+            assert set(after.frame.table("household")) - set(
+                before.frame.table("household")
+            ) == set(added)
+            for entity in before.frame.entities:
+                pd.testing.assert_frame_equal(
+                    after.frame.table(entity).loc[
+                        :, before.frame.table(entity).columns
+                    ],
+                    before.frame.table(entity),
+                    check_exact=True,
+                )
+            assert after.frame.schema == before.frame.schema
+            assert after.frame.entities == before.frame.entities
+            assert after.frame.links == before.frame.links == ()
+            assert after.frame.metadata == before.frame.metadata
+            assert after.frame.mass_log == before.frame.mass_log
+            assert after.mass_ledger == before.mass_ledger
+            assert after.weight_kind == before.weight_kind
+            assert after.frame.weighted_entities == before.frame.weighted_entities
+            pd.testing.assert_series_equal(
+                after.frame.strata, before.frame.strata, check_exact=True
             )
-        assert geography.frame.schema == raw.frame.schema
-        assert geography.frame.entities == raw.frame.entities
-        assert geography.frame.links == raw.frame.links == ()
-        assert geography.frame.metadata == raw.frame.metadata
-        assert geography.frame.mass_log == raw.frame.mass_log
-        pd.testing.assert_series_equal(
-            geography.frame.strata, raw.frame.strata, check_exact=True
-        )
-        assert geography.mass_ledger == raw.mass_ledger
-        assert (
-            geography.weight_kind
-            == raw.weight_kind
-            == {"household": WeightKind.IMPORTANCE}
-        )
-        assert (
-            geography.frame.weighted_entities
-            == raw.frame.weighted_entities
-            == ("household",)
-        )
-        np.testing.assert_array_equal(
-            geography.frame.weights_for("household").values,
-            raw.frame.weights_for("household").values,
-        )
-        assert set(geography.design_weights) == set(raw.design_weights) == {"household"}
-        np.testing.assert_array_equal(
-            geography.design_weights["household"], raw.design_weights["household"]
-        )
-        assert dict(raw.owners) == {
-            (entity, column): survey.ALLOCATION_NODE
-            for entity in raw.frame.entities
-            for column in raw.frame.table(entity)
-        }
-        assert dict(geography.owners) == {
+            for entity in before.design_weights:
+                np.testing.assert_array_equal(
+                    after.design_weights[entity], before.design_weights[entity]
+                )
+                np.testing.assert_array_equal(
+                    after.frame.weights_for(entity).values,
+                    before.frame.weights_for(entity).values,
+                )
+        assert dict(observed_population.owners) == {
             **raw.owners,
             **{("household", name): projection.NODE for name in observed.COLUMNS},
+        }
+        assert dict(geography.owners) == {
+            **expanded.owners,
             **{("household", name): "geography.assign" for name in assigned},
             **{("household", name): "geography.derive" for name in derived},
         }
-        # The manifest's latest allocation version is enriched; the separately
-        # returned raw allocation remains suitable for independent reconstruction.
         replay.same_replayed_frame(
-            geography.frame, run.manifest.population(survey.ALLOCATION_NODE)
+            observed_population.frame, run.manifest.population(survey.ALLOCATION_NODE)
+        )
+        replay.same_replayed_frame(
+            geography.frame, run.manifest.population(clone.COMBINED_CLONE_NODE)
         )
         households = geography.frame.table("household")
-        assert len(households) == 6
+        assert len(households) == 12
+        assert not households.duplicated(
+            list(reconstruction.composition.ASSIGNMENT_IDENTITY)
+        ).any()
         keys = households[observed.COLUMNS[0]].map(json.loads)
         acs = keys.map(lambda key: key[0] == "acs")
-        assert acs.sum() == 4
+        assert acs.sum() == 8
         assert households.loc[acs, "survey_observed_puma"].eq("0612345").all()
         assert households.loc[acs, "assigned_puma_geoid"].eq("0612345").all()
         assert households.loc[~acs, "survey_observed_puma"].isna().all()
@@ -270,15 +291,24 @@ def test_cold_and_required_replay_keep_raw_allocation_and_inherit_geography(
             selected = keys.map(
                 lambda key, native=native: key[0] == "asec" and key[-1] == native
             )
-            assert selected.sum() == 1
-            assert households.loc[selected, "survey_observed_state"].tolist() == [state]
-            assert households.loc[selected, "assigned_state_fips"].tolist() == [state]
+            assert selected.sum() == 2
+            assert households.loc[selected, "survey_observed_state"].tolist() == [
+                state,
+                state,
+            ]
+            assert households.loc[selected, "assigned_state_fips"].tolist() == [
+                state,
+                state,
+            ]
         assert households.loc[acs, "assigned_state_fips"].eq("06").all()
         assert set(households.census_block_geoid) <= set(support.arrays["area"])
         atomic.validate_geography(households, definition, {blocks.SYSTEM: support})
-        for name in ("geography.gate", "geography.clone_gate"):
-            assert run.manifest.node(name).receipt["outcome"] == "pass"
-        _assert_complete_clone(geography, run.clone_population)
+        gate = run.manifest.node("geography.gate")
+        assert gate.receipt["outcome"] == "pass"
+        assert (
+            run.store.load_bytes(gate.opaque_artifacts["validation"])
+            == rebuilt.stages[-1].receipt
+        )
 
 
 def test_changed_normalized_support_is_refused_by_exact_digest(
@@ -311,6 +341,8 @@ def test_enriched_population_cannot_substitute_for_raw_allocation(known_atomic_r
     "change,reason",
     (
         ("observed_cell", "SURVEY_POPULATION_REPLAY_"),
+        ("observed_snapshot", "SURVEY_POPULATION_REPLAY_"),
+        ("expanded_snapshot", "SURVEY_POPULATION_REPLAY_"),
         ("source_container", "ATOMIC_FINAL_RECONSTRUCTION"),
     ),
 )
@@ -334,6 +366,14 @@ def test_late_returned_population_or_sources_mutation_refuses(
             result = caller.f_locals["result"]
             if change == "observed_cell":
                 households = result.geography_population.frame.table("household")
+                households.loc[households.index[0], "survey_observed_state"] = "99"
+            elif change in {"observed_snapshot", "expanded_snapshot"}:
+                value = (
+                    result.observed_population
+                    if change == "observed_snapshot"
+                    else result.expanded_population
+                )
+                households = value.frame.table("household")
                 households.loc[households.index[0], "survey_observed_state"] = "99"
             else:
                 result.sources[blocks.SOURCE] = (

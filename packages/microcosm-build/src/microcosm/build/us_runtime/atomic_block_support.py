@@ -216,8 +216,9 @@ def assignment_definition(
     """Declare one block draw constrained by normalized observed state/PUMA.
 
     Input codes must already be strings from the survey's source projection.
-    Callers choose original source identity columns before cloning; subsequent
-    clone/prune operators retain the assigned block and derived geographies.
+    Callers declare stable source plus completed initial-clone identity columns.
+    Assignment follows those clones; subsequent views retain the block and all
+    functionally derived geographies.
     """
     sources = _sources(source_ids)
     _require(type(seed) is int and 0 <= seed < 2**63, "invalid seed")

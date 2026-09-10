@@ -3955,7 +3955,7 @@ def test_current_handler_registry_keeps_raw_population_operator_coverage():
 
 def test_reviewed_stage_contracts_bind_all_findings_callers_and_domains():
     """The reviewed fixture records syntax evidence; CI never regenerates it."""
-    assert len(_STAGE_CONTRACTS["module_roles"]) == 107
+    assert len(_STAGE_CONTRACTS["module_roles"]) == 108
     assert len(_STAGE_CONTRACTS["scopes"]) == 87
     assert (
         sum(len(row["findings"]) for row in _STAGE_CONTRACTS["scopes"].values()) == 227

@@ -5,7 +5,7 @@ incoming a=s*b are different quantities. These development coefficients are
 provisional; this module grants neither graph execution nor release authority.
 Decoded bytes cannot issue a budget or a weight-only successor.
 An optional immutable geography recipe independently reconstructs the complete
-pre-clone Frame; the retained allocation always remains the raw source allocation.
+postclone geography Frame; the retained allocation remains the raw source allocation.
 """
 
 from __future__ import annotations
@@ -143,6 +143,7 @@ def _modules():
         geography.blocks,
         geography.atomic,
         geography.atomic_graph,
+        geography.composition,
         geography.observed,
         geography.observed_graph,
         geography.observed.demographics,
@@ -153,6 +154,7 @@ def _modules():
         sys.modules[geography.atomic.keyed_uniform.__module__],
         sys.modules[geography.canonical_json.__module__],
         sys.modules[geography.compile_graph.__module__],
+        sys.modules[geography._expand_declared_payload.__module__],
     )
     return tuple({module.__name__: module for module in modules}.values())
 
@@ -201,6 +203,7 @@ def _live():
             geography.atomic._U53,
             geography.observed.PROTOCOL,
             geography.observed.COLUMNS,
+            geography.composition.ASSIGNMENT_IDENTITY,
             geography.observed.MAX_HOUSEHOLDS,
             geography.observed.MAX_RECEIPT_BYTES,
             geography.observed_graph.NODE,
@@ -213,6 +216,10 @@ def _live():
             (
                 geography.atomic_graph.ATOMIC_SUPPORT_TYPE.name,
                 geography.atomic_graph.ATOMIC_SUPPORT_TYPE.schema_version,
+            ),
+            (
+                geography.atomic_graph.ATOMIC_GEOGRAPHY_VALIDATION_TYPE.name,
+                geography.atomic_graph.ATOMIC_GEOGRAPHY_VALIDATION_TYPE.schema_version,
             ),
             geography.atomic_graph._DEPENDENCIES,
             tuple(
@@ -298,6 +305,18 @@ def _geography_binding(value, config_payload, preparation_payload):
     )
     document = json.loads(value.receipt)
     population_sha256 = geography._population_stamp(value.population)
+    stages = {stage.node.id: stage for stage in value.stages}
+    _require(
+        value.observed_population is stages[geography.observed_graph.NODE].population
+        and value.expanded_population
+        is stages[clone.COMBINED_CLONE_CLAIM_NODE].population,
+        "GEOGRAPHY_STAGE_BINDINGS",
+    )
+    validation = stages["geography.gate"].receipt
+    _require(
+        stages["geography.gate"].artifacts == (("validation", validation),),
+        "GEOGRAPHY_VALIDATION_ARTIFACT",
+    )
     _require(
         value.config_sha256 == _sha(config_payload)
         and document["protocol"] == geography.PROTOCOL
@@ -305,6 +324,13 @@ def _geography_binding(value, config_payload, preparation_payload):
         and document["config_sha256"] == value.config_sha256
         and document["frame_sha256"] == source._frame_identity(value.population.frame)
         and document["population_sha256"] == population_sha256
+        and document["observed_population_sha256"]
+        == geography._population_stamp(value.observed_population)
+        and document["expanded_population_sha256"]
+        == geography._population_stamp(value.expanded_population)
+        and document["validation_receipt_sha256"] == _sha(validation)
+        and document["assignment_identity"]
+        == list(geography.composition.ASSIGNMENT_IDENTITY)
         and document["projection_receipt_sha256"] == _sha(value.projection_receipt)
         and document["definition_sha256"] == _sha(value.definition)
         and document["support_sha256"] == _sha(value.support_payload)
@@ -317,8 +343,13 @@ def _geography_binding(value, config_payload, preparation_payload):
     # The full receipt above seals this detached object exactly. Frame-store
     # replay can canonicalize storage beneath masked nulls, so its physical
     # stamp cannot identify an independently reconstructed object across runs.
+    physical_fields = (
+        "population_sha256",
+        "observed_population_sha256",
+        "expanded_population_sha256",
+    )
     semantic_receipt = {
-        key: item for key, item in document.items() if key != "population_sha256"
+        key: item for key, item in document.items() if key not in physical_fields
     }
     population = value.population
     semantic_population = {
@@ -341,9 +372,12 @@ def _geography_binding(value, config_payload, preparation_payload):
             "projection_receipt_sha256": _sha(value.projection_receipt),
             "definition_sha256": _sha(value.definition),
             "support_sha256": _sha(value.support_payload),
-            "preclone_population_semantic_sha256": _sha(_json(semantic_population)),
+            "postclone_geography_population_semantic_sha256": _sha(
+                _json(semantic_population)
+            ),
+            "validation_receipt": json.loads(validation),
             "identity_scope": {
-                "reconstruction_omitted_fields": ["population_sha256"],
+                "reconstruction_omitted_fields": list(physical_fields),
                 "population_fields": list(semantic_population),
                 "null_backing": "retained_in_in_process_physical_seals_only",
             },
@@ -405,36 +439,43 @@ def _initial(
         geography_binding = _geography_binding(
             reconstructed, config_payload, view.payload
         )
-        expected = reconstructed.population.frame
-        columns = frame_column_declarations(expected)
-    clone_nodes = clone.us_combined_survey_clone_nodes(
-        columns, base=graph.ALLOCATION_NODE, source_channels=("acs", "asec")
-    )
-    copied_design = graph._verify_cloned_frame(expected, expanded.frame, design)
-    graph._check_design_anchors(expanded, copied_design)
-    owners = {
-        (entity, str(column)): clone.COMBINED_CLONE_NODE
-        for entity in expected.entities
-        for column in expected.table(entity)
-    }
-    owners.update(
-        {
-            (o.entity, o.column): clone.COMBINED_CLONE_CLAIM_NODE
-            for o in clone_nodes[1].outputs
+        # Verify the exact clone before assignment, then the complete geography
+        # population. Geography additions never relax the clone equality rule.
+        graph._verify_cloned_frame(
+            reconstructed.observed_population.frame,
+            reconstructed.expanded_population.frame,
+            design,
+        )
+        geography.replay.same_replayed_population(reconstructed.population, expanded)
+    else:
+        clone_nodes = clone.us_combined_survey_clone_nodes(
+            columns, base=graph.ALLOCATION_NODE, source_channels=("acs", "asec")
+        )
+        copied_design = graph._verify_cloned_frame(expected, expanded.frame, design)
+        graph._check_design_anchors(expanded, copied_design)
+        owners = {
+            (entity, str(column)): clone.COMBINED_CLONE_NODE
+            for entity in expected.entities
+            for column in expected.table(entity)
         }
-    )
-    graph._check_population_state(
-        expanded,
-        version=clone.COMBINED_CLONE_NODE,
-        owners=owners,
-        kind=WeightKind.IMPORTANCE,
-        ledger=(
-            *allocation_ledger,
-            _mass_record(
-                expected, expanded.frame, clone_nodes[0], KernelResult(), "conserve"
+        owners.update(
+            {
+                (o.entity, o.column): clone.COMBINED_CLONE_CLAIM_NODE
+                for o in clone_nodes[1].outputs
+            }
+        )
+        graph._check_population_state(
+            expanded,
+            version=clone.COMBINED_CLONE_NODE,
+            owners=owners,
+            kind=WeightKind.IMPORTANCE,
+            ledger=(
+                *allocation_ledger,
+                _mass_record(
+                    expected, expanded.frame, clone_nodes[0], KernelResult(), "conserve"
+                ),
             ),
-        ),
-    )
+        )
     if geography_config is not None:
         _require(
             geography.AtomicSurveyReconstruction.to_bytes(geography_config)

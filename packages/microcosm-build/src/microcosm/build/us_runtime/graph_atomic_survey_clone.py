@@ -1,14 +1,18 @@
-"""Compose shared geography before the combined-survey support clone.
+"""Assign shared geography after the complete combined-survey support clone.
 
 This declaration has no country-specific geography kernel or source admission.
 Callers provide normalized, qualified observed columns and declared support.
 """
 
-from dataclasses import replace
-
+from microcosm.build.atomic_geography import validate_assignment_spec
 from microcosm.build.graph_atomic_geography import atomic_geography_nodes
 
 from .graph_combined_clone import us_combined_survey_clone_nodes
+
+ASSIGNMENT_IDENTITY = (
+    "survey_geography_origin_key",
+    "household_support_clone_index",
+)
 
 
 def atomic_survey_clone_nodes(
@@ -19,26 +23,34 @@ def atomic_survey_clone_nodes(
     geography_prefix="geography",
     clone_prefix="combined_survey_puf_support_clone",
 ):
-    """Assign once on the base, inherit every location, then recheck the clone.
+    """Complete initial clones, then draw on each stable source/role identity.
 
-    Structural graph nodes depend on every member of their base version. The
-    pre-clone integrity gate therefore precedes EXPAND even though it owns no
-    cells. The post-clone gate derives mappings without drawing again.
+    The base carries qualified observed constraints, not assigned geography.
+    The clone-index Slice depends on its ownership claim; the population edge
+    depends on EXPAND. Numeric remapped household IDs are only row coordinates.
     """
     columns = tuple(columns)
-    geography = atomic_geography_nodes(
-        definition, columns, base=base, prefix=geography_prefix
-    )
+    definition = validate_assignment_spec(definition)
+    if tuple(definition.get("identity", ())) != ASSIGNMENT_IDENTITY:
+        raise ValueError(
+            "US postclone geography requires its stable source/clone identity."
+        )
     clones = us_combined_survey_clone_nodes(
-        (*columns, *(output for node in geography for output in node.outputs)),
+        columns,
         base=base,
         source_channels=("acs", "asec"),
         prefix=clone_prefix,
     )
-    final_gate = replace(
-        geography[-1],
-        id=f"{geography_prefix}.clone_gate",
-        population=clones[0].id,
-        description="Recheck inherited atomic geography on every support clone.",
+    inventory = {(o.entity, o.column): o for o in columns}
+    inventory.update({(o.entity, o.column): o for o in clones[1].outputs})
+    origin = inventory.get(("household", ASSIGNMENT_IDENTITY[0]))
+    if origin is None or origin.dtype != "string":
+        raise ValueError("US postclone geography requires a string source identity.")
+    geography = atomic_geography_nodes(
+        definition,
+        tuple(inventory.values()),
+        base=clones[0].id,
+        prefix=geography_prefix,
+        emit_validation_artifact=True,
     )
-    return (*geography, *clones, final_gate)
+    return (*clones, *geography)

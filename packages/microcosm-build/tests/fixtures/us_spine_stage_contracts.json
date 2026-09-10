@@ -1821,7 +1821,7 @@
     },
     "microcosm.build.us_runtime.current_survey_predictors::_qualified_seal": {
       "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "427478741f21e522e28321b4613945423706a010be453e25157b12d2bff2f984",
+      "body_sha256": "511584b9b69106a4ae3342a9ac85a64c678ef2f67abd3ab785eb0b777d2ef2a2",
       "references": [
         {
           "caller": "microcosm.build.us_runtime.current_survey_predictors::qualify_current_survey_predictors",
@@ -2938,8 +2938,16 @@
     },
     "microcosm.build.us_runtime.graph_atomic_survey_clone::atomic_survey_clone_nodes": {
       "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "1b54fa49b424147b298dc964e3add6e06c9aff5d3660f256a748c8638f133c4e",
-      "references": []
+      "body_sha256": "c2ac75799629fe29a753b4dbd7aa08d55d7875a009e7cb6b9b043a822aaafa20",
+      "references": [
+        {
+          "caller": "microcosm.build.us_runtime.survey_atomic_geography::reconstruct_atomic_survey_geography",
+          "expression": "composition.atomic_survey_clone_nodes(definition, (*columns, *observation.outputs), base=graph.ALLOCATION_NODE)",
+          "expression_sha256": "b8401075575590a7375f15cf9a7b08751a0658878ff7a1b4aa7ffd7dd1c73881",
+          "resolution": "resolved",
+          "usage": "call"
+        }
+      ]
     },
     "microcosm.build.us_runtime.graph_atomic_survey_financial::AtomicSurveyFinancialRunValues.checked_view": {
       "basis": "reviewed entry/caller-chain body",
@@ -2956,7 +2964,7 @@
     },
     "microcosm.build.us_runtime.graph_atomic_survey_financial::_issue_run": {
       "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "4184c61c6a8fa383c25a976365d9d6f660d401d8a3ef899de42859d9a83794ab",
+      "body_sha256": "d834fff2e2069bd725bb800017d9c6ea48df5a1c0289541d33bda18adac55a48",
       "references": [
         {
           "caller": "microcosm.build.us_runtime.graph_atomic_survey_financial::run_atomic_survey_financial",
@@ -3085,7 +3093,7 @@
     },
     "microcosm.build.us_runtime.graph_atomic_survey_financial::run_atomic_survey_financial": {
       "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "5c5714195b91dfcfd7ff2e8f470a00c1ab5f169a1b56187d101889ad6dbe63f6",
+      "body_sha256": "6895ac5e2763d25b90238c45c3522b93b193bf18912126164a291730f7e886d8",
       "references": []
     },
     "microcosm.build.us_runtime.graph_atomic_survey_financial::run_atomic_survey_financial.observe": {
@@ -3101,36 +3109,9 @@
         }
       ]
     },
-    "microcosm.build.us_runtime.graph_atomic_survey_population::_clone_expectations": {
-      "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "7b89a2a2034ef9b758b3d4b84026334839ee6e91de3109db7788271211323372",
-      "references": [
-        {
-          "caller": "microcosm.build.us_runtime.graph_atomic_survey_financial::run_atomic_survey_financial",
-          "expression": "atomic._clone_expectations(geography, prefix.compiled.graph.nodes, compiled)",
-          "expression_sha256": "ea2e9241b6f323b1e0b69f9bf6e4f3ceb38460b5709d1c9292d458b90337f740",
-          "resolution": "resolved",
-          "usage": "call"
-        },
-        {
-          "caller": "microcosm.build.us_runtime.graph_atomic_survey_population::run_atomic_survey_population",
-          "expression": "_clone_expectations(geography, additions, compiled)",
-          "expression_sha256": "73367c39180a8d57a514e9bf93bacb025e89512fb3be283c6fa7bf868cbc995e",
-          "resolution": "resolved",
-          "usage": "call"
-        },
-        {
-          "caller": "microcosm.build.us_runtime.survey_age_calibration::_run_survey_age_calibration",
-          "expression": "atomic_source._clone_expectations(geography, prefix.compiled.graph.nodes, prefix.compiled)",
-          "expression_sha256": "41a49946eb5b1565540e95cffb9df97e2a1201bce3c63e762b03085ca3b0edfe",
-          "resolution": "resolved",
-          "usage": "call"
-        }
-      ]
-    },
     "microcosm.build.us_runtime.graph_atomic_survey_population::run_atomic_survey_population": {
       "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "73335893d7c4b41a109355868ff2a1cf75ed5b5db571e9ccdc31960db5d7021e",
+      "body_sha256": "bc07a1919abc913a7320172ece3f50c73a8f4199819781d7f876d63950a59b02",
       "references": [
         {
           "caller": "microcosm.build.us_runtime.graph_atomic_survey_financial::run_atomic_survey_financial",
@@ -3188,13 +3169,6 @@
           "usage": "reference"
         },
         {
-          "caller": "microcosm.build.us_runtime.graph_atomic_survey_population::_clone_expectations",
-          "expression": "clone.USCombinedSurveyCloneExpandKernel._receipt(before.frame, expanded, ('acs', 'asec'), authority, facts)",
-          "expression_sha256": "f36da898c4e1606b3f506f707adb5322ba2db6d5f3fb868fa2af26395093de4c",
-          "resolution": "resolved",
-          "usage": "call"
-        },
-        {
           "caller": "microcosm.build.us_runtime.graph_combined_clone::USCombinedSurveyCloneExpandKernel.run",
           "expression": "self._receipt(before, after, channels, authority, entity_facts)",
           "expression_sha256": "4039fb5d88a00d42cb042e483e6e3cbf8a271d42d072cf60041fbb9ceb3758c2",
@@ -3221,6 +3195,13 @@
           "expression_sha256": "a5200a0f59f87b2ad3546c02313eb32aeab5d9209bdb2da1a51715aa694653a7",
           "resolution": "unresolved-us-candidate",
           "usage": "reference"
+        },
+        {
+          "caller": "microcosm.build.us_runtime.survey_atomic_geography::_clone_expectations",
+          "expression": "clone.USCombinedSurveyCloneExpandKernel._receipt(before.frame, expanded, ('acs', 'asec'), authority, facts)",
+          "expression_sha256": "f36da898c4e1606b3f506f707adb5322ba2db6d5f3fb868fa2af26395093de4c",
+          "resolution": "resolved",
+          "usage": "call"
         }
       ]
     },
@@ -3276,15 +3257,8 @@
       "references": [
         {
           "caller": "microcosm.build.us_runtime.graph_atomic_survey_clone::atomic_survey_clone_nodes",
-          "expression": "us_combined_survey_clone_nodes((*columns, *(output for node in geography for output in node.outputs)), base=base, source_channels=('acs', 'asec'), prefix=clone_prefix)",
-          "expression_sha256": "3a132ecbc1614ec5900fc35270be6c9fe077e8ba351afb418b12e2d1b8b47997",
-          "resolution": "resolved",
-          "usage": "call"
-        },
-        {
-          "caller": "microcosm.build.us_runtime.graph_atomic_survey_population::run_atomic_survey_population",
-          "expression": "clone.us_combined_survey_clone_nodes(frame_column_declarations(geography.population.frame), base=survey.ALLOCATION_NODE, source_channels=('acs', 'asec'))",
-          "expression_sha256": "979b2300b0e7750ad162c4abda539b1cc38685626ccd5227e39aafd58f0d7abb",
+          "expression": "us_combined_survey_clone_nodes(columns, base=base, source_channels=('acs', 'asec'), prefix=clone_prefix)",
+          "expression_sha256": "0f22b3b37e643e9968fcf4945c52001633f931709f98d50864c1b1479e6dc1fa",
           "resolution": "resolved",
           "usage": "call"
         },
@@ -3507,7 +3481,7 @@
     },
     "microcosm.build.us_runtime.graph_current_survey_predictors::_Kernel._qualified": {
       "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "83b50c8ffc2d1ac0a4f320804668a17e3bfd07cf0f2d46a6a2fae8544e94d149",
+      "body_sha256": "b16bc2f87c414374f54762ba09e737b55d699ae0e6ecb03962cd5cb6dd3ed9e7",
       "references": [
         {
           "caller": "microcosm.build.us_runtime.graph_current_survey_predictors::CurrentSurveyPredictorAttachKernel.run",
@@ -6164,7 +6138,7 @@
     },
     "microcosm.build.us_runtime.survey_age_calibration::_run_survey_age_calibration": {
       "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "a8bf142b1acdccd9c6aa718517c2f2e831b8441aac335a3d27d1c6a7c7cd959b",
+      "body_sha256": "b910d8349c9fcc2365b665501f9255ec65ce7b05d23119a48c4dbc7504a7723f",
       "references": [
         {
           "caller": "microcosm.build.us_runtime.survey_age_calibration::run_survey_age_calibration",
@@ -6184,7 +6158,7 @@
     },
     "microcosm.build.us_runtime.survey_age_calibration::_run_survey_age_calibration.observe": {
       "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "d6d7b817e6845871ed7eb38a5b89d85a193f0b101319329299eae0a2a9de3f97",
+      "body_sha256": "826ae32945438191b578d0dfcf166a6a50c4c3d95c323b2a3895a2ad57edf3ab",
       "references": [
         {
           "caller": "microcosm.build.us_runtime.survey_age_calibration::_run_survey_age_calibration",
@@ -6204,6 +6178,19 @@
       "basis": "reviewed entry/caller-chain body",
       "body_sha256": "c90a910ca78df2157c5143a328f167a4e48bd8e9d1195f8c6575c562684bf8c0",
       "references": []
+    },
+    "microcosm.build.us_runtime.survey_atomic_geography::_clone_expectations": {
+      "basis": "reviewed entry/caller-chain body",
+      "body_sha256": "a4fd4ead9b0173526386da643a0ba014811ac205637e7008b006db3182816910",
+      "references": [
+        {
+          "caller": "microcosm.build.us_runtime.survey_atomic_geography::reconstruct_atomic_survey_geography",
+          "expression": "_clone_expectations(current, nodes, compiled)",
+          "expression_sha256": "b0df36b0f9a08dd5326f4a437000f2a9d2f4572b71af99f036b07efc6d5d9fe7",
+          "resolution": "resolved",
+          "usage": "call"
+        }
+      ]
     },
     "microcosm.build.us_runtime.survey_atomic_geography::_raw_allocation": {
       "basis": "reviewed entry/caller-chain body",
@@ -6268,7 +6255,7 @@
     },
     "microcosm.build.us_runtime.survey_atomic_geography::reconstruct_atomic_survey_geography": {
       "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "9761183ef0e04aec07d08f42dcb3f0eb1f422fece48dcd174574c0b682b67dc7",
+      "body_sha256": "b5600949adbbb8a8874c550d676c3b257a06d82e0626efd53016343ae7380b60",
       "references": [
         {
           "caller": "microcosm.build.us_runtime.graph_atomic_survey_financial::run_atomic_survey_financial",
@@ -6617,7 +6604,7 @@
     },
     "microcosm.build.us_runtime.survey_origin_budget::_initial": {
       "basis": "reviewed entry/caller-chain body",
-      "body_sha256": "f555a5e9dab95cfe9018309a69dd6d63f746bedfef5a4768cc79eb5bccc21468",
+      "body_sha256": "03ed44e61b5ca5b74e576bc2f7acede1903cb4a66304c4a67287e22c5a4cdac5",
       "references": [
         {
           "caller": "microcosm.build.us_runtime.current_survey_predictors::qualify_current_survey_predictors",
@@ -7879,6 +7866,7 @@
     "atomic_block_support.py": "geography",
     "cd_reference.py": "calibration_reference_diagnostics",
     "cd_reference_sources.py": "calibration_reference_diagnostics",
+    "common_frame_export_contract.py": "export_comparison",
     "cps_carried_current.py": "source_value_contract",
     "current_asec_demographics.py": "source_authentication_projection",
     "current_social_security_source.py": "source_authentication_projection",
@@ -8636,7 +8624,7 @@
     "microcosm.build.us_runtime.current_survey_predictors::qualify_current_survey_predictors": {
       "access": "provenance",
       "basis": "Qualify source-specific measured inputs and complete the declared pre-PUF donor/recipient surface before the source-blind model application.",
-      "body_sha256": "c4eeee32feac6d185d56f74fcbfcbdcc375a5b58dbbce50a8ae2e4efaa494de2",
+      "body_sha256": "5908d98691cad3e18e2e29b09f59930e751367951ea64595ff4fd1b145228298",
       "findings": [
         {
           "expression": "people[provenance.support_channel_column('person')]",

@@ -249,6 +249,7 @@ class QualifiedSurveyPredictors:
     evidence: dict
     demographic_conditioning: bool = False
     geography_config_payload: bytes | None = None
+    geography_validation: bytes | None = None
 
 
 def _qualified_seal(value):
@@ -288,6 +289,7 @@ def _qualified_seal(value):
         value.matrix,
         value.demographic_conditioning,
         value.geography_config_payload,
+        value.geography_validation,
         codec.encode_json(value.evidence),
         tuple(
             geography._population_stamp(
@@ -516,6 +518,9 @@ def qualify_current_survey_predictors(
         evidence,
         demographic_conditioning,
         config_payload,
+        None
+        if geography_binding is None
+        else codec.encode_json(json.loads(geography_binding)["validation_receipt"]),
     )
     derived_seal = _qualified_seal(result)
     if geography_config is not None:

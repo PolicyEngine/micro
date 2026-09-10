@@ -43,18 +43,20 @@ common source population alone does not guarantee identical estimates.
 | Stage | US demonstrated result | UK demonstrated result |
 | --- | --- | --- |
 | Population construction | Small real ACS/ASEC composition, clone and financial enrichment pass; complete PUF and remaining inputs pending | Real FRS 2024–25 spine and earlier whole-spine parity; latest integrated stage set needs fresh coverage and verification |
-| Geography | Earlier pre-clone block assignment and inheritance pass in the small real build; corrected post-clone order and complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
+| Geography | Corrected post-clone order passes 70 invented controls plus separate default compatibility; native post-clone execution and complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
 | Calibration | Solver controls pass; fully enriched native national/CD solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
 | Independent quality | Complete-candidate engine outcomes, holdouts and reform validation pending | Prior comparisons and diagnostics exist; the recorded 55k candidates skipped holdout evaluation and do not establish release quality |
-| Full/compact files | Small prefix export and required replay pass; complete enriched release family pending | Size-selection implementation and measured candidates exist; current accepted full/compact local family pending |
+| Full/compact files | Small prefix replay and 36 supplied-parent full/pruned/local export checks pass; complete enriched release family pending | Size-selection implementation and measured candidates exist; current accepted full/compact local family pending |
 | Delivery | No accepted new-architecture release or default consumer adoption | Assembly implementation and historical assembled cuts exist; current certification and default promotion pending |
 
 The US new graph has passed a small real survey → block assignment → clone →
 financial-enrichment build and required replay. The combined survey population
-has 1,584 source households and 3,168 records after cloning. This is not the
-complete enriched, calibrated national/CD file. The next critical sequence is
-complete PUF/remaining input integration, a small real full build, model and
-calibration evaluation, then progressive scale and release verification. See
+has 1,584 source households and 3,168 records after cloning. That native result
+uses the earlier assignment-before-cloning order. The corrected nine-node prefix
+and nineteen-node financial extension now pass their invented controls; the
+next native pilot must use their new order and a fresh graph store. The remaining
+critical sequence is complete PUF/input integration, a small real full build,
+model and calibration evaluation, then progressive scale and release verification. See
 [the US review guide](us-launch-review.md) for scoped acceptance records.
 
 UK work already includes raw-source enrichment, national/local calibration,
@@ -64,6 +66,14 @@ not establish an incumbent-comparison pass. Historical dense assembly also
 does not satisfy today's release battery. See
 [the size evidence](../experiments/355-uk-dataset-size-receipts.md) and
 [the current dense release runbook](uk-dense-release-assembly-runbook-762.md).
+
+The [UK full-build graph](uk-full-build-graph.md) now registers the canonical
+source spine, geographic pool, target compilation, calibration, optional
+exact-count sizing, gates and checked export. `microcosm-build-uk` calibrates all
+applicable geographic levels together by default. An explicit country-only
+target filter uses that same graph; geographic pool copies K, exported household
+count k and target scope remain independent. This registration preserves the
+current UK algorithms and does not establish native candidate acceptance.
 
 The current UK route clones for geographic support and then uses the existing
 OA ladder. It has not adopted the new shared atomic geography graph keyed to
