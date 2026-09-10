@@ -45,6 +45,10 @@ JSON artifacts retain candidate digests and their complete canonical seed
 records for review. They never replace the test assertions or certify coverage;
 review the captured source and dependency identities before updating any pins.
 
+New commits to a PR cancel older unfinished CI runs for that same PR.
+Each main-push run has a unique concurrency group, so all main-push runs
+remain independent and can finish validating their merged changes.
+
 `requires_us` and `requires_uk` are registered pytest markers. Mark new tests
 that need a live PolicyEngine engine with the appropriate marker; the root
 collection hook skips them when that engine is absent, and the marker also

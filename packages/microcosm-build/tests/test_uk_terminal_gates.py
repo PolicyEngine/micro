@@ -389,12 +389,7 @@ def test_target_fit_out_of_force_exclusion_fails_even_without_a_breach() -> None
 def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     register = uk_default_target_fit_reviewed_exclusions()
 
-    assert set(register) == {"obr.capital_gains_tax@2025"}
-    record = register["obr.capital_gains_tax@2025"]
-    assert record.approved_by == "juaristi22"
-    assert record.adjudication == "microcosm#875"
-    assert record.approved_on == "2026-09-05"
-    assert record.expires_on == "2026-10-05"
+    assert register == {}
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
@@ -417,7 +412,6 @@ def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
         {
             **_RESTORED_TARGET_FIT_ERRORS,
             **empty_tail,
-            "obr.capital_gains_tax@2025": 0.45,
         },
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
         now=date(2026, 9, 9),
@@ -426,7 +420,7 @@ def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
     assert not fit.passed
     assert fit.details["stale_exclusions"] == []
     assert fit.details["failing_targets"] == empty_tail
-    assert set(fit.details["reviewed_exclusions"]) == {"obr.capital_gains_tax@2025"}
+    assert fit.details["reviewed_exclusions"] == {}
 
 
 @pytest.mark.parametrize("name", sorted(_RESTORED_TARGET_FIT_ERRORS))
@@ -448,6 +442,20 @@ def test_restored_fit_checks_apply_if_a_later_run_breaches_again(
     assert fit.passed is passes
     assert fit.details["reviewed_exclusions"] == {}
     assert fit.details["failing_targets"] == ({} if passes else {name: relative_error})
+
+
+def test_observed_liability_has_no_retired_cash_exemption() -> None:
+    register = uk_default_target_fit_reviewed_exclusions()
+    assert "obr.capital_gains_tax@2025" not in register
+    assert "hmrc.cgt.liability_total@2025" not in register
+    fit = uk_target_fit_gate(
+        {"hmrc.cgt.liability_total@2025": 0.30},
+        reviewed_exclusions=register,
+        now=date(2026, 9, 15),
+    )
+    assert not fit.passed
+    assert fit.details["failing_targets"] == {"hmrc.cgt.liability_total@2025": 0.30}
+    assert "obr.capital_gains_tax@2025" not in fit.details["dormant_exclusions"]
 
 
 def test_ported_june_parity_gates_reject_empty_evidence() -> None:
