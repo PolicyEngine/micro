@@ -91,6 +91,9 @@ Coordination updated 10 September: Maria is deliberately stacking her UK
 graph-node registration on #893. That specific dependent work should pin the
 parent revision and coordinate shared-interface changes here. Her source/target
 repairs and Anthony's staging work do not have to wait for the whole draft.
+PR #900 merged at 14:54 UTC and is incorporated here from main at
+`6f7571e1ab8c516154289bd8ebf75cb2646f03b5`. The combination preserves both parent
+histories and does not rerun or recertify the frozen US controls.
 Anthony's hierarchy/diagnostics [#855](https://github.com/PolicyEngine/microcosm/pull/855)
 and its dashboard consumer follow the target reconciliation in
 [#900](https://github.com/PolicyEngine/microcosm/pull/900). Registering UK graph

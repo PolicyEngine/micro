@@ -94,8 +94,9 @@ ownership here when they change.
 
 The 10 September coordination sequence is:
 
-- Maria's #900 source/target reconciliation goes first; Anthony's #855 target
-  hierarchy/diagnostics and corresponding dashboard consumer follow it.
+- Maria's #900 source/target reconciliation merged on 10 September at 14:54 UTC;
+  Anthony's #855 target hierarchy/diagnostics and corresponding dashboard
+  consumer follow it. Its merge clears that dependency, not all release gates.
 - Maria owns registering every existing UK stage as a graph node, stacking on
   #893. Changes to UK stage order follow in a separate PR. The shared atomic-area
   adapter work supports that integration and does not create a second UK graph.
