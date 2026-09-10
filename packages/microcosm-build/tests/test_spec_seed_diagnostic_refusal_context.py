@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -80,3 +81,50 @@ def test_context_never_serializes_locals_or_exception_text(diagnostic):
     assert value["code"] == "READ_SCOPE" and value["event"] == "open"
     assert all(set(frame) == {"file", "function", "line"} for frame in value["frames"])
     assert len(payload) <= 4096
+
+
+@pytest.mark.parametrize(
+    ("path", "label"),
+    (
+        ("/etc/os-release", "etc_os_release"),
+        ("/usr/lib/os-release", "usr_lib_os_release"),
+        ("/lib/os-release", "lib_os_release"),
+        ("/etc/localtime", "etc_localtime"),
+        (
+            f"/runtime/lib/python{sys.version_info.major}{sys.version_info.minor}.zip",
+            "python_stdlib_zip_candidate",
+        ),
+        ("/runtime/lib/invented-data.zip", None),
+    ),
+)
+def test_fixed_os_metadata_labels_do_not_expose_data_path_text(diagnostic, path, label):
+    value = diagnostic.refusal_path_context(path, (("runtime", Path("/runtime")),))
+    assert value["known_path_label"] == label
+    assert value["path"] is None and value["name_redacted"] is True
+
+
+def test_terminal_refusal_retains_own_context_after_an_earlier_probe(diagnostic):
+    first = diagnostic.encoded({"code": "DATA_FILE", "event": "open"})
+    last = diagnostic.read_refusal_context(
+        "READ_SCOPE",
+        "open",
+        Path("/usr/lib/os-release"),
+        "/etc/os-release",
+        (("system_usr", Path("/usr")), ("system_etc", Path("/etc"))),
+    )
+    swallowed = diagnostic.RefusalError("DATA_FILE", boundary_context=first)
+    terminal = diagnostic.RefusalError("READ_SCOPE", boundary_context=last)
+    assert str(swallowed) == "DATA_FILE" and str(terminal) == "READ_SCOPE"
+    assert type(terminal.boundary_context) is bytes
+    assert terminal.boundary_context == last and swallowed.boundary_context == first
+    context = json.loads(terminal.boundary_context)
+    assert context["requested"]["known_path_label"] == "etc_os_release"
+    assert context["resolved"]["known_path_label"] == "usr_lib_os_release"
+    assert context["code"] != json.loads(swallowed.boundary_context)["code"]
+    assert diagnostic.RefusalError("WALL").boundary_context is None
+
+
+@pytest.mark.parametrize("value", (bytearray(b"{}"), b"x" * 4097))
+def test_exception_context_requires_immutable_bounded_bytes(diagnostic, value):
+    with pytest.raises(TypeError, match="REFUSAL_CONTEXT"):
+        diagnostic.RefusalError("READ_SCOPE", boundary_context=value)

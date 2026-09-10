@@ -163,7 +163,15 @@ SEED_MODULES = (
 
 
 class RefusalError(RuntimeError):
-    """A fixed-code refusal without source values or exception locals."""
+    """A fixed-code refusal with optional immutable, bounded code metadata."""
+
+    def __init__(self, code: str, *, boundary_context: bytes | None = None):
+        if boundary_context is not None and (
+            type(boundary_context) is not bytes or len(boundary_context) > 4096
+        ):
+            raise TypeError("REFUSAL_CONTEXT")
+        super().__init__(code)
+        self.boundary_context = boundary_context
 
 
 def require(condition: bool, code: str) -> None:
@@ -258,9 +266,20 @@ def refusal_path_context(value: object, roots: tuple[tuple[str, Path], ...]) -> 
         and all(part not in ("", ".", "..") for part in Path(text).parts)
         else None
     )
+    # Fixed labels identify these reviewed OS metadata candidates without
+    # showing arbitrary data/archive filenames or changing read permissions.
+    known_path_label = {
+        "/etc/os-release": "etc_os_release",
+        "/usr/lib/os-release": "usr_lib_os_release",
+        "/lib/os-release": "lib_os_release",
+        "/etc/localtime": "etc_localtime",
+    }.get(path.as_posix())
+    if path.name == f"python{sys.version_info.major}{sys.version_info.minor}.zip":
+        known_path_label = "python_stdlib_zip_candidate"
     return {
         "scope": scope,
         "path": shown,
+        "known_path_label": known_path_label,
         "path_form": "anchor_relative" if relative is not None else "basename_only",
         "source_like": suffix in source_suffixes,
         "name_redacted": shown is None,
@@ -299,7 +318,12 @@ def read_refusal_context(code, event, path, requested, roots) -> bytes:
 
 
 def install_boundary(
-    root: Path, owned: Path, output: Path, *, first_refusal: list[bytes] | None = None
+    root: Path,
+    owned: Path,
+    output: Path,
+    *,
+    first_refusal: list[bytes] | None = None,
+    distinct_refusals: list[str] | None = None,
 ) -> list[str]:
     refusals: list[str] = []
     blocked_files = (
@@ -350,20 +374,24 @@ def install_boundary(
     )
 
     def refuse(code: str, *, event=None, path=None, requested=None) -> None:
+        # Preserve the historical first-code refusal counter and decisions.
         if not refusals:
             refusals.append(code)
-            if first_refusal is not None:
-                try:
-                    first_refusal.append(
-                        read_refusal_context(
-                            code, event, path, requested, context_roots
-                        )
-                    )
-                except Exception:
-                    first_refusal.append(
-                        encoded({"code": code, "context": "unavailable"})
-                    )
-        raise RefusalError(code)
+        if (
+            distinct_refusals is not None
+            and code not in distinct_refusals
+            and len(distinct_refusals) < 8
+        ):
+            distinct_refusals.append(code)
+        try:
+            context = read_refusal_context(code, event, path, requested, context_roots)
+        except Exception:
+            context = encoded({"code": code, "context": "unavailable"})
+        if first_refusal is not None and not first_refusal:
+            first_refusal.append(context)
+        # An optional import probe can swallow an earlier refusal. Attach the
+        # actual terminal denial's own bytes instead of reporting that probe.
+        raise RefusalError(code, boundary_context=context)
 
     def operation_path(
         value: object, directory_fd: object = None, *, follow: bool = True
@@ -425,7 +453,7 @@ def install_boundary(
             path = operation_path(args[0])
             name = str(path)
             if name.lower().endswith(blocked_files):
-                refuse("DATA_FILE")
+                refuse("DATA_FILE", event="open", path=path, requested=args[0])
             flags = args[2] if len(args) > 2 else 0
             writing = isinstance(flags, int) and bool(
                 flags
@@ -736,7 +764,14 @@ def main() -> int:
         )
         signal.alarm(900)
         first_refusal: list[bytes] = []
-        refusals = install_boundary(root, owned, output, first_refusal=first_refusal)
+        distinct_refusals: list[str] = []
+        refusals = install_boundary(
+            root,
+            owned,
+            output,
+            first_refusal=first_refusal,
+            distinct_refusals=distinct_refusals,
+        )
         # Dependency-created temporaries must stay inside this invocation's scope.
         tempfile.tempdir = str(owned)
         os.environ["TMPDIR"] = str(owned)
@@ -782,6 +817,14 @@ def main() -> int:
                     "first_boundary_refusal": (
                         json.loads(first_refusal[0]) if first_refusal else None
                     ),
+                    "terminal_boundary_refusal": (
+                        json.loads(error.boundary_context)
+                        if type(error) is RefusalError
+                        and error.boundary_context is not None
+                        else None
+                    ),
+                    "boundary_refusal_codes": list(distinct_refusals),
+                    "boundary_refusal_code_limit": 8,
                     "coverage_pass": False,
                 }
             )
@@ -801,7 +844,7 @@ def main() -> int:
             dict(retained),
             thread_state=(torch, controls, refusals) if exit_code == 0 else None,
         )
-    except Exception:
+    except Exception as error:
         refused = {name: encoded({"status": "incomplete"}) for name in CAPS}
         refused["diagnostic-status.json"] = encoded(
             {
@@ -812,6 +855,14 @@ def main() -> int:
                 "first_boundary_refusal": (
                     json.loads(first_refusal[0]) if first_refusal else None
                 ),
+                "terminal_boundary_refusal": (
+                    json.loads(error.boundary_context)
+                    if type(error) is RefusalError
+                    and error.boundary_context is not None
+                    else None
+                ),
+                "boundary_refusal_codes": list(distinct_refusals),
+                "boundary_refusal_code_limit": 8,
                 "coverage_pass": False,
             }
         )
