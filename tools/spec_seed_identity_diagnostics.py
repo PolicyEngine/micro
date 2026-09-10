@@ -820,6 +820,17 @@ def derive(
     return payloads
 
 
+@contextlib.contextmanager
+def retained_owned_directory(runner_temp: Path):
+    """Retain one private invented-fixture workspace for CI runner cleanup.
+
+    CPython's descriptor-relative rmtree opens omit dir_fd in the audit event.
+    Keeping the workspace avoids weakening the diagnostic's path restrictions.
+    This directory is not one of the six uploaded diagnostic artifacts.
+    """
+    yield Path(tempfile.mkdtemp(prefix="spec-seed-owned-", dir=runner_temp))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", required=True, type=Path)
@@ -831,10 +842,7 @@ def main() -> int:
     require(not output.exists() and not output.is_symlink(), "OUTPUT_EXISTS")
     output.mkdir(mode=0o700)
     phase = "environment"
-    with tempfile.TemporaryDirectory(
-        prefix="spec-seed-owned-", dir=runner_temp
-    ) as temp:
-        owned = Path(temp)
+    with retained_owned_directory(runner_temp) as owned:
         require(sys.version_info[:3] == (3, 14, 4), "PYTHON")
         require(sys.platform == "linux", "PLATFORM")
         require(all(os.environ.get(name) == "1" for name in THREAD_ENV), "THREADS")
@@ -873,6 +881,13 @@ def main() -> int:
             "cuda_bindings_import_attempts": 0,
             "temporary_finder_removed": True,
             "torch_optional_bindings_fallback_verified": False,
+            "owned_temporary_storage": {
+                "policy": "retain_private_directory_until_ci_runner_cleanup",
+                "parent": "RUNNER_TEMP",
+                "directories_per_invocation": 1,
+                "contents": "invented_spec_fixture_and_dependency_temporaries",
+                "uploaded": False,
+            },
         }
         try:
             bootstrap["absent_stdlib_zip_omitted"] = omit_absent_stdlib_zip()
@@ -926,8 +941,8 @@ def main() -> int:
             )
             exit_code = 1
         retained = tuple((name, payloads[name]) for name in CAPS)
-    # Fixture cleanup has finished. No borrowed source/artifact I/O follows the
-    # terminal publication; a killed cleanup therefore leaves incomplete status.
+    # The private fixture workspace remains for CI runner cleanup. No borrowed
+    # source/artifact I/O follows the terminal publication.
     require(
         tuple((name, payloads[name]) for name in CAPS) == retained, "OUTPUT_CHANGED"
     )
