@@ -166,6 +166,7 @@ def test_uk_population_targets_is_registered_in_the_country_package() -> None:
 def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     resource = _load()
 
+    assert resource["schema_version"] == 2
     assert resource["country"] == "uk"
     assert resource["allowed_value_operations"] == [
         "identity",
@@ -181,6 +182,15 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "assertion_policy": "observed_only",
     }
     assert len(resource["targets"]) == 236
+
+    providers = resource["hierarchy"]["providers"]
+    categories = resource["hierarchy"]["categories"]
+    assert providers and categories
+    assert all(provider["label"].strip() for provider in providers.values())
+    assert all(category["label"].strip() for category in categories.values())
+    assert all(category["provider_id"] in providers for category in categories.values())
+    assert all(target["label"].strip() for target in resource["targets"])
+    assert all(target["category_id"] in categories for target in resource["targets"])
 
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
@@ -612,6 +622,8 @@ def test_uk_population_uc_households_target_counts_benunits() -> None:
 
 def test_uk_census_households_measurement_is_occupied_households() -> None:
     target = _target_by_id(_load(), "ons.census.households")
+    assert target["label"] == "Occupied households"
+    assert target["category_id"] == "ons.household_composition"
     assert target["measurement"] == {
         "entity": "household",
         "concept": "uk.household.count",

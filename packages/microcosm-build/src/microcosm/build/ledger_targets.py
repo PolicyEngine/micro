@@ -18,7 +18,17 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    CalibrationHierarchySeed,
+    HierarchyCategory,
+    HierarchyDimension,
+    HierarchyGeography,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+)
+from microcosm.calibrate.geography_constants import UK_GEOGRAPHY_ID_TO_LABEL
 
 SUPPORTED_LEDGER_AGGREGATIONS = frozenset(("sum",))
 ALLOWED_ASSERTION_POLICIES = frozenset(("observed_only", "allow_source_projection"))
@@ -53,6 +63,56 @@ EXACT_PERIOD_VALUE_OPERATIONS = frozenset(
     ("identity", "sum", "difference", "count_x_mean")
 )
 DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS = ("entity", "period", "family", "filter")
+
+
+class LedgerHierarchyMetadataError(ValueError):
+    """A selected Chronicle fact cannot populate the required hierarchy."""
+
+
+def hierarchy_seed_from_catalog(
+    hierarchy: Mapping[str, object],
+    category_id: str,
+    *,
+    target_id: str | None = None,
+) -> CalibrationHierarchySeed:
+    """Resolve one category reference from normalized provider/category catalogs."""
+
+    providers = hierarchy.get("providers")
+    categories = hierarchy.get("categories")
+    if not isinstance(providers, Mapping) or not isinstance(categories, Mapping):
+        raise ValueError("Hierarchy providers and categories must be mappings.")
+    category = categories.get(category_id)
+    if not isinstance(category, Mapping):
+        raise ValueError(f"Unknown hierarchy category {category_id!r}.")
+    provider_id = str(category.get("provider_id") or "")
+    provider = providers.get(provider_id)
+    if not isinstance(provider, Mapping):
+        raise ValueError(
+            f"Hierarchy category {category_id!r} references unknown provider "
+            f"{provider_id!r}."
+        )
+    target_labels = hierarchy.get("target_labels")
+    if target_labels is not None and not isinstance(target_labels, Mapping):
+        raise ValueError("Hierarchy target_labels must be a mapping when present.")
+    target_label = ""
+    if isinstance(target_labels, Mapping) and target_id in target_labels:
+        target_label = str(target_labels[target_id] or "").strip()
+        if not target_label:
+            raise ValueError(
+                f"Hierarchy target {target_id!r} has an empty target label."
+            )
+    return CalibrationHierarchySeed(
+        provider=HierarchyNode(
+            id=provider_id,
+            label=str(provider.get("label") or ""),
+        ),
+        category=HierarchyCategory(
+            id=category_id,
+            label=str(category.get("label") or ""),
+            provider_id=provider_id,
+        ),
+        target_label=target_label or None,
+    )
 
 
 @dataclass(frozen=True)
@@ -107,6 +167,7 @@ class LedgerTargetReference:
     tolerance: float | None = None
     notes: str = ""
     metadata: Mapping[str, str] = field(default_factory=dict)
+    hierarchy: CalibrationHierarchySeed | None = None
     assertion_policy: str = "observed_only"
     period_match_policy: str = "latest_not_after"
     uprating_index: str | None = None
@@ -215,6 +276,19 @@ class LedgerTargetReference:
                 f"must be non-empty strings; bad keys {bad_metadata}."
             )
         object.__setattr__(self, "metadata", metadata)
+        if isinstance(self.hierarchy, Mapping):
+            object.__setattr__(
+                self,
+                "hierarchy",
+                CalibrationHierarchySeed.from_dict(dict(self.hierarchy)),
+            )
+        elif self.hierarchy is not None and not isinstance(
+            self.hierarchy, CalibrationHierarchySeed
+        ):
+            raise TypeError(
+                f"LedgerTargetReference {self.name!r}: hierarchy must be a "
+                "CalibrationHierarchySeed, mapping, or None."
+            )
 
 
 @dataclass(frozen=True)
@@ -710,9 +784,15 @@ def target_spec_from_ledger_reference(
             ),
             **_multi_fact_reference_metadata(facts),
             **publication_metadata,
+            **_diagnostic_target_label_metadata(facts, target_period=period),
             "ledger_resolved_assertion": _fact_assertion(representative_fact),
             **_reference_metadata(reference),
         },
+        hierarchy=_calibration_hierarchy(
+            facts,
+            reference=reference,
+            target_period=period,
+        ),
     )
 
 
@@ -778,6 +858,7 @@ def _multi_fact_reference_metadata(facts: tuple[object, ...]) -> dict[str, str]:
         return {}
     member_keys = tuple(_fact_key(fact) or _source_record_id(fact) for fact in facts)
     payload = json.dumps(member_keys, separators=(",", ":"))
+    varying_dimensions = _varying_dimension_ids(facts)
     return {
         "ledger_member_fact_count": str(len(facts)),
         "ledger_member_aggregate_fact_keys": payload,
@@ -785,7 +866,369 @@ def _multi_fact_reference_metadata(facts: tuple[object, ...]) -> dict[str, str]:
         "ledger_member_fact_digest": hashlib.sha256(
             payload.encode("utf-8")
         ).hexdigest(),
+        **(
+            {
+                "ledger_aggregation_varying_dimensions": json.dumps(
+                    varying_dimensions,
+                    separators=(",", ":"),
+                )
+            }
+            if varying_dimensions
+            else {}
+        ),
     }
+
+
+def _calibration_hierarchy(
+    facts: tuple[object, ...],
+    *,
+    reference: LedgerTargetReference,
+    target_period: object,
+) -> CalibrationHierarchy | None:
+    """Complete the Microcosm hierarchy seed with Chronicle-owned fact data."""
+
+    seed = reference.hierarchy
+    if seed is None:
+        return None
+    _validate_chronicle_hierarchy_labels(facts, reference_name=reference.name)
+    geography_pairs = {
+        (
+            _str_at(fact, "geography", "level"),
+            _str_at(fact, "geography", "id"),
+        )
+        for fact in facts
+    }
+    if len(geography_pairs) != 1:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: hierarchy geography "
+            f"must be constant across aggregate member facts, got "
+            f"{sorted(geography_pairs)!r}."
+        )
+    geography_level, geography_id = next(iter(geography_pairs))
+    if not geography_level or not geography_id:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: Chronicle geography "
+            "level and id are required for the calibration hierarchy."
+        )
+    geography_names = {_str_at(fact, "geography", "name").strip() for fact in facts} - {
+        ""
+    }
+    if len(geography_names) > 1:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: Chronicle geography "
+            f"name conflicts across aggregate member facts: "
+            f"{sorted(geography_names)!r}."
+        )
+    geography_label = (
+        next(iter(geography_names))
+        if geography_names
+        else _geography_fallback_label(geography_id)
+    )
+    if not geography_label:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: Chronicle geography "
+            f"{geography_level!r}/{geography_id!r} has no display label and is "
+            "not present in Microcosm's authoritative geography catalog."
+        )
+    target_label = _target_label(
+        facts,
+        reference=reference,
+        target_period=target_period,
+    )
+    return CalibrationHierarchy(
+        provider=seed.provider,
+        category=seed.category,
+        geography=HierarchyGeography(
+            id=geography_id,
+            label=geography_label,
+            level=geography_level,
+        ),
+        dimensions=_inherited_dimensions(facts),
+        target=HierarchyNode(
+            id=reference.name,
+            label=target_label,
+        ),
+    )
+
+
+def _target_label(
+    facts: tuple[object, ...],
+    *,
+    reference: LedgerTargetReference,
+    target_period: object,
+) -> str:
+    """Resolve the label from the owner of the resulting target semantics."""
+
+    if _requires_microcosm_target_label(
+        facts,
+        reference=reference,
+        target_period=target_period,
+    ):
+        if reference.hierarchy is None or not reference.hierarchy.target_label:
+            raise LedgerHierarchyMetadataError(
+                f"Ledger target reference {reference.name!r}: multi-fact, "
+                "transformed, or restamped targets require an explicit "
+                "Microcosm target label."
+            )
+        return reference.hierarchy.target_label
+
+    fact = facts[0]
+    label = _str_at(fact, "label").strip()
+    if not label:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: the selected Chronicle "
+            "fact requires a non-empty label."
+        )
+    return label
+
+
+def _validate_chronicle_hierarchy_labels(
+    facts: tuple[object, ...],
+    *,
+    reference_name: str,
+) -> None:
+    """Require Chronicle-owned labels without identifier-derived substitutes."""
+
+    dimension_labels: dict[str, set[str]] = {}
+    dimension_value_labels: dict[tuple[str, str], set[str]] = {}
+    for index, fact in enumerate(facts):
+        fact_id = _fact_key(fact) or _source_record_id(fact) or f"member[{index}]"
+        if not _str_at(fact, "label").strip():
+            raise LedgerHierarchyMetadataError(
+                f"Ledger target reference {reference_name!r}: every selected "
+                f"Chronicle fact requires a non-empty label; missing for {fact_id!r}."
+            )
+
+        raw_dimensions = _dimensions(fact)
+        dimensions = {str(key): value for key, value in raw_dimensions.items()}
+        groupby_id = _str_at(fact, "layout", "groupby_dimension").strip()
+        groupby_value_id = _str_at(fact, "layout", "groupby_value_id").strip()
+        if groupby_id and groupby_value_id:
+            dimensions.setdefault(groupby_id, groupby_value_id)
+
+        for dimension_id, value in dimensions.items():
+            labels = {
+                str(label).strip()
+                for label in (
+                    _mapping_value(fact, "dimension_labels", dimension_id),
+                    (
+                        _at(fact, "layout", "groupby_dimension_label")
+                        if dimension_id == groupby_id
+                        else None
+                    ),
+                )
+                if label is not None and str(label).strip()
+            }
+            if len(labels) != 1:
+                raise LedgerHierarchyMetadataError(
+                    f"Ledger target reference {reference_name!r}: Chronicle fact "
+                    f"{fact_id!r} dimension {dimension_id!r} requires exactly one "
+                    f"non-empty label, got {sorted(labels)!r}."
+                )
+            dimension_labels.setdefault(dimension_id, set()).update(labels)
+
+            value_id = _dimension_value_id(value)
+            value_labels = {
+                str(label).strip()
+                for label in (
+                    _nested_mapping_value(
+                        fact,
+                        "dimension_value_labels",
+                        dimension_id,
+                        value_id,
+                    ),
+                    (
+                        _at(fact, "layout", "groupby_value_label")
+                        if dimension_id == groupby_id and value_id == groupby_value_id
+                        else None
+                    ),
+                )
+                if label is not None and str(label).strip()
+            }
+            if len(value_labels) != 1:
+                raise LedgerHierarchyMetadataError(
+                    f"Ledger target reference {reference_name!r}: Chronicle fact "
+                    f"{fact_id!r} dimension {dimension_id!r} value {value_id!r} "
+                    "requires exactly one non-empty label, got "
+                    f"{sorted(value_labels)!r}."
+                )
+            dimension_value_labels.setdefault((dimension_id, value_id), set()).update(
+                value_labels
+            )
+
+    for dimension_id, labels in dimension_labels.items():
+        if len(labels) != 1:
+            raise LedgerHierarchyMetadataError(
+                f"Ledger target reference {reference_name!r}: Chronicle dimension "
+                f"{dimension_id!r} has conflicting labels {sorted(labels)!r}."
+            )
+    for (dimension_id, value_id), labels in dimension_value_labels.items():
+        if len(labels) != 1:
+            raise LedgerHierarchyMetadataError(
+                f"Ledger target reference {reference_name!r}: Chronicle dimension "
+                f"{dimension_id!r} value {value_id!r} has conflicting labels "
+                f"{sorted(labels)!r}."
+            )
+
+
+def _requires_microcosm_target_label(
+    facts: tuple[object, ...],
+    *,
+    reference: LedgerTargetReference,
+    target_period: object,
+) -> bool:
+    if len(facts) != 1 or reference.value_operation != "identity":
+        return True
+    fact = facts[0]
+    fact_period = _at(fact, "period", "value")
+    if fact_period is None:
+        return True
+    return not period_values_semantically_equal(
+        target_period,
+        fact_period,
+        declared_type=_str_at(fact, "period", "type"),
+    )
+
+
+def _inherited_dimensions(facts: tuple[object, ...]) -> tuple[HierarchyDimension, ...]:
+    """Return dimensions constant across all facts in deterministic order."""
+
+    common = _common_dimensions(facts)
+    dimensions: list[HierarchyDimension] = []
+    groupby_id = _constant_text(facts, "layout", "groupby_dimension")
+    groupby_value_id = _constant_text(facts, "layout", "groupby_value_id")
+    if groupby_id and groupby_value_id:
+        raw_value = common.pop(groupby_id, groupby_value_id)
+        dimensions.append(
+            HierarchyDimension(
+                id=groupby_id,
+                label=(
+                    _constant_text(facts, "layout", "groupby_dimension_label")
+                    or _dimension_label(facts, groupby_id)
+                ),
+                value_id=_dimension_value_id(groupby_value_id),
+                value_label=(
+                    _constant_text(facts, "layout", "groupby_value_label")
+                    or _dimension_value_label(facts, groupby_id, raw_value)
+                ),
+            )
+        )
+    for dimension_id in sorted(common):
+        value = common[dimension_id]
+        dimensions.append(
+            HierarchyDimension(
+                id=dimension_id,
+                label=_dimension_label(facts, dimension_id),
+                value_id=_dimension_value_id(value),
+                value_label=_dimension_value_label(facts, dimension_id, value),
+            )
+        )
+    return tuple(dimensions)
+
+
+def _common_dimensions(facts: tuple[object, ...]) -> dict[str, object]:
+    first = {str(key): value for key, value in _dimensions(facts[0]).items()}
+    return {
+        key: value
+        for key, value in first.items()
+        if all(
+            key in _dimensions(fact) and _dimensions(fact)[key] == value
+            for fact in facts[1:]
+        )
+    }
+
+
+def _varying_dimension_ids(facts: tuple[object, ...]) -> list[str]:
+    if len(facts) < 2:
+        return []
+    dimension_ids = sorted(
+        {str(key) for fact in facts for key in _dimensions(fact).keys()}
+    )
+    return [
+        dimension_id
+        for dimension_id in dimension_ids
+        if len(
+            {
+                json.dumps(
+                    _dimensions(fact).get(dimension_id),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                for fact in facts
+            }
+        )
+        > 1
+    ]
+
+
+def _constant_text(facts: tuple[object, ...], *path: str) -> str:
+    values = {_str_at(fact, *path).strip() for fact in facts}
+    return next(iter(values)) if len(values) == 1 else ""
+
+
+def _dimension_label(facts: tuple[object, ...], dimension_id: str) -> str:
+    labels = {
+        str(label).strip()
+        for fact in facts
+        for label in (_mapping_value(fact, "dimension_labels", dimension_id),)
+        if label is not None and str(label).strip()
+    }
+    if len(labels) != 1:
+        raise LedgerHierarchyMetadataError(
+            f"Chronicle dimension {dimension_id!r} requires exactly one "
+            f"non-empty label across selected facts, got {sorted(labels)!r}."
+        )
+    return next(iter(labels))
+
+
+def _dimension_value_label(
+    facts: tuple[object, ...], dimension_id: str, value: object
+) -> str:
+    labels = {
+        str(label).strip()
+        for fact in facts
+        for label in (
+            _nested_mapping_value(
+                fact,
+                "dimension_value_labels",
+                dimension_id,
+                _dimension_value_id(value),
+            ),
+        )
+        if label is not None and str(label).strip()
+    }
+    if len(labels) != 1:
+        value_id = _dimension_value_id(value)
+        raise LedgerHierarchyMetadataError(
+            f"Chronicle dimension {dimension_id!r} value {value_id!r} requires "
+            "exactly one non-empty label across selected facts, got "
+            f"{sorted(labels)!r}."
+        )
+    return next(iter(labels))
+
+
+def _mapping_value(fact: object, mapping_name: str, key: str) -> object | None:
+    mapping = _at(fact, mapping_name)
+    return mapping.get(key) if isinstance(mapping, Mapping) else None
+
+
+def _nested_mapping_value(
+    fact: object, mapping_name: str, outer_key: str, inner_key: str
+) -> object | None:
+    outer = _mapping_value(fact, mapping_name, outer_key)
+    return outer.get(inner_key) if isinstance(outer, Mapping) else None
+
+
+def _dimension_value_id(value: object) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return str(value)
+
+
+def _geography_fallback_label(geography_id: str) -> str:
+    return UK_GEOGRAPHY_ID_TO_LABEL.get(geography_id, "")
 
 
 def ledger_target_registry_parity_report(
@@ -931,7 +1374,12 @@ def target_spec_from_ledger_fact(
             source=_source_citation(fact),
             family=family,
             signed=numeric_value < 0,
-            metadata=_ledger_metadata(fact, fact_key=fact_key),
+            metadata={
+                **_ledger_metadata(fact, fact_key=fact_key),
+                **_diagnostic_target_label_metadata(
+                    (fact,), target_period=target_period
+                ),
+            },
         )
     except (TypeError, ValueError) as exc:
         raise _unsupported(f"invalid_target_spec:{type(exc).__name__}", fact) from exc
@@ -2374,6 +2822,7 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         "ledger_geography_id": _str_at(fact, "geography", "id"),
         "ledger_geography_name": _str_at(fact, "geography", "name"),
         "ledger_geography_vintage": _str_at(fact, "geography", "vintage"),
+        "ledger_fact_label": _str_at(fact, "label"),
         "ledger_entity_name": _str_at(fact, "entity", "name"),
         "ledger_entity_role": _str_at(fact, "entity", "role"),
         "ledger_domain": _domain(fact),
@@ -2383,6 +2832,9 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         ),
         "ledger_layout_groupby_dimension": _str_at(fact, "layout", "groupby_dimension"),
         "ledger_layout_groupby_value_id": _str_at(fact, "layout", "groupby_value_id"),
+        "ledger_layout_groupby_value_label": _str_at(
+            fact, "layout", "groupby_value_label"
+        ),
         "ledger_layout_measure_id": _str_at(fact, "layout", "measure_id"),
         "ledger_aggregation_method": _str_at(fact, "aggregation", "method"),
     }
@@ -2393,6 +2845,29 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         if value is not None:
             metadata[f"ledger_filter_{key}"] = str(value)
     return {key: value for key, value in metadata.items() if value}
+
+
+def _diagnostic_target_label_metadata(
+    facts: tuple[object, ...],
+    *,
+    target_period: object,
+) -> dict[str, str]:
+    """Use a Chronicle fact label only when it still describes the target."""
+
+    if len(facts) != 1:
+        return {}
+    fact = facts[0]
+    label = _str_at(fact, "label").strip()
+    fact_period = _at(fact, "period", "value")
+    if not label or fact_period is None:
+        return {}
+    if not period_values_semantically_equal(
+        target_period,
+        fact_period,
+        declared_type=_str_at(fact, "period", "type"),
+    ):
+        return {}
+    return {"diagnostic_target_label": label}
 
 
 def _hierarchy_rule_enabled(

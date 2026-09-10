@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.calibration_run import resign_uk_gate_report
+from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     write_uk_national_frame,
@@ -55,6 +56,17 @@ def _load_driver_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def test_uk_release_publisher_labels_come_from_target_contract() -> None:
+    driver = _load_driver_module()
+    contract = load_uk_population_contract()
+    expected = {
+        provider_id: provider["label"]
+        for provider_id, provider in contract["hierarchy"]["providers"].items()
+    }
+
+    assert driver._uk_publisher_labels() == expected
 
 
 def _frame(weights: list[float], *, weight_kind: WeightKind):
@@ -483,9 +495,7 @@ def test_assemble_late_failure_leaves_no_partial_release(
     out_dir = assembler_inputs["out_dir"]
     assert not (out_dir / UK_NATIONAL_RELEASE_ID).exists()
     assert not list(out_dir.glob(".assemble-*"))
-    assert not list(
-        assembler_inputs["candidate"].parent.glob("*_calibration.npz")
-    )
+    assert not list(assembler_inputs["candidate"].parent.glob("*_calibration.npz"))
     # The NPZ stages beside its destination as a dotted temp file; a late
     # failure must clean that up too.
     assert not list(assembler_inputs["candidate"].parent.glob(".*.tmp.npz"))

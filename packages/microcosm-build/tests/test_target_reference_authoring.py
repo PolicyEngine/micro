@@ -11,6 +11,7 @@ from microcosm.build.target_reference_authoring import (
     AreaSignedDeferral,
     AreaTargetReferenceAuthoringConfig,
     author_area_target_references,
+    target_references_resource,
 )
 
 
@@ -92,6 +93,7 @@ def test_author_area_target_references_fans_out_roster_and_resolves_operations()
     assert amount_reference["measure"] == "hmrc/employment_income/amount"
     assert amount_reference["ledger_selector"]["geography_id"] == "A1"
     assert amount_reference["value_operation"] == "count_x_mean"
+    assert amount_reference["hierarchy"]["target_label"] == "Employment income"
     assert authored.membership_report["uprating_holds"] == [
         {
             "name": "ons.age.0_10@A1",
@@ -130,6 +132,75 @@ def test_author_area_target_references_fans_out_roster_and_resolves_operations()
         "hmrc.employment_income.amount": 2,
         "ons.age.0_10": 2,
     }
+
+    resource = target_references_resource(
+        country="uk",
+        description="synthetic",
+        authored=authored,
+        hierarchy=contract["hierarchy"],
+    )
+    assert resource["hierarchy"]["target_labels"] == {
+        "hmrc.employment_income.amount": "Employment income",
+        "ons.age.0_10": "People aged 0 to 9",
+    }
+
+
+def test_authoring_refuses_target_without_a_declared_category() -> None:
+    contract = _single_age_contract()
+    contract["targets"][0].pop("category_id")
+
+    with pytest.raises(ValueError, match="references unknown hierarchy category"):
+        author_area_target_references(
+            contract,
+            [],
+            _area_config(areas=("A1",)),
+        )
+
+
+def test_authoring_refuses_target_without_a_chronicle_selector() -> None:
+    contract = _single_age_contract()
+    contract["targets"][0].pop("ledger_selector")
+
+    with pytest.raises(ValueError, match="must declare a non-empty ledger_selector"):
+        author_area_target_references(
+            contract,
+            [],
+            _area_config(areas=("A1",)),
+        )
+
+
+def test_authoring_refuses_transformed_target_without_an_explicit_label() -> None:
+    contract = _single_age_contract()
+    contract["targets"][0].pop("label")
+    fact = _area_fact(
+        "ons",
+        "population",
+        10.0,
+        area_id="A1",
+        fact_key="a1-age-0",
+    )
+
+    with pytest.raises(ValueError, match="require an explicit Microcosm target label"):
+        author_area_target_references(
+            contract,
+            [fact],
+            _area_config(
+                areas=("A1",),
+                value_operation_by_target_id={"ons.age.0_10": "sum"},
+            ),
+        )
+
+
+def test_authoring_refuses_target_materialization() -> None:
+    contract = _single_age_contract()
+    contract["targets"][0]["materialization"] = {"kind": "synthetic_runtime_value"}
+
+    with pytest.raises(ValueError, match="declares unsupported materialization"):
+        author_area_target_references(
+            contract,
+            [],
+            _area_config(areas=("A1",)),
+        )
 
 
 def test_author_area_target_references_refuses_unsigned_absence() -> None:
@@ -371,7 +442,9 @@ def _contract() -> dict:
     contract["targets"].append(
         {
             "target_id": "hmrc.employment_income.amount",
+            "label": "Employment income",
             "family": "hmrc",
+            "category_id": "hmrc.employment",
             "geography_levels": ["constituency"],
             "ledger_selector": {
                 "source_name": "hmrc",
@@ -396,11 +469,30 @@ def _contract() -> dict:
 
 def _single_age_contract() -> dict:
     return {
+        "schema_version": 2,
         "country": "uk",
+        "hierarchy": {
+            "providers": {
+                "hmrc": {"label": "HM Revenue and Customs"},
+                "ons": {"label": "Office for National Statistics"},
+            },
+            "categories": {
+                "hmrc.employment": {
+                    "provider_id": "hmrc",
+                    "label": "Employment income",
+                },
+                "ons.population": {
+                    "provider_id": "ons",
+                    "label": "Population",
+                },
+            },
+        },
         "targets": [
             {
                 "target_id": "ons.age.0_10",
+                "label": "People aged 0 to 9",
                 "family": "ons_population",
+                "category_id": "ons.population",
                 "geography_levels": ["constituency"],
                 "ledger_selector": {
                     "source_name": "ons",
@@ -446,11 +538,13 @@ def _area_fact(
         "legacy_fact_key": f"ledger.fact.v1:{fact_key}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:{fact_key}",
         "lineage": {"source_record_id": f"{source_name}.{fact_key}"},
+        "label": f"{source_name.upper()} {measure_id.replace('_', ' ')}",
         "value": value,
         "period": {"type": "calendar_year", "value": 2025},
         "geography": {
             "level": "constituency",
             "id": area_id,
+            "name": f"Area {area_id}",
             "vintage": "pcon_2024",
         },
         "entity": {"name": "person"},
@@ -468,11 +562,25 @@ def _area_fact(
             "vintage": "synthetic",
         },
         "dimensions": dimensions,
+        "dimension_labels": (
+            {"synthetic_band": "Synthetic age band"} if dimensions else {}
+        ),
+        "dimension_value_labels": (
+            {"synthetic_band": {fact_key: f"Synthetic band {fact_key}"}}
+            if dimensions
+            else {}
+        ),
         "layout": {
             "record_set_id": record_set_id,
             "record_set_spec_id": record_set_spec_id,
             "groupby_dimension": groupby_dimension,
             "groupby_value_id": groupby_value_id,
+            "groupby_dimension_label": (
+                "Synthetic age band" if groupby_dimension else ""
+            ),
+            "groupby_value_label": (
+                f"Synthetic band {fact_key}" if groupby_value_id else ""
+            ),
             "measure_id": measure_id,
         },
     }

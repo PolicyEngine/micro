@@ -26,7 +26,14 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     validate_uk_national_frame,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyGeography,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+)
 from microcosm.frame import MassChangeRecord, WeightKind
 
 
@@ -79,6 +86,31 @@ def _spool_rows(output_dir: Path):
 
 def _local_ref(path: Path) -> str:
     return f"local://{path.resolve().as_posix().lstrip('/')}"
+
+
+def _fixture_hierarchy(
+    name: str,
+    *,
+    provider_id: str,
+    provider_label: str,
+    category_id: str,
+    category_label: str,
+    geography_id: str,
+    geography_label: str,
+    geography_level: str,
+    target_label: str,
+) -> CalibrationHierarchy:
+    return CalibrationHierarchy(
+        provider=HierarchyNode(provider_id, provider_label),
+        category=HierarchyCategory(category_id, category_label, provider_id),
+        geography=HierarchyGeography(
+            geography_id,
+            geography_label,
+            geography_level,
+        ),
+        dimensions=(),
+        target=HierarchyNode(name, target_label),
+    )
 
 
 def _load_builder_module():
@@ -308,6 +340,17 @@ def _household_specs_for_ladder(ladder) -> list[TargetSpec]:
                         "uprating_from_period": census_year,
                         "uprating_to_period": 2025,
                     },
+                    hierarchy=_fixture_hierarchy(
+                        f"ons.census.households@{area_code}",
+                        provider_id="ons",
+                        provider_label="Office for National Statistics",
+                        category_id="ons.household_composition",
+                        category_label="Household composition",
+                        geography_id=str(area_code),
+                        geography_label=f"Area {area_code}",
+                        geography_level=level,
+                        target_label="Occupied households",
+                    ),
                 )
             )
     return specs
@@ -563,7 +606,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert diagnostics["metric"].unique().tolist() == ["households"]
     assert len(support) == 8
     assert past_cap["n_targets"] == 4
-    assert calibration_diagnostics["schema_version"] == 6
+    assert calibration_diagnostics["schema_version"] == 8
     uk_diagnostics = calibration_diagnostics["uk_diagnostics"]
     assert len(uk_diagnostics["weakest_families"]) == 1
     assert len(uk_diagnostics["weakest_areas_by_fit"]["bottom_by_fit"]) == 4
@@ -1094,6 +1137,17 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                         "ledger_geography_level": "country",
                         "ledger_geography_id": "K02000001",
                     },
+                    hierarchy=_fixture_hierarchy(
+                        target_id,
+                        provider_id="ons",
+                        provider_label="Office for National Statistics",
+                        category_id="ons.household_composition",
+                        category_label="Household composition",
+                        geography_id="K02000001",
+                        geography_label="United Kingdom",
+                        geography_level="country",
+                        target_label="Household composition",
+                    ),
                 )
                 for index, target_id in enumerate(selected_composition)
             ],
@@ -1111,6 +1165,17 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                         "ledger_geography_level": "country",
                         "ledger_geography_id": "K03000001",
                     },
+                    hierarchy=_fixture_hierarchy(
+                        name,
+                        provider_id="dwp",
+                        provider_label="Department for Work and Pensions",
+                        category_id="dwp.universal_credit",
+                        category_label="Universal Credit",
+                        geography_id="K03000001",
+                        geography_label="Great Britain",
+                        geography_level="country",
+                        target_label="Universal Credit payment distribution",
+                    ),
                 )
                 for index, name in enumerate(fanout_names)
             ],
@@ -1134,6 +1199,17 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                     "geography_id": "E09000001",
                     "ledger_fact_period": "2023",
                 },
+                hierarchy=_fixture_hierarchy(
+                    "ons.tenure.owned_outright@E09000001",
+                    provider_id="ons",
+                    provider_label="Office for National Statistics",
+                    category_id="ons.housing",
+                    category_label="Housing",
+                    geography_id="E09000001",
+                    geography_label="City of London",
+                    geography_level="local_authority",
+                    target_label="Owned outright",
+                ),
             ),
         ],
         country="uk",

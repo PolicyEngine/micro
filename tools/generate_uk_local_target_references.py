@@ -21,11 +21,13 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 
 DESCRIPTION = (
     "UK local-area Ledger target references for constituency and local-authority "
-    "calibration. Rows are generated from the local rows in uk_population_targets.json and "
-    "local_area_crosswalk.json: name is target_id@geography_id, ledger_selector "
-    "is the contract selector plus geography_level/geography_id pins, entity "
-    "and measure come from the policyengine binding, and observed values stay "
-    "in Ledger facts. Deferred area absences are recorded in the membership "
+    "calibration. Rows are generated from the Chronicle-backed local rows in "
+    "uk_population_targets.json and local_area_crosswalk.json: name is "
+    "target_id@geography_id, ledger_selector is the contract selector plus "
+    "geography_level/geography_id pins, entity and measure come from the "
+    "policyengine binding, and observed values stay in Ledger facts. Targets "
+    "without matching Chronicle facts fail unless their exact area absences are "
+    "explicitly reviewed. Deferred area absences are recorded in the membership "
     "report."
 )
 LOCAL_GEOGRAPHY_LEVELS = frozenset({"constituency", "local_authority"})
@@ -79,6 +81,7 @@ def main() -> None:
         country="uk",
         description=DESCRIPTION,
         authored=authored,
+        hierarchy=contract["hierarchy"],
     )
     args.output.write_text(json.dumps(resource, indent=2) + "\n", encoding="utf-8")
     args.membership_report.write_text(
