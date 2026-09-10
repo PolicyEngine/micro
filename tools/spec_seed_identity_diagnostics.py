@@ -211,7 +211,11 @@ def coordinates() -> dict[str, str]:
     event = os.environ.get("GITHUB_EVENT_NAME", "")
     require(event in {"push", "pull_request"}, "EVENT")
     for key, value in result.items():
-        optional = event == "push" and key.startswith(("pr_", "event_merge"))
+        # The event payload may omit merge_commit_sha. Preserve that absence;
+        # checkout/event SHAs are separate coordinates, not a substitute value.
+        optional = key == "event_merge_sha" or (
+            event == "push" and key.startswith("pr_")
+        )
         require(
             bool(re.fullmatch(r"[0-9a-f]{40}", value)) or (optional and not value),
             "COORDINATES",

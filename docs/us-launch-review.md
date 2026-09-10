@@ -47,8 +47,9 @@ need reconciliation; this draft does not supersede either review.
 
 The first native twenty-node survey, block-geography and financial cold pilot
 now passes at 1/1000: 1,584 source households and 3,464 people become 3,168
-household records and 6,928 person records after cloning. The run assigns one
-block before cloning, retains location inheritance and attaches seven financial
+household records and 6,928 person records after cloning. Ten financial nodes ran
+cold over the stored ten-node prefix, which retains the block assigned before
+cloning. The composition retains location inheritance and attaches seven financial
 fields while preserving the other population fields. It took 110.12 minutes and
 11.45 GB peak memory. The final receipt and independent source/resource
 postcheck pass. This is the original frozen 491-source implementation; newer
@@ -197,8 +198,9 @@ The following work remains open:
    the build must retain one assigned Census block and derive its larger
    geographies. Prior wages remain excluded. A source operator's existence is
    not complete cell coverage.
-4. Extend the accepted small native replay to the complete build. The genuine
-   seven-node age-development run now passes at 1/1000: 1,584 source households,
+4. Retain the earlier seven-node age-development result as historical evidence;
+   the twenty-node cold/replay pilot in item 1 is the newer native milestone.
+   The seven-node run passed at 1/1000: 1,584 source households,
    3,168 records after the support clone, final export/readback and owner/target
    verification, 71.1 minutes and 8.26 GB peak RSS. Its source is frozen at
    `a9895d8a5`, before the new Social Security, PUF55 and atomic-geography work.
@@ -218,7 +220,26 @@ maintained whole-cohort finalizer for both routes together and either route
 alone. The tests also refuse changed donor row order, weights and late raw or
 donor mutations. This verifies the numerical layer; the canonical donor CREATE,
 typed model ancestry and complete survey attachment remain separate graph checks.
+The first canonical donor CREATE attempt failed during kernel construction
+because its live-code checker followed a circular function closure. The
+[failed observation](../experiments/us-puf55-canonical-create-failed-20260910.json)
+is preserved. The cycle correction passed its ten new marker controls, but
+the [39-case follow-up](../experiments/us-puf55-canonical-cycle39-failed-20260910.json)
+still refused before CREATE because the code-state snapshot changed during
+initialization. That exact changing member is being diagnosed; neither donor
+version is adopted, and the native full PUF host remains pending.
 See the [numerical evidence](../experiments/us-puf55-two-route-numerical-20260910.json).
+
+All 149 selected calibration controls now pass on the combined US/UK solver,
+including grouped bounds, fixed zero support, informed gates, budget search,
+ordinary best-iterate behavior and strict diagnostic payloads. The run took
+4.57 wall seconds at 394 MB peak memory; independent checks confirm the exact
+34 source files, copied fixtures and all 149 unique test results. The preceding
+run stopped before tests because two still-denied import probes exceeded their
+reporting ceilings; the fresh invocation changed only those reporting ceilings
+and run identities. No data access was added. This is invented-data solver
+verification, separate from native national/CD calibration; see the
+[calibration evidence](../experiments/us-calibration-consolidation-149-20260910.json).
 
 Recipient qualification now covers all 28 distinct original public controls:
 27 passed in the original run and the five-case corrected detached-output run
@@ -265,9 +286,12 @@ checks financial replay and a subsequent weight-only change. The [seven remainin
 now also pass with their original shared fixture and teardowns: 798.61 CPU seconds,
 802.89 wall seconds and 563.6 MB peak RSS. All eight original admission controls
 are accepted on the same source snapshot. A subsequent source review found an
-additional detached-view callback gap in the budget and weight-only views;
-targeted corrections and regression controls are in progress. Native calibration
-remains separate.
+additional detached-view callback gap in the budget and weight-only views.
+The correction is adopted after four targeted controls passed in 543 wall
+seconds, including nine callback branches and independent source/resource checks.
+The original eight and corrected four are separate source-version checks; see
+the [correction evidence](../experiments/us-budget-detached-view-correction-20260910.json).
+The native pilots exclude this overlay, and native calibration remains separate.
 
 A separate, bounded profile of the unchanged invented cold/required financial
 fixture passes its test, original teardown and all final code/resource checks:

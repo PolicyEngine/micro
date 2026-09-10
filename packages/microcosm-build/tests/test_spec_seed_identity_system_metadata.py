@@ -157,3 +157,197 @@ def test_maps_alias_does_not_admit_other_paths_descriptors_or_children(
         else:
             hook("open", (path, "r", os.O_RDONLY))
     assert refusals == [code]
+
+
+@pytest.fixture
+def coordinate_environment(diagnostic, monkeypatch):
+    """Exercise coordinate validation against an isolated invented environment."""
+    values = {
+        "DIAG_CHECKOUT_SHA": "1" * 40,
+        "GITHUB_SHA": "1" * 40,
+        "DIAG_WORKFLOW_SHA": "2" * 40,
+        "DIAG_PR_HEAD_SHA": "3" * 40,
+        "DIAG_PR_BASE_SHA": "4" * 40,
+        "DIAG_MERGE_SHA": "5" * 40,
+        "GITHUB_EVENT_NAME": "pull_request",
+        "GITHUB_RUN_ID": "123456",
+        "GITHUB_RUN_ATTEMPT": "2",
+        "GITHUB_REPOSITORY": "PolicyEngine/microcosm",
+    }
+    # coordinates() consumes only environ. Keep the real process environment,
+    # filesystem, dependency imports and bootstrap paths outside these cases.
+    monkeypatch.setattr(diagnostic, "os", SimpleNamespace(environ=values))
+    return values
+
+
+@pytest.mark.parametrize("event", ("pull_request", "push"))
+def test_coordinates_preserve_all_distinct_supplied_identities(
+    diagnostic, coordinate_environment, event
+):
+    values = coordinate_environment
+    values["GITHUB_EVENT_NAME"] = event
+    original = dict(values)
+    assert diagnostic.coordinates() == {
+        "checkout_sha": "1" * 40,
+        "event_sha": "1" * 40,
+        "workflow_sha": "2" * 40,
+        "pr_head_sha": "3" * 40,
+        "pr_base_sha": "4" * 40,
+        "event_merge_sha": "5" * 40,
+        "github_run_id": "123456",
+        "github_run_attempt": "2",
+        "event": event,
+        "repository": "PolicyEngine/microcosm",
+    }
+    assert values == original
+
+
+@pytest.mark.parametrize("missing", (False, True))
+def test_pull_request_coordinates_keep_absent_merge_metadata_empty(
+    diagnostic, coordinate_environment, missing
+):
+    values = coordinate_environment
+    if missing:
+        del values["DIAG_MERGE_SHA"]
+    else:
+        values["DIAG_MERGE_SHA"] = ""
+    result = diagnostic.coordinates()
+    assert result["event"] == "pull_request"
+    assert result["event_merge_sha"] == ""
+    assert result["checkout_sha"] == result["event_sha"] == "1" * 40
+    assert result["workflow_sha"] == "2" * 40
+    assert result["pr_head_sha"] == "3" * 40
+    assert result["pr_base_sha"] == "4" * 40
+    assert values.get("DIAG_MERGE_SHA", "") == ""
+
+
+@pytest.mark.parametrize("missing", (False, True))
+def test_push_coordinates_allow_absent_pull_request_metadata(
+    diagnostic, coordinate_environment, missing
+):
+    values = coordinate_environment
+    values["GITHUB_EVENT_NAME"] = "push"
+    for name in ("DIAG_PR_HEAD_SHA", "DIAG_PR_BASE_SHA", "DIAG_MERGE_SHA"):
+        if missing:
+            del values[name]
+        else:
+            values[name] = ""
+    result = diagnostic.coordinates()
+    assert result["event"] == "push"
+    assert result["pr_head_sha"] == result["pr_base_sha"] == ""
+    assert result["event_merge_sha"] == ""
+    assert result["checkout_sha"] == result["event_sha"] == "1" * 40
+    assert result["workflow_sha"] == "2" * 40
+
+
+@pytest.mark.parametrize(
+    ("event", "name"),
+    (
+        ("pull_request", "DIAG_CHECKOUT_SHA"),
+        ("pull_request", "GITHUB_SHA"),
+        ("pull_request", "DIAG_WORKFLOW_SHA"),
+        ("pull_request", "DIAG_PR_HEAD_SHA"),
+        ("pull_request", "DIAG_PR_BASE_SHA"),
+        ("push", "DIAG_CHECKOUT_SHA"),
+        ("push", "GITHUB_SHA"),
+        ("push", "DIAG_WORKFLOW_SHA"),
+    ),
+)
+def test_required_coordinate_hashes_still_refuse_when_absent(
+    diagnostic, coordinate_environment, event, name
+):
+    values = coordinate_environment
+    values["GITHUB_EVENT_NAME"] = event
+    del values[name]
+    with pytest.raises(diagnostic.RefusalError, match="^COORDINATES$"):
+        diagnostic.coordinates()
+
+
+@pytest.mark.parametrize(
+    ("event", "name"),
+    (
+        ("pull_request", "DIAG_CHECKOUT_SHA"),
+        ("pull_request", "GITHUB_SHA"),
+        ("pull_request", "DIAG_WORKFLOW_SHA"),
+        ("pull_request", "DIAG_PR_HEAD_SHA"),
+        ("pull_request", "DIAG_PR_BASE_SHA"),
+        ("pull_request", "DIAG_MERGE_SHA"),
+        ("push", "DIAG_PR_HEAD_SHA"),
+        ("push", "DIAG_PR_BASE_SHA"),
+        ("push", "DIAG_MERGE_SHA"),
+    ),
+)
+def test_nonempty_coordinate_hashes_still_require_valid_format(
+    diagnostic, coordinate_environment, event, name
+):
+    values = coordinate_environment
+    values["GITHUB_EVENT_NAME"] = event
+    values[name] = "not-a-sha"
+    with pytest.raises(diagnostic.RefusalError, match="^COORDINATES$"):
+        diagnostic.coordinates()
+
+
+@pytest.mark.parametrize(
+    "value", ("null", "A" * 40, "f" * 39, "f" * 41, "f" * 40 + "\n")
+)
+def test_missing_merge_exception_does_not_accept_malformed_present_hashes(
+    diagnostic, coordinate_environment, value
+):
+    coordinate_environment["DIAG_MERGE_SHA"] = value
+    with pytest.raises(diagnostic.RefusalError, match="^COORDINATES$"):
+        diagnostic.coordinates()
+
+
+@pytest.mark.parametrize("event", ("pull_request", "push"))
+def test_checkout_must_match_event_even_without_merge_metadata(
+    diagnostic, coordinate_environment, event
+):
+    values = coordinate_environment
+    values["GITHUB_EVENT_NAME"] = event
+    values["DIAG_MERGE_SHA"] = ""
+    values["DIAG_CHECKOUT_SHA"] = "6" * 40
+    with pytest.raises(diagnostic.RefusalError, match="^CHECKOUT$"):
+        diagnostic.coordinates()
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    (
+        ("GITHUB_RUN_ID", None),
+        ("GITHUB_RUN_ID", ""),
+        ("GITHUB_RUN_ID", "not-a-run"),
+        ("GITHUB_RUN_ATTEMPT", None),
+        ("GITHUB_RUN_ATTEMPT", ""),
+        ("GITHUB_RUN_ATTEMPT", "not-an-attempt"),
+    ),
+)
+def test_coordinate_run_identity_remains_required(
+    diagnostic, coordinate_environment, name, value
+):
+    if value is None:
+        del coordinate_environment[name]
+    else:
+        coordinate_environment[name] = value
+    with pytest.raises(diagnostic.RefusalError, match="^RUN_COORDINATES$"):
+        diagnostic.coordinates()
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "code"),
+    (
+        ("GITHUB_EVENT_NAME", None, "EVENT"),
+        ("GITHUB_EVENT_NAME", "", "EVENT"),
+        ("GITHUB_EVENT_NAME", "workflow_dispatch", "EVENT"),
+        ("GITHUB_REPOSITORY", None, "REPOSITORY"),
+        ("GITHUB_REPOSITORY", "invented/other", "REPOSITORY"),
+    ),
+)
+def test_coordinate_event_and_repository_boundaries_remain_required(
+    diagnostic, coordinate_environment, name, value, code
+):
+    if value is None:
+        del coordinate_environment[name]
+    else:
+        coordinate_environment[name] = value
+    with pytest.raises(diagnostic.RefusalError, match="^" + code + "$"):
+        diagnostic.coordinates()
