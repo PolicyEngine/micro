@@ -9,6 +9,7 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import platform
 import re
 import resource
 import signal
@@ -16,6 +17,7 @@ import stat
 import sys
 import tempfile
 import tomllib
+from functools import cached_property
 from pathlib import Path
 
 LOCK_SHA256 = "4ef1ef6eb39b65ebc47c2c00bafa44e7c872544b1b0146dd8493bcfe45b2da1b"
@@ -359,6 +361,8 @@ def install_boundary(
         Path("/proc/cpuinfo"),
         Path("/proc/meminfo"),
         Path("/proc/self/maps"),
+        # operation_path resolves /proc/self to this process's numeric PID.
+        Path(f"/proc/{os.getpid()}/maps"),
     }
 
     context_roots = (
@@ -597,6 +601,77 @@ def verify_cpu_only_torch_import(bootstrap: dict) -> None:
         "TORCH_CPU_FALLBACK",
     )
     bootstrap["torch_optional_bindings_fallback_verified"] = True
+
+
+def prime_processor_metadata(bootstrap: dict) -> tuple:
+    """Use actual machine architecture for this process's processor metadata.
+
+    This initializes only the documented writable cached_property on the real
+    uname result. It replaces no platform function, descriptor, class or module.
+    No equivalence to the external uname -p probe is asserted.
+    """
+    require(sys.platform == "linux", "PROCESSOR_PLATFORM")
+    observed = os.uname()
+    info = platform.uname()
+    fields = ("system", "node", "release", "version", "machine")
+    actual = (
+        observed.sysname,
+        observed.nodename,
+        observed.release,
+        observed.version,
+        observed.machine,
+    )
+    require(
+        type(info) is platform.uname_result
+        and type(vars(type(info)).get("processor")) is cached_property
+        and tuple(getattr(info, name) for name in fields) == actual
+        and type(observed.machine) is str
+        and bool(re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", observed.machine)),
+        "PROCESSOR_UNAME_CONTRACT",
+    )
+    prior = vars(info).get("processor")
+    require(
+        "processor" not in vars(info)
+        or (type(prior) is str and prior == observed.machine),
+        "PROCESSOR_CACHE_CONFLICT",
+    )
+    evidence = {
+        "policy": "os_uname_machine_as_processor_metadata_v1",
+        "value": observed.machine,
+        "source": "os.uname.machine",
+        "uname_p_parity_claimed": False,
+        "stdlib_callables_replaced": False,
+        "lifetime": "diagnostic_process",
+        "process_maps_permission": "exact_resolved_own_pid_maps_alias",
+    }
+    info.processor = observed.machine
+    bootstrap["system_metadata"] = evidence
+    return info, actual, encoded(evidence)
+
+
+def verify_processor_metadata(state: tuple, bootstrap: dict) -> None:
+    info, actual, evidence = state
+    observed = os.uname()
+    require(
+        platform.uname() is info
+        and tuple(
+            getattr(info, name)
+            for name in ("system", "node", "release", "version", "machine")
+        )
+        == actual
+        and (
+            observed.sysname,
+            observed.nodename,
+            observed.release,
+            observed.version,
+            observed.machine,
+        )
+        == actual
+        and type(vars(info).get("processor")) is str
+        and vars(info)["processor"] == actual[-1]
+        and encoded(bootstrap.get("system_metadata")) == evidence,
+        "PROCESSOR_METADATA_CHANGED",
+    )
 
 
 def thread_controls(torch) -> dict[str, object]:
@@ -896,6 +971,7 @@ def main() -> int:
             lock = tomllib.loads((root / "uv.lock").read_text())
             installed = versions(lock)
             phase = "derive"
+            processor_state = prime_processor_metadata(bootstrap)
             with (
                 open(os.devnull, "w") as quiet,
                 contextlib.redirect_stdout(quiet),
@@ -913,6 +989,7 @@ def main() -> int:
                 payloads = derive(
                     root, owned, run, before, installed, torch, controls, bootstrap
                 )
+            verify_processor_metadata(processor_state, bootstrap)
             require(not refusals, "BOUNDARY_REFUSAL")
             exit_code = 0
         except Exception as error:
@@ -948,6 +1025,7 @@ def main() -> int:
     )
     try:
         if exit_code == 0:
+            verify_processor_metadata(processor_state, bootstrap)
             require(thread_controls(torch) == controls, "THREADS_CHANGED")
             require(not refusals, "BOUNDARY_REFUSAL")
         publish(
