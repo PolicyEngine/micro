@@ -149,6 +149,17 @@ FRAME_TABLE_SERIALIZERS = (
 
 HDF_WRITE_EXCLUSIONS = (
     HdfWriteExclusion(
+        exclusion_id="native_spm_role_raw_enrichment",
+        writer=HdfWriteSite(
+            "packages/microcosm-data/src/microcosm/data/h5_enrichment.py",
+            "append_native_spm_role",
+        ),
+        reason=(
+            "Copies existing HDF compound-record bytes and appends one validated "
+            "non-nullable Boolean array; accepts no Frame or table collection."
+        ),
+    ),
+    HdfWriteExclusion(
         exclusion_id="l0_refit_root_attrs",
         writer=HdfWriteSite(
             "packages/microcosm-build/src/microcosm/build/us_runtime/"
