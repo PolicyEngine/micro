@@ -36,6 +36,9 @@ from microcosm.graph.kernel import KernelRole
 from microcosm.graph.randomness import keyed_uniform
 
 ATOMIC_SUPPORT_TYPE = ArtifactType("microcosm.geography.atomic_support_npz", 1)
+ATOMIC_GEOGRAPHY_VALIDATION_TYPE = ArtifactType(
+    "microcosm.geography.validation_result", 1
+)
 _DEPENDENCIES = ("numpy", "pandas")
 
 
@@ -174,20 +177,38 @@ class AtomicGeographyGateKernel(_GeographyKernel):
 
     def run(self, context: KernelContext) -> KernelResult:
         households, spec, supports = _inputs(context)
+        outputs = context.node.artifact_outputs
+        expected = (ArtifactOutput("validation", ATOMIC_GEOGRAPHY_VALIDATION_TYPE),)
+        if outputs not in ((), expected):
+            raise ValueError(
+                "Atomic geography validation artifact declaration differs."
+            )
+        receipt = geography.validate_geography(households, spec, supports)
         return KernelResult(
-            receipt=geography.validate_geography(households, spec, supports)
+            receipt=receipt,
+            artifacts={"validation": canonical_json(receipt)} if outputs else {},
         )
 
 
 def atomic_geography_nodes(
-    spec: Mapping, columns: Sequence[Owned], *, base: str, prefix: str = "geography"
+    spec: Mapping,
+    columns: Sequence[Owned],
+    *,
+    base: str,
+    prefix: str = "geography",
+    emit_validation_artifact: bool = False,
 ) -> tuple[Node, ...]:
     """Append shared nodes to an existing population, refusing column rewrites.
 
     SourceRef declarations use each system's ``source`` and ``raw-bytes-v1``.
     ``identity`` must be stable across the country's sampling rungs; this builder
     cannot establish that property merely from a column name.
+
+    The optional typed gate result orders downstream consumers. Its bytes alone
+    do not authenticate their receiving population or source ancestry.
     """
+    if type(emit_validation_artifact) is not bool:
+        raise ValueError("Atomic geography validation artifact flag must be boolean.")
     spec = geography.validate_assignment_spec(spec)
     inventory = {(o.entity, o.column): o for o in columns}
     if len(inventory) != len(columns):
@@ -235,6 +256,11 @@ def atomic_geography_nodes(
                 "stream": tuple(spec["stream"]),
             },
             artifact_inputs=tuple(artifacts),
+            artifact_outputs=(
+                (ArtifactOutput("validation", ATOMIC_GEOGRAPHY_VALIDATION_TYPE),)
+                if suffix == "gate" and emit_validation_artifact
+                else ()
+            ),
         )
 
     return (

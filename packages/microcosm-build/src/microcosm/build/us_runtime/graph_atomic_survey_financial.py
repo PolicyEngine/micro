@@ -1,6 +1,6 @@
 """Checked atomic survey geography plus current financial development output.
 
-This twenty-node composition retains the raw allocation and the pre-financial
+This nineteen-node composition retains the raw allocation and the pre-financial
 clone separately. It grants neither a budget successor nor PUF recipient or
 release authority. Support bytes establish integrity, not publisher provenance.
 """
@@ -300,6 +300,8 @@ def _issue_run(
                 (name, getattr(prefix, name))
                 for name in (
                     "allocated_population",
+                    "observed_population",
+                    "expanded_population",
                     "geography_population",
                     "clone_population",
                 )
@@ -548,7 +550,7 @@ def run_atomic_survey_financial(
     resume="auto",
     return_values=False,
 ):
-    """Execute and verify all twenty nodes, including required cache replay."""
+    """Execute and verify all nineteen nodes, including required cache replay."""
     require(type(return_values) is bool, "RETURN_VALUES_FLAG")
     values.feature_columns(demographic_conditioning)
     live = _live()
@@ -580,7 +582,13 @@ def run_atomic_survey_financial(
             getattr(prefix, name),
             reconstruction._population_stamp(getattr(prefix, name)),
         )
-        for name in ("allocated_population", "geography_population", "clone_population")
+        for name in (
+            "allocated_population",
+            "observed_population",
+            "expanded_population",
+            "geography_population",
+            "clone_population",
+        )
     }
     qualified = values.qualify_current_survey_predictors(
         prefix.preparation,
@@ -597,7 +605,10 @@ def run_atomic_survey_financial(
     for node_id, record in prefix.manifest.nodes.items():
         for name, key in record.opaque_artifacts.items():
             prefix_artifacts[node_id, name] = prefix.store.load_bytes(key)
-    for edge in financial.host.current_survey_host_edges():
+    for edge in (
+        *financial.host.current_survey_host_edges(),
+        financial._geography_edge(),
+    ):
         record = prefix.manifest.node(edge.producer)
         pins[edge.name] = {
             "producer_key": record.key,
@@ -614,8 +625,15 @@ def run_atomic_survey_financial(
         replace(prefix.compiled.graph, nodes=(*prefix.compiled.graph.nodes, *nodes))
     )
     require(
-        len(prefix.compiled.order) == 10 and len(compiled.order) == 20,
+        len(prefix.compiled.order) == 9 and len(compiled.order) == 19,
         "ATOMIC_COMPILER_ROSTER",
+    )
+    gate_edge = financial._geography_edge()
+    require(
+        gate_edge.producer in compiled.predecessors[financial.DONOR_NODE]
+        and prefix_artifacts[gate_edge.producer, gate_edge.artifact]
+        == qualified.geography_validation,
+        "ATOMIC_GEOGRAPHY_GATE_EDGE",
     )
     declaration = graph_to_json(compiled.graph)
     kernels, store, sources = prefix.kernels, prefix.store, dict(prefix.sources)
@@ -650,11 +668,6 @@ def run_atomic_survey_financial(
         **{n: r.receipt for n, r in prefix.manifest.nodes.items()},
         **{s.node.id: json.loads(s.receipt) for s in geography.stages},
     }
-    cloned, clone_receipts = atomic._clone_expectations(
-        geography, prefix.compiled.graph.nodes, compiled
-    )
-    base_expected.update(cloned)
-    receipts.update(clone_receipts)
     donor_node = compiled.graph.node(financial.DONOR_NODE)
     donor = population_ops.patch(
         base_expected[survey.CREATE_NODE],
@@ -750,8 +763,6 @@ def run_atomic_survey_financial(
                     )
                 ),
             )
-        elif node_id == "geography.clone_gate":
-            population = current[version]
         elif node_id in base_expected:
             population = base_expected[node_id]
         else:
@@ -844,7 +855,7 @@ def run_atomic_survey_financial(
         )
     for version, population in (
         (survey.CREATE_NODE, base_expected[survey.CREATE_NODE]),
-        (survey.ALLOCATION_NODE, prefix.geography_population),
+        (survey.ALLOCATION_NODE, prefix.observed_population),
         (atomic.clone.COMBINED_CLONE_NODE, prefix.clone_population),
     ):
         survey._same_frame(population.frame, prefix.manifest.population(version))

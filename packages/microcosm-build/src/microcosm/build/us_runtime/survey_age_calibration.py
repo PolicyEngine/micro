@@ -464,10 +464,6 @@ def _run_survey_age_calibration(
         prefix_populations = {
             stage.node.id: stage.population for stage in geography.stages
         }
-        expanded, _receipts = atomic_source._clone_expectations(
-            geography, prefix.compiled.graph.nodes, prefix.compiled
-        )
-        prefix_populations.update(expanded)
     source_owner, source_view = source_graph._checked_preparation(prefix.preparation)
     preparation_entry = source_owner._ISSUED.get(id(prefix.preparation))
     instructions = source_graph.allocation_instructions(
@@ -517,6 +513,16 @@ def _run_survey_age_calibration(
             )
             for node in geography.nodes
             if node.kernel == atomic_source.AtomicSupportImportKernel.ref
+        )
+        gate = geography.stages[-1]
+        prefix_artifacts += (
+            (
+                gate.node.id,
+                "validation",
+                atomic_source.reconstruction.atomic_graph.ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
+                gate.receipt,
+                atomic_source.reconstruction.atomic_graph.AtomicGeographyGateKernel.capabilities,
+            ),
         )
     initial = prefix.clone_population
     _require(initial is not None, "COMPLETE_CLONE_REQUIRED")
@@ -591,6 +597,11 @@ def _run_survey_age_calibration(
     successor_payload = None
     receiving_initial = None
     receiving_budget_entry = None
+    receiving_node = (
+        clone.COMBINED_CLONE_CLAIM_NODE
+        if geography is None
+        else geography.stages[-1].node.id
+    )
 
     def observe(node_id, population):
         nonlocal admitted, budget, receiving_initial, receiving_budget_entry
@@ -610,26 +621,38 @@ def _run_survey_age_calibration(
             successor_entry = budgets._entry(admitted, budgets.SamplingOriginSuccessor)
             successor_payload = admitted.payload
         elif node_id in {transport.BUDGET_NODE, COUNT_NODE}:
-            # Count may precede the ownership claim; it is a read-only artifact.
-            # A named replay check does not pretend it shares the claim owners.
-            replay.same_replayed_frame(initial.frame, population.frame)
+            # Read-only count/transport may precede the geography gate. Compare
+            # their complete current version, including whichever prefix writes
+            # have actually occurred. Calibration waits for every base member.
+            if geography is None:
+                replay.same_replayed_frame(initial.frame, population.frame)
+            else:
+                preceding = next(
+                    name
+                    for name in reversed(observed)
+                    if name in prefix_populations
+                    and compiled.versions[name] == initial.version
+                )
+                replay.same_replayed_population(
+                    prefix_populations[preceding], population
+                )
             _require(
                 population.frame.weights_for("household").values.tobytes()
                 == numeric_bounds.incoming.tobytes(),
                 "RECEIVING_INCOMING_WEIGHTS",
             )
-            if node_id == transport.BUDGET_NODE:
+            if node_id == transport.BUDGET_NODE and geography is None:
                 _require(receiving_initial is not None, "RECEIVING_BUDGET_REQUIRED")
                 _require(
                     budgets._population_identity(population)
                     == snapshots[clone.COMBINED_CLONE_CLAIM_NODE],
                     "COMPLETE_CLAIMED_CLONE",
                 )
-            else:
+            elif node_id == COUNT_NODE:
                 _require(_measure(population) == count_payload, "REMEASURED_COUNTS")
         elif node_id == source_graph.ALLOCATION_NODE:
             replay.same_replayed_population(prefix.allocated_population, population)
-        elif node_id == clone.COMBINED_CLONE_CLAIM_NODE:
+        elif node_id == receiving_node:
             replay.same_replayed_population(initial, population)
             _require(source_graph.ALLOCATION_NODE in observed, "ALLOCATION_REQUIRED")
             # Actual source reconstruction rebinds an issued budget to this run's
@@ -653,15 +676,16 @@ def _run_survey_age_calibration(
             actual_allocation = observed[
                 source_graph.ALLOCATION_NODE
                 if geography is None
-                else geography.stages[-1].node.id
+                else atomic_source.projection.NODE
             ]
             source_graph._verify_cloned_frame(
                 actual_allocation.frame,
                 population.frame,
                 actual_allocation.design_weights["household"],
             )
-            replay.same_replayed_frame(initial.frame, population.frame)
-            if geography is not None:
+            if geography is None:
+                replay.same_replayed_frame(initial.frame, population.frame)
+            else:
                 replay.same_replayed_population(prefix_populations[node_id], population)
         elif node_id in prefix_populations:
             replay.same_replayed_population(prefix_populations[node_id], population)

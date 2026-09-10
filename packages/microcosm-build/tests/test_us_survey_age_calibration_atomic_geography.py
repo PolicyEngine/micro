@@ -37,7 +37,7 @@ def test_atomic_age_cold_and_required_replay_retain_raw_budget_and_geography(req
         age.numerical.CALIBRATION_NODE,
     }
     prefix_ids = set(case.cold.compiled.order)
-    assert len(prefix_ids) == 10
+    assert len(prefix_ids) == 9
     assert cold.manifest.key == warm.manifest.key
     assert cold.budget.payload == warm.budget.payload
     assert all(record.hit for record in warm.manifest.nodes.values())
@@ -53,7 +53,11 @@ def test_atomic_age_cold_and_required_replay_retain_raw_budget_and_geography(req
     assert "census_block_geoid" in geography_columns
     raw_identity = age.budgets._population_identity(case.cold.allocated_population)
     for run in runs:
-        assert len(run.compiled.order) == len(run.manifest.nodes) == 13
+        assert len(run.compiled.order) == len(run.manifest.nodes) == 12
+        assert (
+            "geography.gate"
+            in run.compiled.predecessors[age.numerical.CALIBRATION_NODE]
+        )
         assert set(run.compiled.order) == prefix_ids | age_ids
         assert tuple(name for name in run.compiled.order if name in prefix_ids) == (
             case.cold.compiled.order

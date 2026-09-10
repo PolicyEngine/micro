@@ -8,11 +8,14 @@ import pytest
 
 from microcosm.build import atomic_geography as geo
 from microcosm.build.graph_atomic_geography import (
+    ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
     atomic_geography_nodes,
     register_atomic_geography_kernels,
 )
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph import (
+    ArtifactInput,
+    ArtifactType,
     Capabilities,
     ContentStore,
     Determinism,
@@ -27,6 +30,8 @@ from microcosm.graph import (
     compile_graph,
     run_graph,
 )
+from microcosm.graph.canonical import canonical_json
+from microcosm.graph.keys import opaque_artifact_key
 
 
 def support_parts(system="invented_block", *, district=True):
@@ -360,7 +365,10 @@ class _InventedSpine(KernelBase):
         )
 
 
-def test_real_executor_cold_warm_and_changed_source_identity(tmp_path):
+@pytest.mark.parametrize("emit_validation_artifact", (False, True))
+def test_real_executor_cold_warm_and_changed_source_identity(
+    tmp_path, emit_validation_artifact
+):
     households, spec, supports, payload = fixture()
     columns = (
         Owned("person", "age", "int64"),
@@ -376,7 +384,9 @@ def test_real_executor_cold_warm_and_changed_source_identity(tmp_path):
         structural=StructuralDelta.CREATE,
         outputs=columns,
     )
-    nodes = atomic_geography_nodes(spec, columns, base=base.id)
+    nodes = atomic_geography_nodes(
+        spec, columns, base=base.id, emit_validation_artifact=emit_validation_artifact
+    )
     graph = compile_graph(
         Graph(
             "invented",
@@ -397,7 +407,9 @@ def test_real_executor_cold_warm_and_changed_source_identity(tmp_path):
     sources = {"invented_spine": raw_spine, "invented_block_source": raw_support}
     store = ContentStore(tmp_path / "store")
     cold = run_graph(graph, sources=sources, store=store, kernels=registry)
-    warm = run_graph(graph, sources=sources, store=store, kernels=registry)
+    warm = run_graph(
+        graph, sources=sources, store=store, kernels=registry, resume="require"
+    )
     actual = cold.population(base.id).table("household")
     expected = complete(households, spec, supports)
     for column in expected:
@@ -413,6 +425,19 @@ def test_real_executor_cold_warm_and_changed_source_identity(tmp_path):
         pd.testing.assert_series_equal(left, right, check_index_type=False)
     assert cold.nodes["geography.assign"].key == warm.nodes["geography.assign"].key
     assert cold.nodes["geography.gate"].receipt["outcome"] == "pass"
+    gate = cold.nodes["geography.gate"]
+    if emit_validation_artifact:
+        output = graph.graph.node("geography.gate").artifact_outputs
+        assert len(output) == 1 and output[0].type == ATOMIC_GEOGRAPHY_VALIDATION_TYPE
+        key = gate.opaque_artifacts["validation"]
+        assert key == opaque_artifact_key(gate.key, "validation")
+        assert store.load_bytes(key) == canonical_json(
+            geo.validate_geography(expected, spec, supports)
+        )
+        assert warm.nodes["geography.gate"].opaque_artifacts["validation"] == key
+    else:
+        assert not gate.opaque_artifacts
+
     np.testing.assert_array_equal(
         cold.population(base.id).weights_for("household").values, np.ones(8)
     )
@@ -441,3 +466,46 @@ def test_graph_builder_refuses_input_overwrites_and_duplicate_inventory():
     altered["outputs"]["area"] = "observed_region"
     with pytest.raises(ValueError, match="overwritten"):
         atomic_geography_nodes(altered, columns, base="spine")
+
+
+@pytest.mark.parametrize("defect", ("missing", "type"))
+def test_typed_geography_gate_edge_refuses_invalid_producer_contract(defect):
+    _, spec, _, _ = fixture()
+    columns = tuple(
+        Owned("household", name, "string")
+        for name in ("source_record", "observed_region", "observed_puma")
+    )
+    base = Node(
+        "spine",
+        _InventedSpine.ref,
+        sources=("invented_spine",),
+        structural=StructuralDelta.CREATE,
+        outputs=columns,
+    )
+    nodes = atomic_geography_nodes(
+        spec, columns, base=base.id, emit_validation_artifact=(defect != "missing")
+    )
+    edge_type = (
+        ArtifactType("invented.wrong_gate", 1)
+        if defect == "type"
+        else ATOMIC_GEOGRAPHY_VALIDATION_TYPE
+    )
+    consumer = Node(
+        "consumer",
+        "invented.consumer@1",
+        population=base.id,
+        artifact_inputs=(
+            ArtifactInput("validation", "geography.gate", "validation", edge_type),
+        ),
+    )
+    with pytest.raises(ValueError, match="no declared artifact|type does not match"):
+        compile_graph(
+            Graph(
+                "invented",
+                (
+                    SourceRef("invented_spine", "raw-bytes-v1"),
+                    SourceRef("invented_block_source", "raw-bytes-v1"),
+                ),
+                (base, *nodes, consumer),
+            )
+        )

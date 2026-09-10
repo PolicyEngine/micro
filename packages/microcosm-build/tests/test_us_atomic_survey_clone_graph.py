@@ -1,5 +1,7 @@
 """Invented two-arm population through the actual geography/clone executor."""
 
+import json
+
 import numpy as np
 import pandas as pd
 
@@ -7,6 +9,7 @@ from microcosm.build import atomic_geography as geo
 from microcosm.build.graph_atomic_geography import register_atomic_geography_kernels
 from microcosm.build.us_runtime import atomic_block_support as us
 from microcosm.build.us_runtime.graph_atomic_survey_clone import (
+    ASSIGNMENT_IDENTITY,
     atomic_survey_clone_nodes,
 )
 from microcosm.build.us_runtime.graph_combined_clone import (
@@ -32,7 +35,7 @@ from microcosm.graph import (
 from microcosm.graph.population import dtype_for_token
 
 
-def invented_population():
+def invented_population(*, last_id=42):
     arms = {}
     string = dtype_for_token("string")
     for channel, state, puma in (("asec", "01", None), ("acs", "02", "0200002")):
@@ -41,7 +44,7 @@ def invented_population():
                 "person_id": [1, 2, 3],
                 "age": [40, 10, 50],
                 **{
-                    f"person_{entity}_id": [11, 11, 42]
+                    f"person_{entity}_id": [11, 11, last_id]
                     for entity in US_SCHEMA.group_entities
                 },
             }
@@ -49,10 +52,14 @@ def invented_population():
         tables = {
             "person": person,
             **{
-                entity: pd.DataFrame({f"{entity}_id": [11, 42]})
+                entity: pd.DataFrame({f"{entity}_id": [11, last_id]})
                 for entity in US_SCHEMA.group_entities
             },
         }
+        tables["household"][ASSIGNMENT_IDENTITY[0]] = pd.Series(
+            [json.dumps([channel, 2024, 2024, str(i)]) for i in (11, last_id)],
+            dtype=string,
+        )
         tables["household"]["observed_state"] = pd.Series([state] * 2, dtype=string)
         tables["household"]["observed_puma"] = pd.Series([puma] * 2, dtype=string)
         arms[channel] = Frame(
@@ -87,7 +94,7 @@ class InventedHost(KernelBase):
         return KernelResult(frame=invented_population())
 
 
-def test_block_assignment_precedes_clone_and_survives_required_replay(tmp_path):
+def test_block_assignment_follows_complete_clone_and_survives_required_replay(tmp_path):
     source_ids = {k: "invented-" + k for k in ("population", "district", "puma")}
     blocks = [int(x) for x in ("010010201001000", "010010201001001", "020130001001000")]
     payload = us.assemble_atomic_block_support(
@@ -97,7 +104,7 @@ def test_block_assignment_precedes_clone_and_survives_required_replay(tmp_path):
         source_ids=source_ids,
     )
     spec = us.assignment_definition(
-        identity=("household_support_channel", "household_spine_source_id"),
+        identity=ASSIGNMENT_IDENTITY,
         state_column="observed_state",
         puma_column="observed_puma",
         source_ids=source_ids,
@@ -126,8 +133,11 @@ def test_block_assignment_precedes_clone_and_survives_required_replay(tmp_path):
         )
     )
     clone_id = "combined_survey_puf_support_clone"
-    assert graph.order.index("geography.gate") < graph.order.index(clone_id)
-    assert graph.order.index(clone_id) < graph.order.index("geography.clone_gate")
+    assert graph.order.index(clone_id) < graph.order.index(clone_id + ".owned")
+    assert clone_id in graph.predecessors["geography.assign"]
+    assert clone_id + ".owned" in graph.predecessors["geography.assign"]
+    assert "geography.support.0" in graph.predecessors["geography.assign"]
+    assert "geography.clone_gate" not in graph.order
     registry = KernelRegistry()
     registry.register(InventedHost())
     register_atomic_geography_kernels(registry)
@@ -151,19 +161,27 @@ def test_block_assignment_precedes_clone_and_survives_required_replay(tmp_path):
             *spec["outputs"].values(),
             *(x["output"] for x in spec["systems"][0]["layers"]),
         ]
-        for column in geo_columns:
-            assert (
-                native[column].tolist()
-                == copies[column].tolist()
-                == before.table("household")[column].tolist()
+        assert not set(geo_columns) & set(before.table("household"))
+        for column in (ASSIGNMENT_IDENTITY[0], "observed_state", "observed_puma"):
+            pd.testing.assert_series_equal(
+                native[column].reset_index(drop=True),
+                copies[column].reset_index(drop=True),
             )
+        assert not hh.duplicated(list(ASSIGNMENT_IDENTITY)).any()
+        expected = geo.assign_atomic(
+            hh.drop(columns=geo_columns),
+            spec,
+            {us.SYSTEM: geo.decode_atomic_support(payload)},
+        )
+        for column in spec["outputs"].values():
+            assert hh[column].tolist() == expected[column].tolist()
         for entity in original.entities:
             assert len(after.table(entity)) == 2 * len(original.table(entity))
         np.testing.assert_array_equal(
             after.weights_for("household").values,
             np.tile(before.weights_for("household").values / 2, 2),
         )
-        assert manifest.nodes["geography.clone_gate"].receipt["outcome"] == "pass"
+        assert manifest.nodes["geography.gate"].receipt["outcome"] == "pass"
         geo.validate_geography(
             hh.iloc[[6, 1]], spec, {us.SYSTEM: geo.decode_atomic_support(payload)}
         )

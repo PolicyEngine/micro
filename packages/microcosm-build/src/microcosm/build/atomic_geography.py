@@ -543,9 +543,10 @@ def validate_geography(
 ) -> dict:
     """Recheck constraints and functional mappings on a full or pruned population.
 
-    Draws are not repeated: enrichment clones have new identities and must inherit
-    their parent's location. Structural lineage verification remains the executor's
-    responsibility. This gate alone is not a population-quality certificate.
+    Draws are not repeated. Initial support clones receive their own assignment
+    after expansion; subsequent views retain it. Structural lineage verification
+    remains the executor's responsibility. This gate is not a population-quality
+    certificate.
     """
     spec = _bind(spec, supports)
     expected = derive_geography(households, spec, supports)

@@ -1,4 +1,4 @@
-"""Execute qualified survey geography before the first support clone.
+"""Complete initial support clones before assigning qualified survey geography.
 
 The existing runner independently admits the raw allocation. This extension
 reconstructs every added column from the live preparation and pinned normalized
@@ -9,21 +9,20 @@ Normalized support integrity does not establish its publisher provenance.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from types import SimpleNamespace
 
-import numpy as np
-
-from microcosm.build import atomic_geography
 from microcosm.build.graph_atomic_geography import (
-    ATOMIC_SUPPORT_TYPE,
-    AtomicSupportImportKernel,
+    ATOMIC_SUPPORT_TYPE as ATOMIC_SUPPORT_TYPE,
+)
+from microcosm.build.graph_atomic_geography import (
+    AtomicSupportImportKernel as AtomicSupportImportKernel,
+)
+from microcosm.build.graph_atomic_geography import (
     register_atomic_geography_kernels,
 )
-from microcosm.frame import US_SCHEMA
 from microcosm.graph import (
     Graph,
-    KernelResult,
     SourceRef,
     StructuralDelta,
     compile_graph,
@@ -33,8 +32,6 @@ from microcosm.graph.artifact_edges import typed_contracts
 from microcosm.graph.codecs import load_raw_bytes
 from microcosm.graph.executor import (
     _all_node_keys,
-    _expand_declared_payload,
-    _expand_rewrite_coordinates,
     _input_writers,
     _source_paths_and_keys,
     _tolerance_writer_payload,
@@ -50,9 +47,6 @@ from microcosm.graph.keys import seed as node_seed
 from microcosm.graph.manifest import _freeze_json
 from microcosm.graph.population import (
     Population,
-    _mass_record,
-    expand_lineage_receipt,
-    expand_writes_receipt,
     mass_record_receipt,
     weight_cap_receipt,
 )
@@ -60,9 +54,7 @@ from microcosm.graph.population import (
 from . import graph_combined_clone as clone
 from . import graph_current_survey_geography as projection
 from . import graph_survey_population as survey
-from . import puf_support
 from . import survey_atomic_geography as reconstruction
-from .graph_sources import frame_column_declarations
 from .survey_population_replay import same_replayed_population
 
 
@@ -73,6 +65,8 @@ class AtomicSurveyPopulationRunValues:
     manifest: object
     preparation: object
     allocated_population: Population
+    observed_population: Population
+    expanded_population: Population
     geography_population: Population
     clone_population: Population
     geography_config: reconstruction.AtomicSurveyReconstruction
@@ -80,76 +74,6 @@ class AtomicSurveyPopulationRunValues:
     store: object
     kernels: object
     sources: dict
-
-
-def _clone_expectations(geography, nodes, compiled):
-    """Independently reconstruct the complete clone, including inherited cells."""
-    before = geography.population
-    expanded = puf_support.clone_us_frame_for_puf_support(
-        before.frame,
-        clone_attachment_fraction=1.0,
-        clone_attachment_seed=0,
-    )
-    design = survey._verify_cloned_frame(
-        before.frame, expanded, before.design_weights["household"]
-    )
-    expand = next(n for n in nodes if n.structural is StructuralDelta.EXPAND)
-    claim = next(n for n in nodes if n.id == clone.COMBINED_CLONE_CLAIM_NODE)
-    gate = next(n for n in nodes if n.id == "geography.clone_gate")
-    ledger = (
-        *before.mass_ledger,
-        _mass_record(before.frame, expanded, expand, KernelResult(), "conserve"),
-    )
-    owners = {
-        (e, str(c)): expand.id for e in expanded.entities for c in expanded.table(e)
-    }
-    expected, receipts = {}, {}
-    lineage, facts = {}, {}
-    for entity in US_SCHEMA.entities:
-        lineage[entity], facts[entity] = clone._entity_lineage(
-            before.frame, expanded, entity
-        )
-    authority = puf_support.validate_puf_clone_attachment(
-        expanded, boundary=survey.PHASE, expected_fraction=1.0, expected_seed=0
-    )
-    receipt = clone.USCombinedSurveyCloneExpandKernel._receipt(
-        before.frame, expanded, ("acs", "asec"), authority, facts
-    )
-    receipt["expand"] = expand_lineage_receipt(lineage)
-    receipt["expand_declared"] = _expand_declared_payload(expand)
-    receipt["expand_writes"] = expand_writes_receipt(
-        before.frame,
-        expanded,
-        expand,
-        receipt,
-        rewrite_coordinates=_expand_rewrite_coordinates(compiled, expand),
-    )
-    receipts[expand.id] = receipt
-    receipts[claim.id] = {
-        "phase": clone.COMBINED_CLONE_PHASE,
-        "claimed_cells": sorted(f"{o.entity}.{o.column}" for o in claim.outputs),
-    }
-    definition = json.loads(geography.definition)
-    system = definition["systems"][0]["id"]
-    receipts[gate.id] = atomic_geography.validate_geography(
-        expanded.table("household"),
-        definition,
-        {system: atomic_geography.decode_atomic_support(geography.support_payload)},
-    )
-    # The gate and the ownership claim can have either topological order.
-    for node_id in compiled.order:
-        if node_id not in receipts:
-            continue
-        if node_id == claim.id:
-            owners.update({(o.entity, o.column): claim.id for o in claim.outputs})
-        expected[node_id] = Population.from_frame(
-            expanded,
-            expand.id,
-            owners=owners,
-            mass_ledger=ledger,
-            design_weights={"household": np.array(design, copy=True)},
-        )
-    return expected, receipts
 
 
 def _states(compiled, kernels, source_keys, expected_populations, raw_receipts):
@@ -221,7 +145,7 @@ def run_atomic_survey_population(
     resume="auto",
     return_values=False,
 ):
-    """Build one block location before cloning and independently verify replay."""
+    """Assign each completed source/clone household and independently verify replay."""
     survey._require(type(return_values) is bool, "RETURN_VALUES_FLAG")
     prefix = survey.run_authenticated_survey_population(
         source_dir,
@@ -251,17 +175,7 @@ def run_atomic_survey_population(
         (survey.ALLOCATION_NODE, "allocation"): allocation_payload,
         (survey.ALLOCATION_NODE, "frame_context"): allocated_context,
     }
-    clone_nodes = clone.us_combined_survey_clone_nodes(
-        frame_column_declarations(geography.population.frame),
-        base=survey.ALLOCATION_NODE,
-        source_channels=("acs", "asec"),
-    )
-    gate = replace(
-        geography.nodes[-1],
-        id="geography.clone_gate",
-        population=clone_nodes[0].id,
-    )
-    additions = (*geography.nodes, *clone_nodes, gate)
+    additions = geography.nodes
     compiled = compile_graph(
         Graph(
             "us",
@@ -272,6 +186,7 @@ def run_atomic_survey_population(
             (*prefix.compiled.graph.nodes, *additions),
         )
     )
+    survey._require(len(compiled.order) == 9, "ATOMIC_COMPILER_ROSTER")
     sources = {**prefix.sources, **dict(geography.sources)}
     kernels, store = prefix.kernels, prefix.store
     store.codecs.register_bytes("raw-bytes-v1", load_raw_bytes)
@@ -289,9 +204,6 @@ def run_atomic_survey_population(
         **{name: record.receipt for name, record in prefix.manifest.nodes.items()},
         **{stage.node.id: json.loads(stage.receipt) for stage in geography.stages},
     }
-    cloned, clone_receipts = _clone_expectations(geography, additions, compiled)
-    expected.update(cloned)
-    receipts.update(clone_receipts)
     expected_stamps = {
         name: reconstruction._population_stamp(value)
         for name, value in expected.items()
@@ -319,16 +231,17 @@ def run_atomic_survey_population(
     )
     survey._require(tuple(observed) == compiled.order, "POPULATION_OBSERVER_COVERAGE")
     survey._check_node_states(manifest, states)
-    for node in geography.nodes:
-        if node.kernel == AtomicSupportImportKernel.ref:
+    for stage in geography.stages:
+        for name, payload in stage.artifacts:
+            output = next(o for o in stage.node.artifact_outputs if o.name == name)
             survey._final_artifact(
                 manifest,
                 store,
-                node_id=node.id,
-                name="support",
-                type_=ATOMIC_SUPPORT_TYPE,
-                payload=geography.support_payload,
-                capabilities=AtomicSupportImportKernel.capabilities,
+                node_id=stage.node.id,
+                name=name,
+                type_=output.type,
+                payload=payload,
+                capabilities=kernels.get(stage.node.kernel).capabilities,
             )
     # Validate prefix artifacts separately from column materialization.
     for (node_id, name), payload in prefix_artifacts.items():
@@ -340,22 +253,22 @@ def run_atomic_survey_population(
         survey._require(
             store.load_bytes(key) == payload, "ATOMIC_PREFIX_ARTIFACT_BYTES"
         )
-    clone_terminal = next(
-        name
-        for name in reversed(compiled.order)
-        if compiled.versions[name] == clone_nodes[0].id
-    )
+    geography_terminal = geography.nodes[-1].id
     result = AtomicSurveyPopulationRunValues(
-        manifest,
-        prefix.preparation,
-        prefix.allocated_population,
-        observed[geography.nodes[-1].id],
-        observed[clone_terminal],
-        geography_config,
-        compiled,
-        store,
-        kernels,
-        sources,
+        manifest=manifest,
+        preparation=prefix.preparation,
+        allocated_population=prefix.allocated_population,
+        observed_population=observed[projection.NODE],
+        expanded_population=observed[clone.COMBINED_CLONE_CLAIM_NODE],
+        geography_population=observed[geography_terminal],
+        # This historical field is the terminal receiving population. The
+        # explicit expanded_population is the preassignment clone snapshot.
+        clone_population=observed[geography_terminal],
+        geography_config=geography_config,
+        compiled=compiled,
+        store=store,
+        kernels=kernels,
+        sources=sources,
     )
     current_keys, current_implementations = _all_node_keys(
         compiled, kernels, source_keys
@@ -385,8 +298,10 @@ def run_atomic_survey_population(
         and result.geography_config is geography_config
         and result.preparation is prefix.preparation
         and result.allocated_population is prefix.allocated_population
-        and result.geography_population is observed[geography.nodes[-1].id]
-        and result.clone_population is observed[clone_terminal]
+        and result.observed_population is observed[projection.NODE]
+        and result.expanded_population is observed[clone.COMBINED_CLONE_CLAIM_NODE]
+        and result.geography_population is observed[geography_terminal]
+        and result.clone_population is result.geography_population
         and result.manifest is manifest
         and result.compiled is compiled
         and result.store is store
@@ -395,6 +310,8 @@ def run_atomic_survey_population(
         and reconstruction._population_stamp(prefix.allocated_population) == raw_stamp,
         "ATOMIC_FINAL_RECONSTRUCTION",
     )
+    same_replayed_population(fresh.observed_population, result.observed_population)
+    same_replayed_population(fresh.expanded_population, result.expanded_population)
     same_replayed_population(fresh.population, result.geography_population)
     for node_id, population in expected.items():
         survey._require(

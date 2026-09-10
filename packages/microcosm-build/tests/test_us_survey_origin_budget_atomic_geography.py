@@ -6,6 +6,7 @@ import os
 import sys
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from test_us_graph_atomic_survey_population import known_atomic_run  # noqa: F401
 from test_us_survey_origin_budget import _assert_final_mutation_refused
@@ -13,6 +14,7 @@ from test_us_survey_origin_budget import _assert_final_mutation_refused
 from microcosm.build.us_runtime import survey_atomic_geography as reconstruction
 from microcosm.build.us_runtime import survey_origin_budget as owner
 from microcosm.build.us_runtime import survey_population_replay as replay
+from microcosm.frame import Frame
 
 
 def test_atomic_support_fifo_refuses_before_any_source_borrow(tmp_path, monkeypatch):
@@ -79,15 +81,25 @@ def test_atomic_budget_binds_complete_geography_on_cold_and_required_replay(
     expected_receipt = json.loads(expected.receipt)
     # Keep the helper's own physical seal exact; compare independently replayed
     # objects with the maintained named null-storage convention instead.
-    assert expected_receipt.pop(
-        "population_sha256"
-    ) == reconstruction._population_stamp(expected.population)
+    for key, population in (
+        ("population_sha256", expected.population),
+        ("observed_population_sha256", expected.observed_population),
+        ("expanded_population_sha256", expected.expanded_population),
+    ):
+        assert expected_receipt.pop(key) == reconstruction._population_stamp(population)
+    assert "preclone_population_semantic_sha256" not in binding
+    assert len(binding["postclone_geography_population_semantic_sha256"]) == 64
+    assert binding["validation_receipt"] == json.loads(expected.stages[-1].receipt)
     assert (
         binding["reconstruction_semantic_sha256"]
         == hashlib.sha256(owner._json(expected_receipt)).hexdigest()
     )
     assert binding["identity_scope"] == {
-        "reconstruction_omitted_fields": ["population_sha256"],
+        "reconstruction_omitted_fields": [
+            "population_sha256",
+            "observed_population_sha256",
+            "expanded_population_sha256",
+        ],
         "population_fields": [
             "frame_sha256",
             "version",
@@ -112,13 +124,25 @@ def test_atomic_budget_binds_complete_geography_on_cold_and_required_replay(
     assert warm.payload == budget.payload
 
 
-@pytest.mark.parametrize("defect", ("geography_cell", "geography_owner"))
-def test_atomic_budget_refuses_changed_geography_in_first_clone(atomic_budget, defect):
+@pytest.mark.parametrize(
+    "defect,reason",
+    (
+        ("geography_cell", "SURVEY_POPULATION_REPLAY_STRING_VALUE"),
+        ("geography_owner", "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"),
+        ("clone_discriminator", "SURVEY_POPULATION_REPLAY_NATIVE_BITS"),
+    ),
+)
+def test_atomic_budget_refuses_changed_geography_in_first_clone(
+    atomic_budget, defect, reason
+):
     case, _budget = atomic_budget
     arguments = _arguments(case)
     changed = reconstruction._copy_population(arguments["clone_population"])
     if defect == "geography_cell":
         changed.frame.table("household").loc[0, "census_block_geoid"] = "0" * 15
+    elif defect == "clone_discriminator":
+        table = changed.frame.table("household")
+        table.loc[0, "household_support_clone_index"] = 1
     else:
         owners = dict(changed.owners)
         owners["household", "census_block_geoid"] = (
@@ -126,7 +150,88 @@ def test_atomic_budget_refuses_changed_geography_in_first_clone(atomic_budget, d
         )
         object.__setattr__(changed, "owners", owners)
     arguments["clone_population"] = changed
-    with pytest.raises(ValueError, match="CLONE_FRAME_VALUES|POPULATION_OWNERS"):
+    with pytest.raises(ValueError, match=reason):
+        owner.freeze_survey_origin_budget(**arguments)
+
+
+def test_atomic_budget_refuses_preclone_assignment_candidate(atomic_budget):
+    case, _budget = atomic_budget
+    run = case.cold
+    before = run.observed_population.frame
+    definition = reconstruction.blocks.assignment_definition(
+        identity=(reconstruction.observed.COLUMNS[0],),
+        state_column=reconstruction.observed.COLUMNS[1],
+        puma_column=reconstruction.observed.COLUMNS[2],
+        source_ids=dict(case.config.source_ids),
+        seed=case.config.seed,
+    )
+    supports = {
+        reconstruction.blocks.SYSTEM: reconstruction.atomic.decode_atomic_support(
+            case.payload
+        )
+    }
+    households = before.table("household")
+    assigned = pd.concat(
+        [
+            households,
+            reconstruction.atomic.assign_atomic(households, definition, supports),
+        ],
+        axis=1,
+    )
+    tables = {
+        entity: before.table(entity).copy(deep=True) for entity in before.entities
+    }
+    tables["household"] = pd.concat(
+        [
+            assigned,
+            reconstruction.atomic.derive_geography(assigned, definition, supports),
+        ],
+        axis=1,
+    )
+    old_geography = Frame(
+        tables,
+        before.schema,
+        {entity: before.weights_for(entity) for entity in before.weighted_entities},
+        before.strata,
+        metadata=before.metadata,
+        mass_log=before.mass_log,
+    )
+    old_clone = reconstruction.puf_support.clone_us_frame_for_puf_support(
+        old_geography, clone_attachment_fraction=1.0, clone_attachment_seed=0
+    )
+    # Isolate obsolete placement/ownership from unrelated storage differences
+    # introduced by a direct clone versus a ContentStore materialization.
+    candidate = reconstruction._copy_population(run.clone_population)
+    actual_households = candidate.frame.table("household")
+    old_households = old_clone.table("household")
+    geography_columns = tuple(
+        column for column in tables["household"] if column not in households
+    )
+    assert geography_columns and "census_block_geoid" in geography_columns
+    for identity in (
+        "household_id",
+        reconstruction.observed.COLUMNS[0],
+        "household_support_clone_index",
+    ):
+        assert old_households[identity].tolist() == actual_households[identity].tolist()
+    owners = dict(candidate.owners)
+    for column in geography_columns:
+        reference = actual_households[column]
+        actual_households[column] = pd.Series(
+            old_households[column].array,
+            index=reference.index,
+            dtype=reference.dtype,
+            name=column,
+        )
+        assert actual_households[column].dtype == reference.dtype
+        owners["household", column] = owner.clone.COMBINED_CLONE_NODE
+    object.__setattr__(candidate, "owners", owners)
+    arguments = _arguments(case)
+    arguments["clone_population"] = candidate
+    with pytest.raises(
+        ValueError,
+        match="SURVEY_POPULATION_REPLAY_STRING_VALUE|SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT",
+    ):
         owner.freeze_survey_origin_budget(**arguments)
 
 

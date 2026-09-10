@@ -100,12 +100,30 @@ def _attach_edges():
     return tuple(result)
 
 
+def _geography_edge():
+    return ArtifactInput(
+        "geography_validation",
+        "geography.gate",
+        "validation",
+        host.survey_budget.geography.atomic_graph.ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
+    )
+
+
 def _params(qualified, host_pins, n_estimators):
     require(type(n_estimators) is int and n_estimators > 0, "TREE_COUNT")
     values.feature_columns(qualified.demographic_conditioning)
+    geography_enabled = qualified.geography_config_payload is not None
     require(
-        type(host_pins) is dict
-        and set(host_pins) == {e.name for e in host.current_survey_host_edges()},
+        (type(qualified.geography_validation) is bytes)
+        if geography_enabled
+        else qualified.geography_validation is None,
+        "GEOGRAPHY_VALIDATION_VALUES",
+    )
+    names = {e.name for e in host.current_survey_host_edges()}
+    if geography_enabled:
+        names.add(_geography_edge().name)
+    require(
+        type(host_pins) is dict and set(host_pins) == names,
         "HOST_PINS",
     )
     for pin in host_pins.values():
@@ -160,7 +178,14 @@ def current_survey_predictor_nodes(
         params=params,
         # Branch from the authenticated CREATE before its weight transition.
         # The later projection depends on this FILTER, never conversely.
-        artifact_inputs=(host.current_survey_host_edges()[0],),
+        artifact_inputs=(
+            host.current_survey_host_edges()[0],
+            *(
+                (_geography_edge(),)
+                if qualified.geography_config_payload is not None
+                else ()
+            ),
+        ),
         description="Select native ASEC whole households before allocation; retain original design weights for survey financial fitting.",
     )
     columns = Node(
@@ -257,7 +282,7 @@ class _Kernel(host._CurrentSurveyKernel):
                         model_input,
                         sys.modules[decode_matrix_apply_state.__module__],
                         sys.modules[legacy_qrf_train_nodes.__module__],
-                        # The optional pre-clone geography admission invokes
+                        # The optional postclone geography admission invokes
                         # the budget owner's complete reconstruction closure.
                         *host.survey_budget._modules(),
                         dependencies=self.capabilities.dependencies,
@@ -310,6 +335,20 @@ class _Kernel(host._CurrentSurveyKernel):
                 and value.payload == self.preparation.payload,
                 "DONOR_PREPARATION_BINDING",
             )
+            if result.geography_config_payload is not None:
+                edge = _geography_edge()
+                value = host.shared.artifact(context, edge.name, edge.type)
+                require(
+                    self.host_pins[edge.name]
+                    == {
+                        "producer_key": value.producer_key,
+                        "artifact_key": value.key,
+                        "payload_sha256": codec.sha(value.payload),
+                    }
+                    and type(value.payload) is bytes
+                    and value.payload == result.geography_validation,
+                    "GEOGRAPHY_VALIDATION_BINDING",
+                )
         elif context.node.id != PROJECTION_NODE:
             projection = host.shared.artifact(context, "projection", PROJECTION_TYPE)
             matrix = host.shared.artifact(
