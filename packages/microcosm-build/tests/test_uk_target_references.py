@@ -21,6 +21,10 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.gates import (
+    ledger_compile_parity_gate,
+    ledger_compile_parity_signed_differences,
+)
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
@@ -36,6 +40,13 @@ from microcosm.build.uk_runtime.national_chronicle_feed import (
 )
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from tools.build_uk_ledger_compile_parity_signed_differences import (
+    RECEIPTS,
+    _add_signed_rationale_notes,
+    _compile_for_receipt,
+    _fixture_for_receipt,
+)
+from tools.generate_uk_local_target_references import _support_floor_register_scope
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
     _annual_uc_award_band_token,
@@ -47,6 +58,13 @@ from tools.generate_uk_target_references import (
 
 ACTIVE_REFERENCE_COUNT = 415
 UK_DATA_REPO = "policyengine-" + "uk-data"
+
+
+def test_local_generator_support_floor_scope_comes_from_signed_register() -> None:
+    area_ids, binding_families = _support_floor_register_scope()
+    assert area_ids == ("E06000053", "E09000001")
+    assert binding_families == frozenset({"census_households"})
+
 
 FIXTURE_REFERENCE_NAMES = {
     "obr.income_tax",
@@ -116,7 +134,7 @@ def test_committed_surfaces_regenerate_from_pinned_feed(
     else:
         facts_sha256 = _LEDGER_FACT_FEED_PIN["facts_sha256"]
         manifest_sha256 = _LEDGER_FACT_FEED_PIN["manifest_sha256"]
-        expected_rows = 128_717
+        expected_rows = int(_LEDGER_FACT_FEED_PIN["fact_row_count"])
     artifact = load_ledger_consumer_artifact(
         artifact_path,
         expected_facts_sha256=facts_sha256,
@@ -232,6 +250,10 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
             expected_metadata["uk_uc_expected_source_months"] = json.dumps(
                 source_months, separators=(",", ":")
             )
+        if "measurement_period" in binding:
+            expected_metadata["measurement_period"] = str(binding["measurement_period"])
+        if binding.get("require_matching_fact_period"):
+            expected_metadata["source_period_policy"] = "exact_observation"
         assert reference["metadata"] == expected_metadata
         # The measure is a prepared column, so the pointed-to contract binding
         # must carry what the microcosm#622 materializer needs to prepare it.
@@ -594,8 +616,21 @@ def test_uk_fixture_b_signed_differences_carry_ruled_rationales() -> None:
         )["differences"]
     }
 
-    assert "2023-24 outturn" in differences["hmrc.cgt.gains_total"]["reason"]
-    assert "forecast/uprated value" in differences["hmrc.cgt.gains_total"]["reason"]
+    expected = {
+        "hmrc.cgt.gains_total": ("calibration_drift", 119_258_000_000),
+        "hmrc.cgt.taxpayers_total": ("calibration_drift", 551_000),
+        "hmrc.cgt.liability_total": ("ledger_only", 22_503_000_000),
+        "obr.capital_gains_tax": ("fixture_only", None),
+    }
+    for name, (kind, value) in expected.items():
+        assert differences[name]["kind"] == kind
+        assert differences[name].get("ledger_value") == value
+        assert "FY2024-25" in differences[name]["reason"]
+    assert "individuals-only" in differences["hmrc.cgt.gains_total"]["reason"]
+    assert (
+        "historical forecast/uprated" in differences["hmrc.cgt.gains_total"]["reason"]
+    )
+    assert differences["obr.capital_gains_tax"]["fixture_value"] == 21_801_546_197.09165
     assert "single-age-90 share" in differences["ons.population.female_85_89"]["reason"]
     assert "single-age-90 share" in differences["ons.population.male_85_89"]["reason"]
     assert (
@@ -654,9 +689,9 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert slc_plan_2.value == pytest.approx(2_778_253_361.64)
     assert slc_plan_2.metadata["ledger_member_fact_count"] == "2"
 
-    assert targets["hmrc.cgt.gains_total"].value == 65_937_000_000
-    assert targets["hmrc.cgt.taxpayers_total"].value == 378_000
-    assert targets["hmrc.cgt.gains_total"].metadata["ledger_fact_period"] == "2023"
+    assert targets["hmrc.cgt.gains_total"].value == 119_258_000_000
+    assert targets["hmrc.cgt.taxpayers_total"].value == 551_000
+    assert targets["hmrc.cgt.gains_total"].metadata["ledger_fact_period"] == "2024"
 
     caseload = targets["dwp.uc.households"]
     assert caseload.value == 6_197_311
@@ -1009,3 +1044,105 @@ def _real_uk_consumer_fact_rows() -> list[dict]:
             "value_type": "integer",
         },
     ]
+
+
+def test_current_national_compile_parity_regenerates_and_passes_with_pinned_feed():
+    """Membership generation alone does not exercise release compile parity."""
+    from microcosm.build.uk_runtime.battery_bindings import (
+        _load_ledger_compile_parity_fixture,
+    )
+
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
+    if not configured:
+        pytest.skip("authenticated national Chronicle artifact is not configured")
+    path = Path(configured)
+    if path.is_file():
+        path = path.parent
+    pin = load_uk_national_chronicle_feed()
+    artifact = load_ledger_consumer_artifact(
+        path,
+        expected_facts_sha256=pin.facts_sha256,
+        expected_manifest_sha256=pin.manifest_sha256,
+    )
+    assert artifact.fact_row_count == pin.fact_row_count
+    for spec in RECEIPTS:
+        if spec.surface != "national":
+            continue
+        compilation = _compile_for_receipt(spec, artifact.facts)
+        report = ledger_compile_parity_signed_differences(
+            compilation.registry,
+            _fixture_for_receipt(spec),
+            unsupported=compilation.unsupported,
+        )
+        _add_signed_rationale_notes(report, fixture_resource=spec.fixture_resource)
+        expected = _load_uk_resource(spec.output_resource)
+        assert report == expected
+        if spec.target_period == 2023:
+            inherited_uc = [
+                r
+                for r in report["differences"]
+                if r["name"]
+                in {
+                    "dwp.uc.households",
+                    "dwp.uc.households_couple_no_children",
+                    "dwp.uc.households_couple_with_children",
+                    "dwp.uc.households_single_no_children",
+                    "dwp.uc.households_single_with_children",
+                }
+            ]
+            assert len(inherited_uc) == 5
+            assert all(
+                "frozen 2023 production" in r["reason"]
+                and "2025 source windows" in r["reason"]
+                for r in inherited_uc
+            )
+        gate = ledger_compile_parity_gate(
+            compilation.registry,
+            _load_ledger_compile_parity_fixture(spec.fixture_resource),
+            signed_differences=expected["differences"],
+        )
+        assert gate.passed, gate.failures
+
+
+@pytest.mark.parametrize(
+    "mutation", ["old_gain_value", "missing_cash_sign", "missing_liability_sign"]
+)
+def test_public_cgt_parity_fixture_rejects_stale_values_and_unsigned_names(mutation):
+    """Public rows catch this drift even where the full feed is unavailable."""
+    names = {
+        "hmrc.cgt.gains_total",
+        "hmrc.cgt.taxpayers_total",
+        "hmrc.cgt.liability_total",
+        "obr.capital_gains_tax",
+    }
+    references = [
+        r for r in load_country_spec("uk").target_references if r.name in names
+    ]
+    actual = compile_ledger_target_references(
+        _fixture_feed_rows(), references, country="uk"
+    )
+    fixture = _load_uk_resource("registry_parity_fixture_2025.json")
+    fixture["rows"] = [
+        r for r in fixture["rows"] if r.get("contract_target_id") in names
+    ]
+    signed = [
+        r
+        for r in _load_uk_resource(
+            "ledger_compile_parity_incumbent_2025_signed_differences.json"
+        )["differences"]
+        if r["name"] in names
+    ]
+    assert ledger_compile_parity_gate(actual, fixture, signed_differences=signed).passed
+    if mutation == "old_gain_value":
+        next(r for r in signed if r["name"] == "hmrc.cgt.gains_total")[
+            "ledger_value"
+        ] = 127_316_000_000
+    else:
+        omitted = (
+            "obr.capital_gains_tax"
+            if mutation == "missing_cash_sign"
+            else "hmrc.cgt.liability_total"
+        )
+        signed = [r for r in signed if r["name"] != omitted]
+    gate = ledger_compile_parity_gate(actual, fixture, signed_differences=signed)
+    assert not gate.passed

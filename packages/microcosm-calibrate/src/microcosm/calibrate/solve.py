@@ -75,8 +75,16 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
-from microcosm.calibrate.exact_k import assert_exact_k_support
+from microcosm.calibrate.exact_k import (
+    BOUNDARY_MASS_SHORT,
+    BOUNDARY_SHORT_OF_DRAW,
+    CERTAINTIES_EXCEED_K,
+    FEASIBLE,
+    assert_exact_k_support,
+    exact_k_design_feasibility,
+)
 from microcosm.calibrate.gates import HardConcrete
+from microcosm.calibrate.initialization import GateInitialization
 from microcosm.calibrate.matrix import (
     CalibrationProblem,
     SkippedTarget,
@@ -88,6 +96,7 @@ from microcosm.frame import Frame, MassChange, WeightKind, Weights
 __all__ = [
     "calibrate",
     "calibrate_l0_refit",
+    "rebuild_calibration_result",
     "refit_l0_selection",
     "default_target_loss_scales",
     "effective_sample_size",
@@ -122,6 +131,12 @@ _L0_SEARCH_HI = 1e1
 #: the search's cost at ``budget_iters`` optimizations; ~10 bisection steps cut
 #: the ``log10`` bracket by 2^10, far finer than the count is resolvable.
 _DEFAULT_BUDGET_ITERS = 10
+#: What the ``target_records`` budget search measures against the budget.
+BUDGET_BASIS_NONZERO_COUNT = "nonzero_count"
+BUDGET_BASIS_OPEN_PROBABILITY_MASS = "open_probability_mass"
+BUDGET_BASES = frozenset(
+    {BUDGET_BASIS_NONZERO_COUNT, BUDGET_BASIS_OPEN_PROBABILITY_MASS}
+)
 
 # Per-target contribution cap for weighted MAPE. A target can contribute at most
 # a 1000% scaled miss to the objective.
@@ -757,6 +772,7 @@ def _optimize(
     target_loss_cap: float,
     initial_weights: np.ndarray,
     *,
+    gate_initialization: GateInitialization | None = None,
     warm_start_weights: np.ndarray | None = None,
     epochs: int,
     learning_rate: float,
@@ -810,7 +826,19 @@ def _optimize(
     gates: HardConcrete | None = None
     params: list[torch.Tensor] = [log_w]
     if l0_lambda > 0.0 or target_records is not None:
-        gates = HardConcrete(len(w0), init_mean=init_mean, temperature=temperature)
+        gates = HardConcrete(
+            len(w0),
+            init_mean=init_mean,
+            temperature=temperature,
+            **(
+                {}
+                if gate_initialization is None
+                else {
+                    "initial_probabilities": gate_initialization.probabilities,
+                    "protected_mask": gate_initialization.protected,
+                }
+            ),
+        )
         params = [log_w, *gates.parameters()]
 
     optimizer = torch.optim.Adam(params, lr=learning_rate)
@@ -1098,6 +1126,7 @@ def _search_l0_lambda_for_budget(
     target_loss_cap: float,
     initial_weights: np.ndarray,
     *,
+    gate_initialization: GateInitialization | None = None,
     target_records: int,
     epochs: int,
     learning_rate: float,
@@ -1114,11 +1143,23 @@ def _search_l0_lambda_for_budget(
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
     return_gate_open_probabilities: bool = False,
+    budget_basis: str = BUDGET_BASIS_NONZERO_COUNT,
+    feasible_draw_pi_hi: float | None = None,
+    search_receipt: dict[str, object] | None = None,
 ) -> (
     tuple[np.ndarray, np.ndarray, float, int]
     | tuple[np.ndarray, np.ndarray, float, int, np.ndarray]
 ):
-    """Search ``l0_lambda`` so the achieved non-zero count tracks the budget.
+    """Search ``l0_lambda`` so the achieved budget measure tracks the budget.
+
+    ``budget_basis`` names what the search measures against
+    ``target_records``: the historical non-zero *count* of surviving weights
+    (``BUDGET_BASIS_NONZERO_COUNT``), or the gates' expected open count, the
+    sum of their open probabilities (``BUDGET_BASIS_OPEN_PROBABILITY_MASS``).
+    An exact-count draw on the learned probabilities can only draw from that
+    mass, so a selection that targets a count with the mass basis is feasible
+    by construction; the count basis can leave partly polarised gates counted
+    as survivors while carrying a fraction of a record each.
 
     The realized non-zero count is monotone *decreasing* in ``l0_lambda`` (a
     stronger penalty closes more gates), so a bisection on ``log10(l0_lambda)``
@@ -1134,6 +1175,25 @@ def _search_l0_lambda_for_budget(
     a noisy discrete function, so "closest within ``budget_iters`` steps" is the
     honest contract. Stops early once the achieved count is within ``tol`` of the
     budget, where ``tol = max(1, round(0.05 * target_records))``.
+
+    ``feasible_draw_pi_hi`` (mass basis only) adds the exact-count draw's own
+    inequality to the stopping rule: a probe counts as acceptable only when
+    :func:`~microcosm.calibrate.exact_k.exact_k_design_feasibility` says a
+    draw of ``target_records`` at that certainty threshold is feasible on its
+    gate probabilities. The band is two-sided but the draw's condition is
+    one-sided (roughly "open mass at least the budget"), so without it a
+    search can stop inside the band on the wrong side and the draw refuses
+    (microcosm#355, 2026-09-08: 54,834 open mass for 55,000 requested). An
+    infeasible probe steers the bisection like a count miss would: short
+    boundary mass toward a smaller penalty, too many certainties toward a
+    larger one. Feasible probes are preferred over infeasible ones when the
+    best run is chosen; if no probe is feasible within the iteration budget the
+    closest run is still returned and the draw refuses with its measurement.
+    ``search_receipt``, when supplied, is filled in place with every probe's
+    penalty, measure and verdict and the reason the search stopped. Beside the
+    per-epoch ``calibration_epoch`` events, ``progress_callback`` receives one
+    ``budget_probe`` event per finished probe (the same fields as the receipt's
+    probe entry) and a closing ``budget_search_done`` event.
 
     Args:
         matrix: The constraint matrix ``A`` (dense or sparse-CSR torch tensor), as
@@ -1159,6 +1219,28 @@ def _search_l0_lambda_for_budget(
         existing workspace callers.
     """
     lo_u, hi_u = math.log10(_L0_SEARCH_LO), math.log10(_L0_SEARCH_HI)
+    if budget_basis not in BUDGET_BASES:
+        raise ValueError(
+            f"budget_basis must be one of {sorted(BUDGET_BASES)}, got {budget_basis!r}."
+        )
+    if budget_basis == BUDGET_BASIS_OPEN_PROBABILITY_MASS:
+        return_gate_open_probabilities = True
+    if feasible_draw_pi_hi is not None:
+        if budget_basis != BUDGET_BASIS_OPEN_PROBABILITY_MASS:
+            raise ValueError(
+                "feasible_draw_pi_hi requires the open-probability-mass budget basis."
+            )
+        if (
+            isinstance(feasible_draw_pi_hi, bool)
+            or not isinstance(feasible_draw_pi_hi, int | float)
+            or not math.isfinite(feasible_draw_pi_hi)
+            or not (0.0 < float(feasible_draw_pi_hi) <= 1.0)
+        ):
+            raise ValueError(
+                "feasible_draw_pi_hi must be a finite value in (0, 1], got "
+                f"{feasible_draw_pi_hi!r}."
+            )
+        feasible_draw_pi_hi = float(feasible_draw_pi_hi)
     tol = max(1, round(0.05 * target_records))
 
     evaluation = 0
@@ -1189,6 +1271,8 @@ def _search_l0_lambda_for_budget(
                 "l0_lambda": lam,
             },
         }
+        if gate_initialization is not None:
+            optimize_kwargs["gate_initialization"] = gate_initialization
         if return_gate_open_probabilities:
             weights, trajectory, gate_open_probabilities = _optimize(
                 matrix,
@@ -1217,27 +1301,87 @@ def _search_l0_lambda_for_budget(
                 **optimize_kwargs,
             )
             gate_open_probabilities = None
-        n_nonzero = int((weights > prune_atol).sum())
+        if budget_basis == BUDGET_BASIS_OPEN_PROBABILITY_MASS:
+            if gate_open_probabilities is None:  # pragma: no cover - guarded above
+                raise RuntimeError("mass-basis budget search needs gate probabilities.")
+            n_nonzero = int(round(float(np.sum(gate_open_probabilities))))
+        else:
+            n_nonzero = int((weights > prune_atol).sum())
         return weights, trajectory, n_nonzero, gate_open_probabilities
 
     best: tuple[np.ndarray, np.ndarray, float, int, np.ndarray | None] | None = None
+    # (0 for a feasible/unconstrained probe, 1 for an infeasible one; distance
+    # to the budget): feasible probes always beat infeasible ones.
+    best_key: tuple[int, int] | None = None
+    probes: list[dict[str, object]] = []
     # Sentinel: a probe whose penalty over-pruned past the cap-feasible floor
     # (the conserve+cap projection raised). It is *more* pruning than feasible,
     # so it steers the search the same way "too few survivors" does — toward a
     # smaller penalty — without crashing the whole search or polluting ``best``.
     _over_pruned = -1
+    _not_required = "not_required"
+    _steer_smaller = "smaller_penalty"
+    _steer_larger = "larger_penalty"
+    _steer_stop = "stop"
 
-    def consider(lam: float) -> int:
-        nonlocal best
+    def consider(lam: float) -> tuple[int, str]:
+        nonlocal best, best_key
         try:
             weights, trajectory, n_nonzero, gate_open_probabilities = evaluate(lam)
         except ValueError as exc:
             if "Infeasible combination" in str(exc):
-                return _over_pruned
+                probes.append(
+                    {"l0_lambda": lam, "measure": None, "verdict": "over_pruned"}
+                )
+                if progress_callback is not None:
+                    progress_callback(
+                        {
+                            "kind": "budget_probe",
+                            "budget_iteration": evaluation,
+                            "budget_iters": budget_iters,
+                            "target_records": target_records,
+                            "budget_basis": budget_basis,
+                            **probes[-1],
+                        }
+                    )
+                return _over_pruned, "over_pruned"
             raise
-        if best is None or abs(n_nonzero - target_records) < abs(
-            best[3] - target_records
-        ):
+        probe: dict[str, object] = {"l0_lambda": lam, "measure": int(n_nonzero)}
+        verdict = _not_required
+        if feasible_draw_pi_hi is not None:
+            if gate_open_probabilities is None:  # pragma: no cover - guarded above
+                raise RuntimeError("feasibility-aware search needs gate probabilities.")
+            design = exact_k_design_feasibility(
+                gate_open_probabilities, target_records, feasible_draw_pi_hi
+            )
+            verdict = str(design["reason"])
+            probe.update(
+                certainty_count=int(design["certainty_count"]),
+                boundary_draw=int(design["boundary_draw"]),
+                boundary_mass=float(design["boundary_mass"]),
+                boundary_max=float(design["boundary_max"]),
+                feasible=bool(design["feasible"]),
+            )
+        probe["verdict"] = verdict
+        probes.append(probe)
+        if progress_callback is not None:
+            # One event per finished probe, beside the per-epoch stream, so a
+            # long search is readable from a log: penalty, measure, verdict.
+            progress_callback(
+                {
+                    "kind": "budget_probe",
+                    "budget_iteration": evaluation,
+                    "budget_iters": budget_iters,
+                    "target_records": target_records,
+                    "budget_basis": budget_basis,
+                    **probe,
+                }
+            )
+        key = (
+            0 if verdict in (_not_required, FEASIBLE) else 1,
+            abs(n_nonzero - target_records),
+        )
+        if best_key is None or key < best_key:
             best = (
                 weights,
                 trajectory,
@@ -1245,7 +1389,32 @@ def _search_l0_lambda_for_budget(
                 n_nonzero,
                 gate_open_probabilities,
             )
-        return n_nonzero
+            best_key = key
+        return n_nonzero, verdict
+
+    def steer(n_nonzero: int, verdict: str) -> str:
+        # An infeasible draw steers like a count miss: short boundary mass needs
+        # more open mass (smaller penalty); surplus certainties need less.
+        if n_nonzero == _over_pruned or verdict in (
+            BOUNDARY_MASS_SHORT,
+            BOUNDARY_SHORT_OF_DRAW,
+        ):
+            return _steer_smaller
+        if verdict == CERTAINTIES_EXCEED_K:
+            return _steer_larger
+        if n_nonzero < target_records:
+            return _steer_smaller
+        if n_nonzero > target_records:
+            return _steer_larger
+        return _steer_stop
+
+    def settled() -> bool:
+        return (
+            best is not None
+            and best_key is not None
+            and best_key[0] == 0
+            and abs(best[3] - target_records) <= tol
+        )
 
     # Warm start: evaluate the user's lambda (or the bracket mid-point) first.
     if initial_lambda is not None and initial_lambda > 0:
@@ -1253,27 +1422,70 @@ def _search_l0_lambda_for_budget(
     else:
         first_u = (lo_u + hi_u) / 2.0
     iters_left = budget_iters
-    n_nonzero = consider(10.0**first_u)
+    n_nonzero, verdict = consider(10.0**first_u)
     iters_left -= 1
     # Seed the bracket so the side the warm start landed on is tightened. An
     # over-pruned (infeasible) probe groups with "too few survivors".
-    if n_nonzero > target_records:
+    if steer(n_nonzero, verdict) == _steer_larger:
         lo_u = first_u  # too many survivors -> need a larger penalty
     else:
         hi_u = first_u  # too few survivors / over-pruned -> need a smaller penalty
 
-    # Keep searching while no feasible run is known yet, or the best is outside
-    # tolerance, until the iteration budget is spent.
-    while iters_left > 0 and (best is None or abs(best[3] - target_records) > tol):
+    # Keep searching while no acceptable run is known yet, or the best is
+    # outside tolerance, until the iteration budget is spent.
+    while iters_left > 0 and not settled():
         mid_u = (lo_u + hi_u) / 2.0
-        n_nonzero = consider(10.0**mid_u)
+        n_nonzero, verdict = consider(10.0**mid_u)
         iters_left -= 1
-        if n_nonzero == _over_pruned or n_nonzero < target_records:
-            hi_u = mid_u  # over-pruned / too few survivors -> smaller penalty
-        elif n_nonzero > target_records:
-            lo_u = mid_u  # too many survivors -> larger penalty
+        direction = steer(n_nonzero, verdict)
+        if direction == _steer_smaller:
+            hi_u = mid_u  # over-pruned / too few / short mass -> smaller penalty
+        elif direction == _steer_larger:
+            lo_u = mid_u  # too many survivors or certainties -> larger penalty
         else:
             break
+
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "kind": "budget_search_done",
+                "evaluations": int(evaluation),
+                "budget_iters": int(budget_iters),
+                "target_records": int(target_records),
+                "stopped_on": (
+                    "acceptable_within_tolerance" if settled() else "budget_exhausted"
+                ),
+                "selected_l0_lambda": None if best is None else float(best[2]),
+                "selected_measure": None if best is None else int(best[3]),
+                "selected_feasible": (
+                    None
+                    if best_key is None or feasible_draw_pi_hi is None
+                    else best_key[0] == 0
+                ),
+            }
+        )
+    if search_receipt is not None:
+        search_receipt.update(
+            {
+                "budget_basis": budget_basis,
+                "target_records": int(target_records),
+                "tolerance": int(tol),
+                "budget_iters": int(budget_iters),
+                "feasible_draw_pi_hi": feasible_draw_pi_hi,
+                "evaluations": int(evaluation),
+                "probes": probes,
+                "selected_l0_lambda": None if best is None else float(best[2]),
+                "selected_measure": None if best is None else int(best[3]),
+                "selected_feasible": (
+                    None
+                    if best_key is None or feasible_draw_pi_hi is None
+                    else best_key[0] == 0
+                ),
+                "stopped_on": (
+                    "acceptable_within_tolerance" if settled() else "budget_exhausted"
+                ),
+            }
+        )
 
     if best is None:
         # Every penalty tried over-pruned past the cap-feasible floor: the budget
@@ -1377,6 +1589,7 @@ def calibrate(
     frame: Frame,
     targets: TargetSet,
     *,
+    gate_initialization: GateInitialization | None = None,
     weight_entity: str = "household",
     method: str = "adam",
     epochs: int = 256,
@@ -1393,6 +1606,8 @@ def calibrate(
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
+    budget_basis: str = BUDGET_BASIS_NONZERO_COUNT,
+    feasible_draw_pi_hi: float | None = None,
     seed: int = 0,
     target_loss_weights: np.ndarray | None = None,
     target_loss_scales: np.ndarray | None = None,
@@ -1444,7 +1659,12 @@ def calibrate(
             :attr:`CalibrationResult.l0_lambda`. A supplied ``l0_lambda`` is the
             search's warm start. The achieved count tracks the budget within a
             tolerance (the count is a noisy discrete function of the penalty), not
-            exactly.
+            exactly. ``budget_basis`` names the measure the search tracks (the
+            surviving non-zero count, or the gates' open-probability mass);
+            ``feasible_draw_pi_hi`` (mass basis only) makes the search stop only
+            on a probe whose gate probabilities admit an exact-count draw of
+            ``target_records`` at that certainty threshold, recording every probe
+            under ``options["budget_search"]``.
         l0_lambda: L0 penalty strength. Used directly when ``target_records`` is
             ``None``: ``> 0`` enables hard-concrete gates that prune the pool,
             ``0.0`` (default) keeps every record. When ``target_records`` is set,
@@ -1478,6 +1698,9 @@ def calibrate(
             cannot express, e.g. the pre-selection *design* weights during a
             post-L0 refit. When supplied, ``l2_anchor`` becomes a free-form
             provenance label recorded in options (e.g. ``"design"``).
+        gate_initialization: Optional informed L0 prior and protected-record
+            mask, aligned to the weight entity. Requires an Adam L0 solve;
+            protected gates remain open throughout training and selection.
         init_mean: Initial expected open-probability of the L0 gates (only used
             when pruning).
         temperature: Hard-concrete temperature (only used when pruning).
@@ -1565,6 +1788,9 @@ def calibrate(
             "total cannot be conserved (sum of caps < input total). Use "
             "max_weight_ratio >= 1, or mass='free'."
         )
+    if gate_initialization is not None:
+        if method != "adam" or (target_records is None and l0_lambda <= 0):
+            raise ValueError("gate_initialization requires an Adam L0 solve.")
     if target_records is not None and (
         not isinstance(target_records, int) or target_records <= 0
     ):
@@ -1618,6 +1844,29 @@ def calibrate(
         )
     if budget_iters <= 0:
         raise ValueError(f"budget_iters must be positive, got {budget_iters!r}.")
+    if budget_basis not in BUDGET_BASES:
+        raise ValueError(
+            f"budget_basis must be one of {sorted(BUDGET_BASES)}, got {budget_basis!r}."
+        )
+    if budget_basis != BUDGET_BASIS_NONZERO_COUNT and target_records is None:
+        raise ValueError("budget_basis applies to a target_records budget search.")
+    if feasible_draw_pi_hi is not None:
+        if target_records is None or budget_basis != BUDGET_BASIS_OPEN_PROBABILITY_MASS:
+            raise ValueError(
+                "feasible_draw_pi_hi requires a target_records budget search on the "
+                "open-probability-mass basis."
+            )
+        if (
+            isinstance(feasible_draw_pi_hi, bool)
+            or not isinstance(feasible_draw_pi_hi, int | float)
+            or not math.isfinite(feasible_draw_pi_hi)
+            or not (0.0 < float(feasible_draw_pi_hi) <= 1.0)
+        ):
+            raise ValueError(
+                "feasible_draw_pi_hi must be a finite value in (0, 1], got "
+                f"{feasible_draw_pi_hi!r}."
+            )
+        feasible_draw_pi_hi = float(feasible_draw_pi_hi)
     target_loss_cap = _validate_target_loss_cap(target_loss_cap)
 
     target_loss_weights_input = _validate_target_loss_weights(
@@ -1687,6 +1936,7 @@ def calibrate(
     target_loss_scales_t = torch.tensor(target_loss_scales_np, dtype=torch.float32)
 
     iterate_selection_receipt: dict[str, object] = {}
+    budget_search: dict[str, object] | None = None
     if method == "prox":
         # L1 path: proximal gradient (ISTA) on raw weights. The soft-threshold
         # drives unneeded records to exact zero, so L1 selects a sparse weighted
@@ -1726,6 +1976,7 @@ def calibrate(
         # Budget control (Finding 3): search l0_lambda so the achieved non-zero
         # count tracks target_records. The supplied l0_lambda (if any) is the
         # warm start; the search reports the penalty it settled on.
+        budget_search = {}
         (
             final_weights,
             trajectory,
@@ -1754,7 +2005,15 @@ def calibrate(
             initial_lambda=(l0_lambda if l0_lambda > 0.0 else None),
             progress_callback=progress_callback,
             budget_iters=budget_iters,
+            budget_basis=budget_basis,
+            feasible_draw_pi_hi=feasible_draw_pi_hi,
+            search_receipt=budget_search,
             return_gate_open_probabilities=True,
+            **(
+                {}
+                if gate_initialization is None
+                else {"gate_initialization": gate_initialization}
+            ),
         )
     else:
         effective_l0 = l0_lambda
@@ -1780,6 +2039,11 @@ def calibrate(
             progress_callback=progress_callback,
             return_gate_open_probabilities=True,
             selection_receipt=iterate_selection_receipt,
+            **(
+                {}
+                if gate_initialization is None
+                else {"gate_initialization": gate_initialization}
+            ),
         )
         n_nonzero = int((final_weights > prune_atol).sum())
         if effective_l0 > 0.0 and n_nonzero == 0:
@@ -1840,6 +2104,10 @@ def calibrate(
         target_loss_scales=target_loss_scales_np.copy(),
         target_loss_cap=target_loss_cap,
         options={
+            "gate_initialization_supplied": gate_initialization is not None,
+            "budget_basis": budget_basis,
+            "feasible_draw_pi_hi": feasible_draw_pi_hi,
+            "budget_search": budget_search,
             "method": method,
             "epochs": epochs,
             "learning_rate": learning_rate,
@@ -1884,6 +2152,117 @@ def calibrate(
                 "sparse_csr" if matrix_t.layout == torch.sparse_csr else "dense"
             ),
         },
+        gate_open_probabilities=gate_open_probabilities,
+    )
+
+
+def rebuild_calibration_result(
+    frame: Frame,
+    targets: TargetSet,
+    *,
+    weight_entity: str = "household",
+    weights: np.ndarray,
+    loss_trajectory: np.ndarray,
+    l0_lambda: float,
+    n_nonzero: int,
+    target_loss_weights: np.ndarray,
+    target_loss_scales: np.ndarray,
+    target_loss_cap: float,
+    options: Mapping[str, object],
+    gate_open_probabilities: np.ndarray | None = None,
+    closing_loss: float | None = None,
+) -> CalibrationResult:
+    """Re-assemble a :class:`CalibrationResult` from a solve's persisted outputs.
+
+    Compiles ``targets`` against ``frame`` exactly as :func:`calibrate` does,
+    places ``weights`` on the frame under the recorded mass policy
+    (``options["mass"]`` / ``options["mass_reason"]``), and rebuilds the
+    per-target diagnostics and the closing loss from the compiled system.
+    Nothing is optimised: this is the checkpoint/resume seam for builds whose
+    solve is expensive and whose later stages (an exact-count draw, a refit)
+    need only the solve's outputs. ``closing_loss``, when supplied, must agree
+    with the recomputed loss to a relative 1e-9; a mismatch means the frame,
+    the targets or the weights are not the ones the outputs were cut from.
+    """
+    problem = build_constraint_matrix(frame, targets, weight_entity)
+    if problem.skipped:
+        names = ", ".join(skipped.target.name for skipped in problem.skipped[:5])
+        raise ValueError(
+            f"cannot rebuild a result with {len(problem.skipped)} uncompilable "
+            f"target(s): {names}."
+        )
+    initial = problem.initial_weights
+    w0 = np.asarray(initial.values, dtype=np.float64)
+    final_weights = np.asarray(weights, dtype=np.float64)
+    if final_weights.shape != w0.shape:
+        raise ValueError(
+            f"weights shape {final_weights.shape} must match the {w0.shape} "
+            f"{weight_entity!r} weight vector."
+        )
+    if not np.isfinite(final_weights).all() or (final_weights < 0.0).any():
+        raise ValueError("weights must be finite and non-negative.")
+    trajectory = np.asarray(loss_trajectory, dtype=np.float64)
+    if trajectory.ndim != 1 or trajectory.size == 0:
+        raise ValueError("loss_trajectory must be a non-empty vector.")
+    loss_weights = _validate_target_loss_weights(
+        np.asarray(target_loss_weights, dtype=np.float64), problem.target_vector.shape
+    )
+    loss_scales = _validate_target_loss_scales(
+        np.asarray(target_loss_scales, dtype=np.float64),
+        problem.target_vector.shape,
+        targets=problem.target_vector,
+    )
+    loss_cap = _validate_target_loss_cap(target_loss_cap)
+    if gate_open_probabilities is not None:
+        gate_open_probabilities = np.asarray(gate_open_probabilities, dtype=np.float64)
+        if gate_open_probabilities.shape != w0.shape:
+            raise ValueError("gate_open_probabilities must align with the weights.")
+    mass = str(options.get("mass", FREE_MASS))
+    if mass not in (CONSERVE_MASS, FREE_MASS):
+        raise ValueError(f"options['mass'] must be conserve or free, got {mass!r}.")
+    mass_reason = options.get("mass_reason")
+    calibrated = initial.with_values(final_weights, kind=WeightKind.CALIBRATED)
+    new_frame = _apply_weights(
+        frame,
+        weight_entity,
+        initial,
+        calibrated,
+        mass,
+        targets,
+        mass_reason=None if mass_reason is None else str(mass_reason),
+    )
+    diagnostics = _build_diagnostics(problem, frame, w0, final_weights)
+    recomputed = relative_error_loss(
+        problem.estimates(final_weights),
+        problem.target_vector,
+        target_loss_weights=loss_weights,
+        target_loss_scales=loss_scales,
+        target_loss_cap=loss_cap,
+    )
+    if closing_loss is not None and not math.isclose(
+        float(closing_loss), float(recomputed), rel_tol=1e-9, abs_tol=1e-12
+    ):
+        raise ValueError(
+            f"closing loss {closing_loss!r} disagrees with the loss recomputed on "
+            f"the compiled system ({recomputed!r}); the frame, targets or weights "
+            "are not the ones these outputs were cut from."
+        )
+    return CalibrationResult(
+        frame=new_frame,
+        weight_entity=weight_entity,
+        weights=final_weights,
+        initial_weights=w0.copy(),
+        diagnostics=diagnostics,
+        loss_trajectory=trajectory,
+        skipped=problem.skipped,
+        problem=problem,
+        l0_lambda=float(l0_lambda),
+        n_nonzero=int(n_nonzero),
+        closing_loss=float(recomputed),
+        target_loss_weights=loss_weights,
+        target_loss_scales=loss_scales,
+        target_loss_cap=loss_cap,
+        options=dict(options),
         gate_open_probabilities=gate_open_probabilities,
     )
 
@@ -2012,6 +2391,7 @@ def refit_l0_selection(
     epochs: int = 256,
     learning_rate: float = 0.02,
     mass: str = FREE_MASS,
+    mass_reason: str | None = None,
     max_weight_ratio: float | None = None,
     l2_lambda: float = 0.0,
     l2_anchor: str = "initial",
@@ -2034,6 +2414,8 @@ def refit_l0_selection(
     named, fail-closed cardinality gate before any refit work. In either case the
     gates and L0 penalty are removed and :func:`calibrate` runs again with
     ``l0_lambda=0`` on only the selected records.
+
+    ``mass_reason`` carries a caller's calibration provenance into the refit.
 
     The explicit exact-k path subsets the original ``frame`` rather than
     ``selection.frame``. A record may have positive open probability while its
@@ -2184,6 +2566,7 @@ def refit_l0_selection(
         epochs=epochs,
         learning_rate=learning_rate,
         mass=mass,
+        mass_reason=mass_reason,
         max_weight_ratio=max_weight_ratio,
         target_records=None,
         l0_lambda=0.0,

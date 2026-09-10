@@ -102,7 +102,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     _input_mass_reference_evidence_sha256,
     coerce_input_mass_reference_registry,
     coerce_reviewed_exclusions,
-    load_uk_reviewed_exclusion_register,
+    load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
     uk_default_qrf_tail_reviewed_exclusions,
     uk_input_mass_parity_gate,
@@ -813,16 +813,17 @@ def _evaluate_area_support(
     kwargs = dict(parameters)
     resource = str(kwargs.pop("crosswalk_resource"))
     exclusions_resource = str(kwargs.pop("exclusions_resource"))
-    records = load_uk_reviewed_exclusion_register(
+    register = load_uk_local_area_support_exclusion_register(
         None,
         resource=exclusions_resource,
     )
+    records = register["exclusions"]
     clock = _exclusion_clock(context)
-    invalid = {
-        key: record
-        for key, record in records.items()
-        if record.expired(clock) or record.premature(clock)
-    }
+    invalid = {}
+    for block, entries in register.items():
+        for key, record in entries.items():
+            if record.expired(clock) or record.premature(clock):
+                invalid[f"{block}/{key}"] = record
     if invalid:
         return GateResult(
             name="area_support",
@@ -945,7 +946,6 @@ def _evaluate_local_default_target_surface(
     crosswalk_resource = str(parameters["crosswalk_resource"])
     membership_resource = str(parameters["membership_resource"])
     reviewed = dict(_local_default_reviewed_exclusions(membership_resource))
-    reviewed.update(_ladder_derived_households_exclusions(crosswalk_resource))
     return target_surface_gate(
         _local_default_candidate_surface(registry),
         _local_default_expected_surface(crosswalk_resource),
@@ -953,32 +953,6 @@ def _evaluate_local_default_target_surface(
         reference_name="UK local default metric surface",
         reviewed_exclusions=reviewed,
     )
-
-
-_LADDER_DERIVED_HOUSEHOLDS_RATIONALE = (
-    "census_households is ladder-derived: the households column binds from the "
-    "OA-ladder artifact's census household counts (the ladder sha is its "
-    "provenance), never from Chronicle facts, so no ledger reference exists by "
-    "design. See uk_local_target_census.json (source status pinned_in_ladder) "
-    "and microcosm#542, which bound the family from the ladder."
-)
-
-
-def _ladder_derived_households_exclusions(crosswalk_resource: str) -> dict[str, str]:
-    crosswalk = json.loads(
-        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
-    )
-    levels = crosswalk.get("levels")
-    if not isinstance(levels, Mapping):
-        raise ValueError(f"{crosswalk_resource} must expose levels.")
-    reviewed: dict[str, str] = {}
-    for geography_level in ("constituency", "local_authority"):
-        level = levels.get(geography_level)
-        if not isinstance(level, Mapping):
-            raise ValueError(f"{crosswalk_resource} must expose {geography_level!r}.")
-        for area_id in level.get("area_ids", ()):
-            reviewed[f"households@{area_id}"] = _LADDER_DERIVED_HOUSEHOLDS_RATIONALE
-    return reviewed
 
 
 def _target_surface_required_artifacts(

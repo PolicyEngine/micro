@@ -750,6 +750,7 @@ dependencies = [
 [package.optional-dependencies]
 uk = [
     { name = "h5py" },
+    { name = "openpyxl" },
     { name = "policyengine-uk" },
     { name = "tables" },
 ]
@@ -779,6 +780,7 @@ requires-dist = [
     { name = "microcosm-graph", editable = "packages/microcosm-graph" },
     { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=1.26" },
+    { name = "openpyxl", marker = "extra == 'uk'", specifier = ">=3.1" },
     { name = "pandas", specifier = ">=2" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.97.0" },
     { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.745.0,<2" },

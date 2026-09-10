@@ -5827,7 +5827,13 @@ def _check_uk_dense_surface_files(
     candidate = loaded["rowwise_candidate_manifest.json"]
     incumbent = loaded["incumbent_manifest.json"]
     try:
-        ledger = candidate["identity"]["ledger"]
+        chronicle = candidate["identity"]["targets"]["chronicle"]
+    except (KeyError, TypeError):
+        failures.append(
+            "rowwise_candidate_manifest.json is missing identity.targets.chronicle."
+        )
+        return
+    try:
         dataset = _artifact_by_path(release_manifest, "microcosm_uk_2025_dense.h5")
         expected = {
             "candidate_dataset_sha256": dataset["sha256"],
@@ -5835,8 +5841,8 @@ def _check_uk_dense_surface_files(
             "candidate_diagnostics_sha256": hashes[
                 "source_calibration_diagnostics.json"
             ],
-            "ledger_facts_sha256": ledger["facts_sha256"],
-            "ledger_manifest_sha256": ledger["manifest_sha256"],
+            "ledger_facts_sha256": chronicle["facts_sha256"],
+            "ledger_manifest_sha256": chronicle["manifest_sha256"],
             "incumbent_manifest_sha256": hashes["incumbent_manifest.json"],
             "incumbent_metrics_sha256": incumbent["outputs"]["metrics"]["sha256"],
             "incumbent_weights_sha256": incumbent["outputs"]["weights"]["sha256"],
@@ -5880,7 +5886,7 @@ def _check_uk_dense_surface_files(
                     "uk_source_coverage.json measure_exclusions do not match the original candidate approvals."
                 )
             for key in ("facts_sha256", "manifest_sha256"):
-                if coverage.get("ledger_artifact", {}).get(key) != ledger[key]:
+                if coverage.get("ledger_artifact", {}).get(key) != chronicle[key]:
                     failures.append(
                         f"uk_source_coverage.json Ledger {key} does not match the evaluated source."
                     )

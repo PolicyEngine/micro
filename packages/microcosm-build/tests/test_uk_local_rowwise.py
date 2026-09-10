@@ -165,7 +165,7 @@ def test_surface_builder_omits_absent_cells_and_uses_canonical_order() -> None:
                 "area_code": "L2",
                 "metric": "households",
                 "value": 1.0,
-                "target_name": "external:census_households/households@L2",
+                "target_name": "ons.census.households@L2",
                 "family": "census_households",
             },
             {
@@ -173,7 +173,7 @@ def test_surface_builder_omits_absent_cells_and_uses_canonical_order() -> None:
                 "area_code": "S001",
                 "metric": "households",
                 "value": 1.0,
-                "target_name": "external:census_households/households@S001",
+                "target_name": "ons.census.households@S001",
                 "family": "census_households",
             },
             {
@@ -189,7 +189,7 @@ def test_surface_builder_omits_absent_cells_and_uses_canonical_order() -> None:
                 "area_code": "E001",
                 "metric": "households",
                 "value": 2.0,
-                "target_name": "external:census_households/households@E001",
+                "target_name": "ons.census.households@E001",
                 "family": "census_households",
             },
             {
@@ -205,7 +205,7 @@ def test_surface_builder_omits_absent_cells_and_uses_canonical_order() -> None:
                 "area_code": "L1",
                 "metric": "households",
                 "value": 2.0,
-                "target_name": "external:census_households/households@L1",
+                "target_name": "ons.census.households@L1",
                 "family": "census_households",
             },
         ]
@@ -651,7 +651,7 @@ def test_rotated_holdout_keeps_national_rows_in_every_training_fold(
 
     def fake_solve(frame, training_problem, **kwargs):
         calls.append(kwargs["national_rows"])
-        return type("Solve", (), {"weights": np.ones(3)})()
+        return type("Solve", (), {"weights": np.ones(3), "selected_support": None})()
 
     monkeypatch.setattr(
         local_rowwise, "solve_uk_rowwise_weights_under_doctrine", fake_solve
@@ -1220,3 +1220,743 @@ def test_doctrine_solve_refuses_a_reordering_restore() -> None:
             restore=reordering_restore,
             epochs=2,
         )
+
+
+def test_exact_size_preserves_targets_and_household_links():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=2,
+    )
+    sized = refit_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7
+    )
+    assert sized.result.frame.n("household") == 2
+    assert sized.result.frame.n("person") == 2
+    assert sized.result.frame.n("benunit") == 2
+    assert sized.result.problem.names == dense.problem.names
+    assert sized.result.initial_weights.sum() == pytest.approx(
+        dense.initial_weights.sum()
+    )
+    assert (sized.result.weights <= 10 * sized.result.initial_weights).all()
+    again = refit_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7
+    )
+    np.testing.assert_array_equal(sized.support, again.support)
+
+
+@pytest.mark.parametrize("size", [0, -1, True, 4, 1.5])
+def test_exact_size_refuses_invalid_sizes(size):
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=1,
+    )
+    with pytest.raises(ValueError, match="integer"):
+        refit_uk_dataset_size(
+            frame, dense, households=size, epochs=1, learning_rate=0.02, seed=7
+        )
+
+
+def test_size_solve_restores_full_prepared_tables_before_subsetting():
+    frame = _clone_frame()
+    metrics = pd.DataFrame({"households": [1.0, 1.0, 1.0]}, index=[101, 102, 103])
+    problem = build_uk_rowwise_local_matrix(
+        metrics,
+        _assigned(),
+        pd.DataFrame({"code": ["E001", "S001"], "households": [2.0, 1.0]}),
+    )
+    restored_counts = []
+
+    def restore(full):
+        restored_counts.append(full.n("household"))
+        return full
+
+    result = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        bound_families=["census_households/constituency"],
+        dataset_households=2,
+        epochs=2,
+        seed=7,
+        restore=restore,
+    )
+    assert restored_counts == [3]
+    assert result.frame.n("household") == 2
+    assert result.frame.n("person") == 2
+    assert len(result.diagnostics) == 2
+    assert "census_households/constituency" in result.frame.mass_log[-1].reason
+    assert result.selected_support.tolist() == [0, 2]
+
+
+def test_size_solve_keeps_its_dense_reference_and_selection_seed_moves_only_the_draw():
+    frame = _clone_frame()
+    metrics = pd.DataFrame({"households": [1.0, 1.0, 1.0]}, index=[101, 102, 103])
+    problem = build_uk_rowwise_local_matrix(
+        metrics,
+        _assigned(),
+        pd.DataFrame({"code": ["E001", "S001"], "households": [2.0, 1.0]}),
+    )
+    common = dict(
+        bound_families=["census_households/constituency"],
+        epochs=2,
+        seed=7,
+    )
+    dense = solve_uk_rowwise_weights_under_doctrine(frame, problem, **common)
+    sized = solve_uk_rowwise_weights_under_doctrine(
+        frame, problem, dataset_households=2, **common
+    )
+    assert dense.dense_reference is None
+    reference = sized.dense_reference
+    assert reference is not None
+    # The reference is the standalone dense solve, byte for byte.
+    np.testing.assert_array_equal(reference.weights, dense.weights)
+    np.testing.assert_array_equal(reference.initial_weights, dense.initial_weights)
+    assert reference.final_loss == dense.final_loss
+    assert reference.final_loss == sized.size_receipt["dense_loss"]
+    assert reference.initial_loss == dense.initial_loss
+    assert reference.n_nonzero == dense.n_nonzero
+    pd.testing.assert_frame_equal(reference.diagnostics, dense.diagnostics)
+    pd.testing.assert_frame_equal(
+        reference.national_diagnostics, dense.national_diagnostics
+    )
+    assert dict(reference.past_cap_census) == dict(dense.past_cap_census)
+    assert dict(reference.all_past_cap_census) == dict(dense.all_past_cap_census)
+    # The shipped product is the compact refit, not the reference.
+    assert sized.weights.size == 2
+    assert reference.weights.size == 3
+    # A selection seed moves the draw only: same pool, same dense reference.
+    other = solve_uk_rowwise_weights_under_doctrine(
+        frame, problem, dataset_households=2, selection_seed=11, **common
+    )
+    np.testing.assert_array_equal(other.dense_reference.weights, reference.weights)
+    assert other.size_receipt["seed"] == 11
+    assert sized.size_receipt["seed"] == 7
+    assert other.size_receipt["dense_loss"] == sized.size_receipt["dense_loss"]
+
+
+def test_selection_feasibility_measures_boundary_mass_and_the_ways_out():
+    from microcosm.build.uk_runtime.dataset_size import selection_feasibility
+
+    # Two protected certainties, then a boundary whose largest gate (0.9)
+    # cannot be scaled to a draw of 5 out of mass 0.9 + 4 * 0.2 = 1.7.
+    pi = np.array([1.0, 1.0, 0.9, 0.2, 0.2, 0.2, 0.2, 0.0])
+    protected = np.array([True, True, False, False, False, False, False, False])
+    report = selection_feasibility(
+        pi, 7, protected=protected, n_nonzero=7, l0_lambda=0.5
+    )
+    assert report["certainties_at_pi_hi_1"] == 2
+    assert report["boundary_draw"] == 5
+    assert report["boundary_positive_gates"] == 5
+    assert report["boundary_mass"] == pytest.approx(1.7)
+    assert report["boundary_max"] == pytest.approx(0.9)
+    assert report["feasible_at_pi_hi_1"] is False
+    # At pi_hi=1 the boundary supports floor(1.7 / 0.9) = 1 draw: k <= 3.
+    assert report["max_feasible_households_at_pi_hi_1"] == 3
+    # Promoting the 0.9 gate to a certainty (pi_hi <= 0.9) leaves a draw of 4
+    # over four equal 0.2 gates: feasible; 0.99 and above are not.
+    assert report["pi_hi_scan"]["0.99"]["feasible"] is False
+    assert report["pi_hi_scan"]["0.99"]["reason"] == "boundary_mass_short"
+    assert report["pi_hi_scan"]["0.9"]["feasible"] is True
+    assert report["pi_hi_scan"]["0.9"]["reason"] == "feasible"
+    assert report["smallest_feasible_pi_hi_on_grid"] == 0.9
+    assert report["requested_pi_hi_verdict"] == "boundary_mass_short"
+    assert report["budget_search"] is None
+    assert report["gates_above"]["0.5"] == 3
+    assert report["budget_search_n_nonzero"] == 7
+    assert report["selection_l0_lambda"] == 0.5
+    assert report["requested_pi_hi"] == 1.0
+    assert report["feasible_at_requested_pi_hi"] is False
+    at_half = selection_feasibility(
+        pi, 7, protected=protected, n_nonzero=7, l0_lambda=0.5, requested_pi_hi=0.9
+    )
+    assert at_half["requested_pi_hi"] == 0.9
+    assert at_half["feasible_at_requested_pi_hi"] is True
+
+    feasible = selection_feasibility(
+        np.array([1.0, 0.5, 0.5, 0.5, 0.5]),
+        3,
+        protected=np.array([True, False, False, False, False]),
+        n_nonzero=5,
+        l0_lambda=0.1,
+    )
+    assert feasible["feasible_at_pi_hi_1"] is True
+    assert feasible["smallest_feasible_pi_hi_on_grid"] == 1.0
+
+
+def test_size_refit_pi_hi_promotes_learned_certainties_and_is_recorded():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=2,
+    )
+    sized = refit_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7, pi_hi=0.5
+    )
+    receipt = sized.receipt
+    assert receipt["selection_pi_hi"] == 0.5
+    assert receipt["selection_receipt"]["pi_hi"] == 0.5
+    assert receipt["selection_budget_basis"] == "open_probability_mass"
+    assert (
+        receipt["selection_feasibility"]["budget_search_basis"]
+        == "open_probability_mass"
+    )
+    assert receipt["selection_feasibility"]["requested_pi_hi"] == 0.5
+    assert receipt["selection_feasibility"]["feasible_at_requested_pi_hi"] is True
+    # The budget search stopped on the draw's own feasibility at the requested
+    # threshold and recorded every probe (microcosm#355, S2 refusal).
+    search = receipt["selection_budget_search"]
+    assert search["feasible_draw_pi_hi"] == 0.5
+    assert search["selected_feasible"] is True
+    assert search["stopped_on"] == "acceptable_within_tolerance"
+    assert search["probes"][-1]["verdict"] == "feasible"
+    assert receipt["selection_feasibility"]["budget_search"] is search
+    # Certainties at 0.5 can only grow relative to the exact-one set.
+    assert (
+        receipt["selection_receipt"]["certainty_count"] >= receipt["protected_carriers"]
+    )
+    assert sized.result.frame.n("household") == 2
+    for bad in (0.0, 1.5, -0.1, True):
+        with pytest.raises(ValueError, match="pi_hi"):
+            refit_uk_dataset_size(
+                frame,
+                dense,
+                households=2,
+                epochs=2,
+                learning_rate=0.02,
+                seed=7,
+                pi_hi=bad,
+            )
+
+
+def test_size_refit_refuses_unsupported_nonzero_targets_by_name():
+    from microcosm.build.uk_runtime.dataset_size import (
+        refit_uk_dataset_size,
+        unsupported_nonzero_targets,
+    )
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [
+                Target("count", "household", lambda f: np.ones(f.n("household")), 3),
+                Target("nobody", "household", lambda f: np.zeros(f.n("household")), 5),
+            ]
+        ),
+        epochs=2,
+    )
+    assert [
+        name.split("@")[0] for name in unsupported_nonzero_targets(dense.problem)
+    ] == ["nobody"]
+    with pytest.raises(ValueError, match="no supporting household.*nobody"):
+        refit_uk_dataset_size(
+            frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7
+        )
+
+
+def test_size_refusal_at_the_draw_carries_the_feasibility_numbers(monkeypatch):
+    import microcosm.build.uk_runtime.dataset_size as sizing
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=2,
+    )
+
+    def refuse(*_args, **_kwargs):
+        raise ValueError("degenerate boundary mass: synthetic refusal.")
+
+    monkeypatch.setattr(sizing, "select_exact_k", refuse)
+    with pytest.raises(ValueError) as caught:
+        sizing.refit_uk_dataset_size(
+            frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7
+        )
+    message = str(caught.value)
+    assert message.startswith("degenerate boundary mass: synthetic refusal.")
+    assert "Selection feasibility (requested pi_hi=1): " in message
+    payload = json.loads(
+        message.split("Selection feasibility (requested pi_hi=1): ", 1)[1]
+    )
+    assert payload["requested_pi_hi"] == 1.0
+    assert payload["requested_households"] == 2
+    assert payload["pool_households"] == 3
+    assert "pi_hi_scan" in payload
+
+
+def test_size_holdout_uses_compact_support_and_reselects_each_fold(monkeypatch):
+    import microcosm.build.uk_runtime.local_rowwise as runtime
+
+    metrics = pd.DataFrame({"households": [1.0, 2.0, 3.0]}, index=[101, 102, 103])
+    calls = []
+
+    def solve(frame, training, **kwargs):
+        calls.append((len(training.targets), kwargs["dataset_households"]))
+        return type(
+            "Solve",
+            (),
+            {"weights": np.array([1.0, 1.0]), "selected_support": np.array([0, 2])},
+        )()
+
+    monkeypatch.setattr(runtime, "solve_uk_rowwise_weights_under_doctrine", solve)
+    # The holdout helper needs at least one target in each of five folds.
+    richer = build_uk_rowwise_local_matrix(
+        pd.DataFrame(
+            {
+                name: [1.0, 2.0, 3.0]
+                for name in ("households", "tenure/social_rent", "tenure/private_rent")
+            },
+            index=metrics.index,
+        ),
+        _assigned(),
+        pd.DataFrame(
+            {
+                "code": ["E001", "S001"],
+                **{
+                    name: [3.0, 3.0]
+                    for name in (
+                        "households",
+                        "tenure/social_rent",
+                        "tenure/private_rent",
+                    )
+                },
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        runtime, "_derive_uk_local_bound_families_from_target_frame", lambda *a, **k: ()
+    )
+    receipt = rotated_uk_local_holdout(
+        _clone_frame(), richer, dataset_households=2, epochs=1
+    )
+    assert len(calls) == 5
+    assert all(n < len(richer.targets) and k == 2 for n, k in calls)
+    assert np.isfinite(receipt["mean_holdout_loss"])
+
+
+def test_size_refit_freezes_population_dependent_measures():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    # A population-normalized measure changes if evaluated on two instead of
+    # three households. The refit must retain the full-pool value of 1/3.
+    targets = TargetSet(
+        [
+            Target(
+                "normalized",
+                "household",
+                lambda f: np.full(f.n("household"), 1 / f.n("household")),
+                1,
+            )
+        ]
+    )
+    dense = calibrate(frame, targets, epochs=2)
+    small = refit_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7
+    )
+    np.testing.assert_allclose(small.result.problem.matrix.toarray(), [[1 / 3, 1 / 3]])
+
+
+def test_full_size_returns_dense_reference_without_search():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=1,
+    )
+    full = refit_uk_dataset_size(
+        frame, dense, households=3, epochs=1, learning_rate=0.02, seed=7
+    )
+    assert full.result is dense
+    assert full.support.tolist() == [0, 1, 2]
+
+
+def test_size_refuses_budget_smaller_than_protected_carriers():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    targets = TargetSet(
+        [
+            Target(
+                str(i),
+                "household",
+                lambda f, i=i: (
+                    f.table("household").household_id.to_numpy() == i
+                ).astype(float),
+                1,
+            )
+            for i in [101, 102, 103]
+        ]
+    )
+    dense = calibrate(frame, targets, epochs=1)
+    with pytest.raises(ValueError, match="3 protected target carriers"):
+        refit_uk_dataset_size(
+            frame, dense, households=2, epochs=1, learning_rate=0.02, seed=7
+        )
+
+
+def _size_problem():
+    metrics = pd.DataFrame({"households": [1.0, 1.0, 1.0]}, index=[101, 102, 103])
+    return build_uk_rowwise_local_matrix(
+        metrics,
+        _assigned(),
+        pd.DataFrame({"code": ["E001", "S001"], "households": [2.0, 1.0]}),
+    )
+
+
+def test_size_selection_can_be_searched_once_and_drawn_from_again():
+    from microcosm.build.uk_runtime.dataset_size import (
+        refit_uk_dataset_size,
+        select_uk_dataset_size,
+    )
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=2,
+    )
+    one_shot = refit_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7, pi_hi=0.5
+    )
+    selection = select_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7, pi_hi=0.5
+    )
+    assert selection.search_pi_hi == 0.5
+    assert selection.selection.l0_lambda == one_shot.receipt["selection_l0_lambda"]
+    reused = refit_uk_dataset_size(
+        frame,
+        dense,
+        households=2,
+        epochs=2,
+        learning_rate=0.02,
+        seed=7,
+        pi_hi=0.5,
+        selection=selection,
+    )
+    np.testing.assert_array_equal(reused.support, one_shot.support)
+    np.testing.assert_array_equal(reused.result.weights, one_shot.result.weights)
+    assert one_shot.receipt["selection_reused"] is False
+    assert reused.receipt["selection_reused"] is True
+    assert reused.receipt["selection_search_pi_hi"] == 0.5
+    # A different draw threshold on the same search is allowed and recorded.
+    redrawn = refit_uk_dataset_size(
+        frame,
+        dense,
+        households=2,
+        epochs=2,
+        learning_rate=0.02,
+        seed=7,
+        pi_hi=1.0,
+        selection=selection,
+    )
+    assert redrawn.receipt["selection_pi_hi"] == 1.0
+    assert redrawn.receipt["selection_search_pi_hi"] == 0.5
+    assert redrawn.receipt["selection_feasibility"]["search_pi_hi"] == 0.5
+    # Different search inputs refuse by name.
+    with pytest.raises(ValueError, match="epochs: selection 2 != 3"):
+        refit_uk_dataset_size(
+            frame,
+            dense,
+            households=2,
+            epochs=3,
+            learning_rate=0.02,
+            seed=7,
+            selection=selection,
+        )
+    with pytest.raises(ValueError, match="full-pool"):
+        select_uk_dataset_size(
+            frame, dense, households=3, epochs=2, learning_rate=0.02, seed=7
+        )
+
+
+def test_size_checkpoint_resumes_the_draw_on_the_rederived_pool(tmp_path):
+    from microcosm.build.uk_runtime.size_checkpoint import (
+        SIZE_CHECKPOINT_ARRAYS_FILENAME,
+        SIZE_CHECKPOINT_MANIFEST_FILENAME,
+        load_uk_size_checkpoint,
+    )
+
+    frame = _clone_frame()
+    problem = _size_problem()
+    identity = {"input_sha256": "abc", "seed": 7, "epochs": 2, "households": 2}
+    common = dict(
+        bound_families=["census_households/constituency"],
+        dataset_households=2,
+        epochs=2,
+        seed=7,
+    )
+    checkpoint_dir = tmp_path / "run-a"
+    first = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        selection_pi_hi=0.5,
+        size_checkpoint_dir=checkpoint_dir,
+        checkpoint_identity=identity,
+        **common,
+    )
+    assert (checkpoint_dir / SIZE_CHECKPOINT_ARRAYS_FILENAME).is_file()
+    manifest = json.loads(
+        (checkpoint_dir / SIZE_CHECKPOINT_MANIFEST_FILENAME).read_text()
+    )
+    assert manifest["identity"] == identity
+    assert manifest["selection"]["search_pi_hi"] == 0.5
+    assert manifest["pool"]["households"] == 3
+    written = first.size_receipt["checkpoint"]["written"]
+    assert written["stage"] == "before_exact_count_draw"
+    assert written["arrays_sha256"] == manifest["arrays_sha256"]
+    # Nothing in the receipt differs between identical runs (Vahid, #877):
+    # no timestamp, no absolute path.
+    assert "written_at" not in written and "directory" not in written
+    assert first.size_receipt["certainty_share"] == pytest.approx(
+        first.size_receipt["selection_receipt"]["certainty_count"] / 2
+    )
+    assert (
+        first.size_receipt["boundary_draws"]
+        == 2 - (first.size_receipt["selection_receipt"]["certainty_count"])
+    )
+    assert first.size_receipt["zero_target_rows"] == 0
+
+    # Resume: no dense solve, no search; the draw and refit reproduce the run.
+    resumed = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        selection_pi_hi=0.5,
+        resume_size_checkpoint=checkpoint_dir,
+        checkpoint_identity=identity,
+        **common,
+    )
+    np.testing.assert_array_equal(resumed.selected_support, first.selected_support)
+    np.testing.assert_array_equal(resumed.weights, first.weights)
+    assert resumed.final_loss == first.final_loss
+    assert resumed.dense_reference is not None
+    assert resumed.dense_reference.final_loss == first.dense_reference.final_loss
+    np.testing.assert_array_equal(
+        resumed.dense_reference.weights, first.dense_reference.weights
+    )
+    assert resumed.size_receipt["selection_reused"] is True
+    assert resumed.size_receipt["checkpoint"]["resumed_from"]["identity"] == identity
+    assert (
+        resumed.size_receipt["selection_l0_lambda"]
+        == (first.size_receipt["selection_l0_lambda"])
+    )
+    # Another draw threshold on the same checkpoint is a candidate knob, recorded.
+    redrawn = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        selection_pi_hi=1.0,
+        resume_size_checkpoint=checkpoint_dir,
+        checkpoint_identity=identity,
+        **common,
+    )
+    assert redrawn.size_receipt["selection_pi_hi"] == 1.0
+    assert redrawn.size_receipt["selection_search_pi_hi"] == 0.5
+
+    # A resume under a changed doctrine refuses even when the identity was
+    # not asked to carry it (the second lock, Vahid's should-fix 1).
+    import dataclasses
+
+    from microcosm.build.uk_runtime import local_rowwise as lr_module
+
+    drifted_doctrine = dataclasses.replace(
+        lr_module.UK_LOCAL_SOLVE_DOCTRINE,
+        max_weight_ratio=lr_module.UK_LOCAL_SOLVE_DOCTRINE.max_weight_ratio * 2,
+    )
+    original_doctrine = lr_module.UK_LOCAL_SOLVE_DOCTRINE
+    lr_module.UK_LOCAL_SOLVE_DOCTRINE = drifted_doctrine
+    try:
+        with pytest.raises(ValueError, match="different doctrine.*max_weight_ratio"):
+            solve_uk_rowwise_weights_under_doctrine(
+                frame,
+                problem,
+                resume_size_checkpoint=checkpoint_dir,
+                checkpoint_identity=identity,
+                **common,
+            )
+    finally:
+        lr_module.UK_LOCAL_SOLVE_DOCTRINE = original_doctrine
+    provenance_run = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        resume_size_checkpoint=checkpoint_dir,
+        checkpoint_identity=identity,
+        **common,
+    )
+    assert provenance_run.size_receipt["checkpoint"]["resumed_from"]["provenance"] == {}
+
+    # Identity, pool and surface drift refuse by name.
+    with pytest.raises(ValueError, match="epochs: checkpoint 2 != run 3"):
+        solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            problem,
+            resume_size_checkpoint=checkpoint_dir,
+            checkpoint_identity={**identity, "epochs": 3},
+            **common,
+        )
+    with pytest.raises(ValueError, match="absent in checkpoint"):
+        solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            problem,
+            resume_size_checkpoint=checkpoint_dir,
+            checkpoint_identity={**identity, "ladder_sha256": "x"},
+            **common,
+        )
+    from microcosm.build.uk_runtime.local_rowwise import _rowwise_target_set
+
+    other_pool = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2, 3],
+                "person_household_id": [101, 102, 104],
+                "person_benunit_id": [11, 12, 13],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [11, 12, 13]}),
+        household=pd.DataFrame(
+            {"household_id": [101, 102, 104], "household_weight": [1.0, 1.0, 1.0]}
+        ),
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+    )
+    with pytest.raises(ValueError, match="pool differs"):
+        load_uk_size_checkpoint(
+            checkpoint_dir,
+            frame=other_pool,
+            target_set=_rowwise_target_set(problem),
+            identity=identity,
+        )
+    drifted = build_uk_rowwise_local_matrix(
+        pd.DataFrame({"households": [1.0, 1.0, 1.0]}, index=[101, 102, 103]),
+        _assigned(),
+        pd.DataFrame({"code": ["E001", "S001"], "households": [2.5, 1.0]}),
+    )
+    with pytest.raises(ValueError, match="target surface differs"):
+        solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            drifted,
+            resume_size_checkpoint=checkpoint_dir,
+            checkpoint_identity=identity,
+            **common,
+        )
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            problem,
+            size_checkpoint_dir=checkpoint_dir,
+            checkpoint_identity=identity,
+            **common,
+        )
+    with pytest.raises(ValueError, match="dataset_households"):
+        solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            problem,
+            bound_families=["census_households/constituency"],
+            epochs=2,
+            seed=7,
+            size_checkpoint_dir=tmp_path / "no-size",
+        )
+
+
+def test_progress_lines_cover_the_dense_solve_the_probes_and_the_refit():
+    from microcosm.build.uk_runtime.solve_progress import uk_solve_progress_callback
+
+    frame = _clone_frame()
+    problem = _size_problem()
+    lines: list[str] = []
+    solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        bound_families=["census_households/constituency"],
+        dataset_households=2,
+        epochs=2,
+        seed=7,
+        selection_pi_hi=0.5,
+        progress=lines.append,
+    )
+    text = "\n".join(lines)
+    # The dense solve, each probe's epochs, the probe verdicts, the stop line
+    # and the refit all appear, timestamped, in that order.
+    dense = next(i for i, line in enumerate(lines) if "dense solve: epoch 2/2" in line)
+    probe_epoch = next(
+        i for i, line in enumerate(lines) if "probe 1/10 (lambda" in line
+    )
+    probe_done = next(i for i, line in enumerate(lines) if "probe 1/10 done:" in line)
+    stopped = next(i for i, line in enumerate(lines) if "search stopped:" in line)
+    refit = next(i for i, line in enumerate(lines) if "refit: epoch 2/2" in line)
+    assert dense < probe_epoch < probe_done < stopped < refit
+    assert "open_probability_mass" in lines[probe_done]
+    assert "verdict feasible" in text
+    assert "drawable True" in lines[stopped]
+    assert all(line[8] == "Z" for line in lines), lines[:2]
+
+    # The formatter itself: a loss line only every ``every`` epochs and at the
+    # last epoch; probe and stop events in one line each.
+    sink: list[str] = []
+    callback = uk_solve_progress_callback(sink.append, every=3)
+    for epoch in range(1, 8):
+        callback(
+            {"kind": "calibration_epoch", "epoch": epoch, "epochs": 7, "loss": 0.5}
+        )
+    assert [line.split("epoch ")[1].split(" ")[0] for line in sink] == [
+        "3/7",
+        "6/7",
+        "7/7",
+    ]
+    callback(
+        {
+            "kind": "budget_probe",
+            "budget_iteration": 2,
+            "budget_iters": 10,
+            "l0_lambda": 1e-6,
+            "measure": 54834,
+            "target_records": 55000,
+            "budget_basis": "open_probability_mass",
+            "verdict": "boundary_mass_short",
+            "certainty_count": 54563,
+            "boundary_draw": 437,
+            "boundary_mass": 290.6,
+            "boundary_max": 0.947,
+        }
+    )
+    assert sink[-1].endswith(
+        "probe 2/10 done: lambda 1e-06, open_probability_mass 54834 for 55000 "
+        "requested, verdict boundary_mass_short, certainties 54563, boundary draw "
+        "437 from mass 290.6 (max 0.947)"
+    )
+    callback({"kind": "something_else"})
+    assert len(sink) == 4
+    with pytest.raises(ValueError, match="every"):
+        uk_solve_progress_callback(sink.append, every=0)

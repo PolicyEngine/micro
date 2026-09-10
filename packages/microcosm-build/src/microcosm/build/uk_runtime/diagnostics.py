@@ -38,6 +38,7 @@ __all__ = [
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
+    "uk_fit_by_family",
     "uk_support_limited_misses",
     "uk_target_geography_levels",
     "uk_weakest_areas_by_fit",
@@ -474,6 +475,33 @@ def uk_weight_summary(
         "max_to_median_positive_weight": max_to_median,
         "top_1pct_weight_share": top_share,
     }
+
+
+def uk_fit_by_family(
+    diagnostics: pd.DataFrame,
+    *,
+    name_column: str = "target_name",
+) -> list[dict[str, object]]:
+    """Summarize target-fit diagnostics by family."""
+
+    if diagnostics.empty:
+        return []
+    rows = []
+    for family, group in diagnostics.groupby("family", sort=True):
+        errors = group["abs_relative_error"].to_numpy(dtype=np.float64)
+        worst_index = int(np.argmax(errors))
+        worst = group.iloc[worst_index]
+        rows.append(
+            {
+                "family": str(family),
+                "n_targets": len(group),
+                "share_within_10pct": float((errors <= 0.10).mean()),
+                "share_within_25pct": float((errors <= 0.25).mean()),
+                "worst_abs_relative_error": float(errors[worst_index]),
+                "worst_cell": str(worst.get(name_column, worst.get("name", "unknown"))),
+            }
+        )
+    return rows
 
 
 def _json_scalar(value: object, *, column: str) -> object:

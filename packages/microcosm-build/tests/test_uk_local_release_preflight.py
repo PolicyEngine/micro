@@ -52,8 +52,33 @@ def _good_candidate(tmp_path: Path) -> Path:
             "target_weight_rule_override": {},
         },
         "fit": {"rotated_holdout": {"n_folds": 5, "mean_holdout_loss": 0.2}},
-        "ladder_household_uprating": {
+        "census_household_uprating": {
             "applied": True,
+            "grains": {
+                "constituency": {"factor": 1.0335597414671631},
+                "local_authority": {"factor": 1.0335595204737118},
+            },
+            "household_cells": {
+                "applied": True,
+                "cells": 1,
+                "total_cells": 1,
+                "attempted_cells": 1,
+                "eligible_cells": 1,
+                "skipped_cells": 0,
+                "holds": [
+                    {
+                        "target_name": "ons.census.households@E14000001",
+                        "geography_level": "constituency",
+                        "from_period": 2021,
+                        "to_period": 2025,
+                        "attempted": True,
+                        "eligible": True,
+                        "applied": True,
+                        "skipped": False,
+                        "reason": "census_vintage_hold_uprated",
+                    }
+                ],
+            },
             "tenure_cells": {
                 "applied": True,
                 "cells": 1,
@@ -67,7 +92,10 @@ def _good_candidate(tmp_path: Path) -> Path:
                         "eligible": True,
                         "applied": True,
                         "skipped": False,
-                        "ladder_oa_vintage": "2021_census",
+                        "target_name": "ons.tenure.owned_outright@E14000001",
+                        "geography_level": "constituency",
+                        "from_period": 2021,
+                        "to_period": 2025,
                         "reason": "census_vintage_hold_uprated",
                     }
                 ],
@@ -198,7 +226,7 @@ def test_good_candidate_dir_passes(tmp_path: Path) -> None:
         ),
         (lambda m, r: m["parameters"].__setitem__("skip_holdout", True), "holdout"),
         (
-            lambda m, r: m["ladder_household_uprating"]["tenure_cells"].__setitem__(
+            lambda m, r: m["census_household_uprating"]["tenure_cells"].__setitem__(
                 "applied", False
             ),
             "A17",
@@ -286,13 +314,14 @@ def test_preflight_does_not_infer_tenure_success_from_ladder_uprating(tmp_path):
     candidate = _good_candidate(tmp_path)
     path = candidate / "rowwise_candidate_manifest.json"
     manifest = json.loads(path.read_text())
-    tenure = manifest["ladder_household_uprating"]["tenure_cells"]
+    tenure = manifest["census_household_uprating"]["tenure_cells"]
     tenure["holds"][0].update(
         {
             "applied": False,
             "eligible": False,
             "skipped": True,
-            "ladder_oa_vintage": "",
+            "from_period": None,
+            "to_period": None,
             "reason": "missing_ladder_oa_vintage",
         }
     )

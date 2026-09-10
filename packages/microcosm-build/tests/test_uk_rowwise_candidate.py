@@ -46,15 +46,15 @@ def _empty_support_exclusions_for_synthetic_rosters(
 
     import microcosm.build.uk_runtime.battery_bindings as battery_bindings
 
-    real_loader = battery_bindings.load_uk_reviewed_exclusion_register
+    real_loader = battery_bindings.load_uk_local_area_support_exclusion_register
 
     def _loader(path, *, resource, **kwargs):
         if resource == "local_area_support_exclusions.json":
-            return {}
+            return {"exclusions": {}, "bound_despite_support_floor": {}}
         return real_loader(path, resource=resource, **kwargs)
 
     monkeypatch.setattr(
-        battery_bindings, "load_uk_reviewed_exclusion_register", _loader
+        battery_bindings, "load_uk_local_area_support_exclusion_register", _loader
     )
 
 
@@ -279,6 +279,91 @@ def _write_staging_h5(
     write_uk_national_frame(dataset, path)
 
 
+def _household_specs_for_ladder(ladder) -> list[TargetSpec]:
+    specs = []
+    for level, codes in (
+        ("constituency", ladder.constituency_code),
+        ("local_authority", ladder.local_authority_code),
+    ):
+        grouped = (
+            pd.DataFrame({"code": codes, "value": ladder.households})
+            .groupby("code", sort=True)["value"]
+            .sum()
+        )
+        for area_code, value in grouped.items():
+            census_year = 2022 if str(area_code).startswith("S") else 2021
+            specs.append(
+                TargetSpec(
+                    name=f"ons.census.households@{area_code}",
+                    entity="household",
+                    measure="households",
+                    value=float(value),
+                    period=2025,
+                    source="synthetic Chronicle fixture",
+                    family="census_households",
+                    metadata={
+                        "contract_target_id": "ons.census.households",
+                        "geography_level": level,
+                        "geography_id": str(area_code),
+                        "uprating_from_period": census_year,
+                        "uprating_to_period": 2025,
+                    },
+                )
+            )
+    return specs
+
+
+def _mandatory_input_flags(input_h5: Path, ladder_path: Path) -> list[str]:
+    return [
+        "--input-sha256",
+        hashlib.sha256(input_h5.read_bytes()).hexdigest(),
+        "--ladder-sha256",
+        hashlib.sha256(ladder_path.read_bytes()).hexdigest(),
+        "--ledger-facts",
+        str(ladder_path.parent / "synthetic-ledger"),
+        "--ledger-facts-sha256",
+        "1" * 64,
+        "--ledger-manifest-sha256",
+        "2" * 64,
+    ]
+
+
+def _configure_households_only_inputs(
+    builder,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    input_h5: Path,
+    ladder_path: Path,
+) -> list[str]:
+    ladder = load_uk_oa_ladder(ladder_path)
+    artifact = SimpleNamespace(
+        facts=None,
+        provenance=lambda: {
+            "facts_sha256": "1" * 64,
+            "manifest_sha256": "2" * 64,
+            "artifact_id": "synthetic-households-only-fixture",
+        },
+    )
+    joint_inputs = {
+        "artifact": artifact,
+        "calibration_year": 2025,
+        "national_registry": TargetRegistry([], country="uk"),
+        "band_edge_registry": TargetRegistry([], country="uk"),
+        "local_registry": TargetRegistry(
+            _household_specs_for_ladder(ladder), country="uk"
+        ),
+        "measure_exclusions": {},
+        "reviewed_unbound_higher_targets": {},
+    }
+    monkeypatch.setattr(
+        builder, "_load_joint_target_inputs", lambda _args: joint_inputs
+    )
+    return [
+        *_mandatory_input_flags(input_h5, ladder_path),
+        "--households-only",
+    ]
+
+
 def test_candidate_build_writes_calibrated_h5_and_evidence(
     monkeypatch, tmp_path
 ) -> None:
@@ -290,6 +375,9 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     output_dir = tmp_path / "candidate"
     _write_staging_h5(input_h5, households_per_region=52)
     ladder = _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
     import microcosm.build.uk_runtime.battery_bindings as battery_bindings
 
     monkeypatch.setattr(
@@ -332,6 +420,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
                 "7",
                 "--epochs",
                 "2",
+                *household_flags,
             ]
         )
         == 0
@@ -403,7 +492,14 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert cross_grain["empty_legs_licensed"] == []
     assert cross_grain["controls_without_lower_rows"] == []
     assert cross_grain["absence"]
-    assert manifest["ladder_target_provenance"] == ladder_target_provenance(ladder)
+    assert manifest["ladder_assignment_provenance"] == ladder_target_provenance(ladder)
+    assert manifest["identity"]["targets"]["paired_ladder_sha256"] == (
+        hashlib.sha256(ladder_path.read_bytes()).hexdigest()
+    )
+    assert manifest["identity"]["targets"]["chronicle"]["artifact_id"] == (
+        "synthetic-households-only-fixture"
+    )
+    assert manifest["household_dispersion"]["countries"]
     assert manifest["gate"]["passed"] is True
     assert manifest["gate"]["phase"] == "post_calibration"
     assert manifest["gate"]["details"]
@@ -445,7 +541,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         "solve_epochs": 1500,
         "clone_count": 15,
     }
-    assert manifest["ladder_household_uprating"]["applied"] is False
+    assert manifest["census_household_uprating"]["applied"] is False
     assert manifest["solve"]["n_targets"] == 4
     assert manifest["solve"]["n_households"] == 416
     assert np.isfinite(manifest["solve"]["initial_loss"])
@@ -516,6 +612,9 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     output_dir = tmp_path / "dry-run-output"
     _write_staging_h5(input_h5)
     ladder = _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
 
     def forbidden(*_args, **_kwargs):
         pytest.fail("dry run called a solve or dataset writer")
@@ -541,6 +640,7 @@ def test_candidate_dry_run_plans_without_solve_or_write(
                 "--seed",
                 "7",
                 "--dry-run",
+                *household_flags,
             ]
         )
         == 0
@@ -580,7 +680,7 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     assert cross_grain["empty_legs_licensed"] == []
     assert cross_grain["controls_without_lower_rows"] == []
     assert cross_grain["absence"]
-    assert plan["ladder_target_provenance"] == ladder_target_provenance(ladder)
+    assert plan["ladder_assignment_provenance"] == ladder_target_provenance(ladder)
     assert plan["shapes"]["person"][0] == 24
     assert plan["shapes"]["benunit"][0] == 24
     assert plan["shapes"]["household"][0] == 24
@@ -603,6 +703,9 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
     output_dir = tmp_path / "dry-run-output"
     _write_staging_h5(input_h5)
     _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
 
     def compact_sampler_forbidden(*_args, **_kwargs):
         pytest.fail("rowwise spine path called the certified-compact sampler")
@@ -661,6 +764,7 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
                 "--engine-blocks",
                 "2",
                 "--dry-run",
+                *household_flags,
             ]
         )
     assert (
@@ -679,6 +783,7 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
                 "--sample-seed",
                 "578",
                 "--dry-run",
+                *household_flags,
             ]
         )
         == 0
@@ -734,6 +839,16 @@ def test_candidate_clone_count_planning_is_dry_run_only(tmp_path) -> None:
                 str(tmp_path / "out"),
                 "--candidate-clone-counts",
                 "1,2,4",
+                "--input-sha256",
+                "0" * 64,
+                "--ladder-sha256",
+                "0" * 64,
+                "--ledger-facts",
+                str(tmp_path / "ledger"),
+                "--ledger-facts-sha256",
+                "0" * 64,
+                "--ledger-manifest-sha256",
+                "0" * 64,
             ]
         )
 
@@ -748,6 +863,17 @@ def test_candidate_engine_surface_reuses_one_resolver(
     _write_staging_h5(input_h5)
     frame, _ = builder.load_uk_national_frame(input_h5)
     constructions = []
+    cgt_period_contract = {
+        "version": "uk-cgt-measurement-v2",
+        "input_period": "2024",
+        "calibration_period": 2025,
+        "bound_measurements": {
+            "cgt_2024_gains": {
+                "model_variable": "capital_gains",
+                "measurement_period": 2024,
+            }
+        },
+    }
 
     class StubResolver:
         def __init__(self, **kwargs):
@@ -759,6 +885,7 @@ def test_candidate_engine_surface_reuses_one_resolver(
             return {
                 "mode": "stub",
                 "policyengine_uk_version": "test",
+                "cgt_period_contract": cgt_period_contract,
             }
 
     monkeypatch.setattr(
@@ -790,15 +917,18 @@ def test_candidate_engine_surface_reuses_one_resolver(
         "national_inputs": 0,
         "local_metrics": {"constituency": 1, "la": 1},
         "blocks": 1,
+        "cgt_period_contract": cgt_period_contract,
     }
     assert set(local_metrics) == {"constituency", "la"}
     assert len(national.targets) == 0
     assert restore(prepared).table("household").equals(frame.table("household"))
 
 
+@pytest.mark.parametrize("second_cgt_period", [2024, 2025, None])
 def test_candidate_engine_surface_resolves_real_per_clone_blocks(
     monkeypatch,
     tmp_path,
+    second_cgt_period,
 ) -> None:
     pytest.importorskip("tables")
     builder = _load_builder_module()
@@ -823,9 +953,23 @@ def test_candidate_engine_surface_resolves_real_per_clone_blocks(
             constructions.append(kwargs)
             self.simulation = object()
             self.contract_targets = {}
+            self.cgt_period = 2024 if len(constructions) == 1 else second_cgt_period
 
         def receipt(self):
-            return {"mode": "stub", "policyengine_uk_version": "test"}
+            receipt = {"mode": "stub", "policyengine_uk_version": "test"}
+            if self.cgt_period is not None:
+                receipt["cgt_period_contract"] = {
+                    "version": "uk-cgt-measurement-v2",
+                    "input_period": "2024",
+                    "calibration_period": 2025,
+                    "bound_measurements": {
+                        "cgt_2024_gains": {
+                            "model_variable": "capital_gains",
+                            "measurement_period": self.cgt_period,
+                        }
+                    },
+                }
+            return receipt
 
     monkeypatch.setattr(
         builder,
@@ -835,14 +979,23 @@ def test_candidate_engine_surface_resolves_real_per_clone_blocks(
             index=household_ids,
         ),
     )
-    prepared, restore, _, metrics, receipt = builder._resolve_candidate_engine_surface(
-        clone.frame,
-        TargetRegistry([], country="uk"),
-        period=2025,
-        scratch_dir=tmp_path / "block-scratch",
-        resolver_factory=StubResolver,
-        blocks=2,
-    )
+
+    def resolve():
+        return builder._resolve_candidate_engine_surface(
+            clone.frame,
+            TargetRegistry([], country="uk"),
+            period=2025,
+            scratch_dir=tmp_path / "block-scratch",
+            resolver_factory=StubResolver,
+            blocks=2,
+        )
+
+    if second_cgt_period != 2024:
+        with pytest.raises(RuntimeError, match="CGT period contract is inconsistent"):
+            resolve()
+        return
+
+    prepared, restore, _, metrics, receipt = resolve()
 
     assert len(constructions) == 2
     assert [len(call["frame"].table("household")) for call in constructions] == [
@@ -850,6 +1003,12 @@ def test_candidate_engine_surface_resolves_real_per_clone_blocks(
         12,
     ]
     assert receipt["blocks"] == 2
+    assert receipt["cgt_period_contract"]["bound_measurements"] == {
+        "cgt_2024_gains": {
+            "model_variable": "capital_gains",
+            "measurement_period": 2024,
+        }
+    }
     assert receipt["deviation"] == "per_clone_block_engine_resolution"
     sensitivity = receipt["block_sensitivity"]
     assert (
@@ -960,6 +1119,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     )
     local_registry = TargetRegistry(
         [
+            *_household_specs_for_ladder(ladder),
             TargetSpec(
                 name="ons.tenure.owned_outright@E09000001",
                 entity="household",
@@ -974,16 +1134,17 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                     "geography_id": "E09000001",
                     "ledger_fact_period": "2023",
                 },
-            )
+            ),
         ],
         country="uk",
     )
     artifact = SimpleNamespace(
+        facts=None,
         provenance=lambda: {
             "facts_sha256": "1" * 64,
             "manifest_sha256": "2" * 64,
             "artifact_id": "synthetic-joint-fixture",
-        }
+        },
     )
     joint_inputs = {
         "artifact": artifact,
@@ -1009,6 +1170,11 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     monkeypatch.setattr(
         builder, "_load_joint_target_inputs", lambda _args: joint_inputs
     )
+    monkeypatch.setattr(builder, "load_bound_spine_sidecar", lambda *_args: {})
+    monkeypatch.setattr(
+        builder, "spine_provenance_from_sidecar", lambda *_args: {"synthetic": True}
+    )
+    joint_flags = _mandatory_input_flags(input_h5, ladder_path)
 
     constructions = []
 
@@ -1124,6 +1290,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                 "--n-clones",
                 "2",
                 "--dry-run",
+                *joint_flags,
             ]
         )
         == 0
@@ -1166,12 +1333,13 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                 "--epochs",
                 "2",
                 "--skip-holdout",
+                *joint_flags,
             ]
         )
         == 0
     )
     f100 = json.loads((f100_out / builder.MANIFEST_FILENAME).read_text())
-    assert f100["schema_version"] == 2
+    assert f100["schema_version"] == 3
     # The written rowwise artifact carries the shared ``clone_index`` name on
     # every table: the compact national loader must refuse it (flattening
     # rule) and the rowwise reader must undo the export rename.
@@ -1234,7 +1402,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     assert "fanout_controls_summed" not in f100["solve"]["cross_grain"]
     assert f100["releasable"] is True
     assert f100["measure_exclusions"] == joint_inputs["measure_exclusions"]
-    assert f100["ladder_household_uprating"]["applied"] is False
+    assert f100["census_household_uprating"]["applied"] is False
     assert _spool_rows(f100_out)[0].rung == "f100"
 
     f001_out = tmp_path / "joint-f001"
@@ -1254,6 +1422,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                 "--epochs",
                 "2",
                 "--skip-holdout",
+                *joint_flags,
             ]
         )
         == 0
@@ -1282,6 +1451,9 @@ def test_candidate_refusal_records_receipt_and_reraises(
     output_dir = tmp_path / "candidate"
     _write_staging_h5(input_h5)
     _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
 
     def failing_gate(*_args, **_kwargs):
         return builder.GateResult(
@@ -1318,6 +1490,7 @@ def test_candidate_refusal_records_receipt_and_reraises(
                 "7",
                 "--epochs",
                 "2",
+                *household_flags,
             ]
         )
 
@@ -1352,6 +1525,9 @@ def test_candidate_binding_adjudication_failure_records_failed_row(
     output_dir = tmp_path / "candidate"
     _write_staging_h5(input_h5)
     _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
 
     import microcosm.build.uk_runtime.local_rowwise as local_rowwise
 
@@ -1376,6 +1552,7 @@ def test_candidate_binding_adjudication_failure_records_failed_row(
                 "7",
                 "--epochs",
                 "2",
+                *household_flags,
             ]
         )
 
@@ -1405,6 +1582,9 @@ def test_candidate_setup_failure_records_failed_row(monkeypatch, tmp_path) -> No
     output_dir = tmp_path / "candidate"
     _write_staging_h5(input_h5)
     _write_ladder(ladder_path)
+    household_flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
 
     def failing_ladder_load(_path):
         raise RuntimeError("ladder artifact refused to parse")
@@ -1426,6 +1606,7 @@ def test_candidate_setup_failure_records_failed_row(monkeypatch, tmp_path) -> No
                 "7",
                 "--epochs",
                 "2",
+                *household_flags,
             ]
         )
 
@@ -1444,7 +1625,7 @@ def test_candidate_setup_failure_records_failed_row(monkeypatch, tmp_path) -> No
     )
 
 
-def test_candidate_refuses_separate_assignment_and_target_ladders(
+def test_households_only_targets_come_from_compiled_chronicle_registry(
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
@@ -1469,11 +1650,65 @@ def test_candidate_refuses_separate_assignment_and_target_ladders(
         source_lineage_modulus=None,
     )
 
-    with pytest.raises(ValueError, match="same loaded"):
-        builder._build_bound_problem(
-            assignment,
-            target_ladder=target_ladder,
+    registry = TargetRegistry(_household_specs_for_ladder(target_ladder), country="uk")
+    _, problem, cross_grain = builder._build_bound_problem(
+        assignment,
+        local_registry=registry,
+        period=2025,
+    )
+
+    expected = sorted(
+        float(spec.value)
+        for spec in registry.specs
+        if spec.metadata["geography_level"] == "constituency"
+    )
+    assert sorted(problem.targets.tolist()) == expected
+    assert cross_grain["census_household_uprating"]["applied"] is False
+    assert cross_grain["bound_national_targets"] == []
+
+    # The households-only scope applies the same per-grain A15 factor as the
+    # joint scope and carries its receipt into the manifest (Max's review).
+    uprating = {
+        "applied": True,
+        "period": 2025,
+        "grains": {
+            "constituency": {
+                "cells": len(expected),
+                "census_households_total": sum(expected),
+                "census_years": [2021, 2022],
+                "factor": 1.1,
+            }
+        },
+    }
+    _, uprated_problem, uprated_cross_grain = builder._build_bound_problem(
+        assignment,
+        local_registry=registry,
+        period=2025,
+        census_household_uprating=uprating,
+    )
+    assert sorted(uprated_problem.targets.tolist()) == pytest.approx(
+        [value * 1.1 for value in expected]
+    )
+    receipt = uprated_cross_grain["census_household_uprating"]
+    assert receipt["applied"] is True
+    assert receipt["household_cells"]["cells"] == len(expected)
+    assert receipt["household_cells"]["skipped_cells"] == 0
+    assert (
+        problem.target_frame["target_name"]
+        .str.startswith("ons.census.households@")
+        .all()
+    )
+    assert dict(
+        zip(
+            problem.target_frame["area_code"],
+            problem.target_frame["target_name"],
+            strict=True,
         )
+    ) == {
+        str(spec.metadata["geography_id"]): spec.name
+        for spec in registry.specs
+        if spec.metadata["geography_level"] == "constituency"
+    }
 
 
 def test_candidate_dry_run_refuses_ladder_sidecar_collision(
@@ -1491,6 +1726,10 @@ def test_candidate_dry_run_refuses_ladder_sidecar_collision(
     output_dir.mkdir()
     temporary_ladder.replace(ladder_path)
     ladder_bytes = ladder_path.read_bytes()
+    household_flags = [
+        *_mandatory_input_flags(input_h5, ladder_path),
+        "--households-only",
+    ]
 
     with pytest.raises(ValueError, match="differ"):
         builder.main(
@@ -1502,6 +1741,7 @@ def test_candidate_dry_run_refuses_ladder_sidecar_collision(
                 "--out",
                 str(output_dir),
                 "--dry-run",
+                *household_flags,
             ]
         )
 
@@ -1564,6 +1804,8 @@ def _joint_f100_args(input_h5: Path, ladder_path: Path, output_dir: Path) -> lis
         "--epochs",
         "2",
         "--skip-holdout",
+        *_mandatory_input_flags(input_h5, ladder_path),
+        "--households-only",
     ]
 
 
@@ -1581,6 +1823,9 @@ def test_candidate_weight_ratio_failure_is_reported_and_blocks(
     )
     _write_ladder(ladder_path)
     ladder = load_uk_oa_ladder(ladder_path)
+    _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
     import microcosm.build.uk_runtime.battery_bindings as battery_bindings
 
     monkeypatch.setattr(
@@ -1638,6 +1883,9 @@ def test_candidate_block_partitions_failures_by_criticality(
         input_h5, households_per_region=200, region_masses=(4.0, 10.0, 10.0, 9.0)
     )
     _write_ladder(ladder_path)
+    _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
     registry = builder.UK_GATE_REGISTRY
     monkeypatch.setattr(
         builder,
@@ -1773,6 +2021,26 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
         )
 
 
+def test_candidate_requires_pinned_ledger_inputs(tmp_path) -> None:
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--input-sha256",
+            "0" * 64,
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--ladder-sha256",
+            "0" * 64,
+            "--out",
+            str(tmp_path / "out"),
+        ]
+    )
+    with pytest.raises(ValueError, match="mandatory"):
+        builder._validate_cli_args(args)
+
+
 def test_candidate_multi_block_engine_run_is_never_releasable(
     monkeypatch, tmp_path, capsys
 ) -> None:
@@ -1794,6 +2062,9 @@ def test_candidate_multi_block_engine_run_is_never_releasable(
     )
     _write_ladder(ladder_path)
     ladder = load_uk_oa_ladder(ladder_path)
+    _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
     import microcosm.build.uk_runtime.battery_bindings as battery_bindings
 
     monkeypatch.setattr(
@@ -1822,3 +2093,382 @@ def test_candidate_multi_block_engine_run_is_never_releasable(
         "single_block_engine": False,
         "release_blocking_gates_passed": True,
     }
+
+
+def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
+    monkeypatch, tmp_path
+):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "spine.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    out = tmp_path / "k300"
+    _write_staging_h5(input_h5, households_per_region=52)
+    ladder = _write_ladder(ladder_path)
+    import microcosm.build.uk_runtime.battery_bindings as bindings
+
+    monkeypatch.setattr(
+        bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+    flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
+    status = builder.main(
+        [
+            "--input-h5",
+            str(input_h5),
+            "--ladder",
+            str(ladder_path),
+            *flags,
+            "--out",
+            str(out),
+            "--n-clones",
+            "2",
+            "--dataset-households",
+            "300",
+            "--selection-seed",
+            "11",
+            "--epochs",
+            "2",
+            "--skip-holdout",
+            "--seed",
+            "7",
+        ]
+    )
+    assert status in (0, 1)  # Gate failures remain reportable candidates.
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["releasable"] is False
+    assert manifest["release_posture"]["size_certification_present"] is False
+    size = manifest["solve"]["dataset_size"]
+    assert size["requested_households"] == size["realized_households"] == 300
+    assert size["pool_households"] == 416
+    assert manifest["parameters"]["n_clones"] == 2
+    assert (
+        manifest["weights"]["stretch_reference"]
+        == "normalized_horvitz_thompson_w_over_q"
+    )
+    path = out / builder.CANDIDATE_FILENAME_TEMPLATE.format(calibration_year=2025)
+    with pd.HDFStore(path, "r") as store:
+        households = store["household"]
+        persons = store["person"]
+        benunits = store["benunit"]
+    assert len(households) == 300
+    assert set(persons.person_household_id) == set(households.household_id)
+    assert set(persons.person_benunit_id) == set(benunits.benunit_id)
+    assert len(_spool_rows(out)) == 1
+
+    # The selection seed moves the draw only; the manifest records both seeds.
+    assert manifest["parameters"]["seed"] == 7
+    assert manifest["parameters"]["selection_seed"] == 11
+    assert size["seed"] == 11
+    assert manifest["parameters"]["selection_pi_hi"] == 1.0
+    assert size["selection_pi_hi"] == 1.0
+    assert size["selection_receipt"]["pi_hi"] == 1.0
+    assert size["selection_feasibility"]["requested_pi_hi"] == 1.0
+    assert size["selection_feasibility"]["feasible_at_requested_pi_hi"] is True
+
+    # The dense solve the selection was cut from ships as evidence.
+    dense = size["dense_reference"]
+    assert dense["final_loss"] == size["dense_loss"]
+    assert dense["n_households"] == 416
+    assert dense["weights"]["n_records"] == 416
+    assert {"effective_sample_size", "max_to_median_positive_weight"} <= set(
+        dense["weights"]
+    )
+    assert dense["diagnostics_file"] == builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
+    outputs = manifest["outputs"]
+    dense_csv = out / builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
+    selection_csv = out / builder.DATASET_SIZE_SELECTION_FILENAME
+    assert Path(outputs["dense_reference_diagnostics"]["path"]) == dense_csv.resolve()
+    assert Path(outputs["dataset_size_selection"]["path"]) == selection_csv.resolve()
+    assert (
+        outputs["dataset_size_selection"]["sha256"]
+        == hashlib.sha256(selection_csv.read_bytes()).hexdigest()
+    )
+    dense_rows = pd.read_csv(dense_csv)
+    assert len(dense_rows) == manifest["solve"]["n_targets"]
+    assert dense_rows.columns[0] == "grain"
+    assert {"target", "final_estimate", "abs_relative_error"} <= set(dense_rows.columns)
+    selection = pd.read_csv(selection_csv)
+    assert list(selection.columns) == [
+        "pool_row_index",
+        "household_id",
+        "clone_index",
+        "design_weight",
+        "inclusion_probability",
+        "certainty",
+        "ht_baseline_weight",
+        "refit_weight",
+    ]
+    assert len(selection) == 300
+    assert selection["pool_row_index"].is_unique
+    assert selection["pool_row_index"].max() < 416
+    assert set(selection["household_id"]) == set(households.household_id)
+    assert (selection["refit_weight"] > 0).all()
+    assert (selection["design_weight"] > 0).all()
+    assert (
+        int(selection["certainty"].sum())
+        == size["selection_receipt"]["certainty_count"]
+    )
+    assert int(selection["certainty"].sum()) == size["protected_carriers"]
+
+
+def test_selection_seed_requires_a_dataset_size(tmp_path):
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+            "--selection-seed",
+            "11",
+        ]
+    )
+    with pytest.raises(ValueError, match="requires --dataset-households"):
+        builder._validate_cli_args(args)
+
+
+@pytest.mark.parametrize(
+    ("argv_tail", "message"),
+    [
+        (["--selection-pi-hi", "0.95"], "requires --dataset-households"),
+        (["--dataset-households", "10", "--selection-pi-hi", "0"], r"in \(0, 1\]"),
+        (["--dataset-households", "10", "--selection-pi-hi", "1.5"], r"in \(0, 1\]"),
+    ],
+)
+def test_selection_pi_hi_is_candidate_only_and_bounded(tmp_path, argv_tail, message):
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+            *argv_tail,
+        ]
+    )
+    with pytest.raises(ValueError, match=message):
+        builder._validate_cli_args(args)
+
+
+def test_dense_candidate_manifest_has_no_size_sidecars(tmp_path):
+    builder = _load_builder_module()
+    paths = builder._output_paths(tmp_path, source_year=2024, calibration_year=2025)
+    assert paths["dense_reference"].name == builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
+    assert paths["selection"].name == builder.DATASET_SIZE_SELECTION_FILENAME
+    assert builder._SIZE_RUN_ONLY_OUTPUTS == {"dense_reference", "selection"}
+
+
+def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+            "--dataset-households",
+            "50000",
+            "--release-candidate",
+        ]
+    )
+    with pytest.raises(ValueError, match="candidate-only"):
+        builder._validate_cli_args(args)
+
+
+def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
+    monkeypatch, tmp_path, capsys
+):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    from microcosm.build.uk_runtime.size_checkpoint import (
+        SIZE_CHECKPOINT_ARRAYS_FILENAME,
+        SIZE_CHECKPOINT_MANIFEST_FILENAME,
+    )
+
+    input_h5 = tmp_path / "spine.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    _write_staging_h5(input_h5, households_per_region=52)
+    ladder = _write_ladder(ladder_path)
+    import microcosm.build.uk_runtime.battery_bindings as bindings
+
+    monkeypatch.setattr(
+        bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+    common = [
+        "--input-h5",
+        str(input_h5),
+        "--ladder",
+        str(ladder_path),
+        *_configure_households_only_inputs(
+            builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+        ),
+        "--n-clones",
+        "2",
+        "--dataset-households",
+        "300",
+        "--epochs",
+        "2",
+        "--skip-holdout",
+        "--seed",
+        "7",
+    ]
+    first = tmp_path / "first"
+    status = builder.main([*common, "--out", str(first), "--selection-pi-hi", "0.5"])
+    assert status in (0, 1)
+    # The solve is no longer silent: probe verdicts and the search stop reach
+    # stderr as they happen, beside the phase lines.
+    err = capsys.readouterr().err
+    assert "probe 1/10 done:" in err and "search stopped:" in err
+    assert "dense solve: epoch 2/2" in err and "refit: epoch 2/2" in err
+    assert "size selection checkpoint written to" in err
+    assert (first / SIZE_CHECKPOINT_ARRAYS_FILENAME).is_file()
+    checkpoint = json.loads((first / SIZE_CHECKPOINT_MANIFEST_FILENAME).read_text())
+    assert checkpoint["selection"]["households"] == 300
+    assert checkpoint["selection"]["search_pi_hi"] == 0.5
+    assert checkpoint["identity"]["dataset_households"] == 300
+    assert checkpoint["identity"]["epochs"] == 2
+    # The identity carries the solve doctrine; the provenance names the
+    # writing run (reported on resume, not compared).
+    assert checkpoint["identity"]["doctrine"] == builder._doctrine_bounds()
+    assert set(checkpoint["provenance"]) == {"code_pin", "build_id"}
+    manifest = json.loads((first / builder.MANIFEST_FILENAME).read_text())
+    written = manifest["solve"]["dataset_size"]["checkpoint"]["written"]
+    assert "written_at" not in written and "directory" not in written
+    size_first = manifest["solve"]["dataset_size"]
+    assert 0 < size_first["certainty_share"] <= 1
+    assert (
+        size_first["boundary_draws"]
+        == 300 - (size_first["selection_receipt"]["certainty_count"])
+    )
+    assert size_first["zero_target_rows"] >= 0
+    weights_block = manifest["weights"]
+    assert weights_block["stretch_reference"] == "normalized_horvitz_thompson_w_over_q"
+    assert weights_block["realized_max_weight_ratio_vs_stretch_reference"] > 0
+    assert weights_block["realized_max_weight_ratio_vs_design"] > 0
+    assert manifest["parameters"]["size_checkpoint"] is True
+    assert manifest["parameters"]["resume_size_checkpoint"] is None
+    written = manifest["solve"]["dataset_size"]["checkpoint"]["written"]
+    assert written["arrays_sha256"] == checkpoint["arrays_sha256"]
+    assert manifest["solve"]["dataset_size"]["selection_reused"] is False
+    rows = _spool_rows(first)
+    assert len(rows) == 1
+    assert "size_selection_checkpointed" in rows[0].phases_reached
+
+    # Resume on the same inputs: no dense solve, no search, same draw and refit.
+    second = tmp_path / "second"
+    status = builder.main(
+        [
+            *common,
+            "--out",
+            str(second),
+            "--selection-pi-hi",
+            "0.5",
+            "--resume-size-checkpoint",
+            str(first),
+        ]
+    )
+    assert status in (0, 1)
+    assert not (second / SIZE_CHECKPOINT_ARRAYS_FILENAME).exists()
+    resumed = json.loads((second / builder.MANIFEST_FILENAME).read_text())
+    assert resumed["parameters"]["size_checkpoint"] is False
+    assert resumed["parameters"]["resume_size_checkpoint"] == str(first.resolve())
+    size = resumed["solve"]["dataset_size"]
+    assert size["selection_reused"] is True
+    assert size["selection_search_pi_hi"] == 0.5
+    assert (
+        size["checkpoint"]["resumed_from"]["arrays_sha256"]
+        == (checkpoint["arrays_sha256"])
+    )
+    assert size["dense_loss"] == manifest["solve"]["dataset_size"]["dense_loss"]
+    assert (
+        size["selection_l0_lambda"]
+        == (manifest["solve"]["dataset_size"]["selection_l0_lambda"])
+    )
+    first_selection = pd.read_csv(first / builder.DATASET_SIZE_SELECTION_FILENAME)
+    second_selection = pd.read_csv(second / builder.DATASET_SIZE_SELECTION_FILENAME)
+    pd.testing.assert_frame_equal(first_selection, second_selection)
+    assert "size_selection_resumed" in _spool_rows(second)[0].phases_reached
+
+    # Another threshold re-draws from the same checkpoint and records both.
+    third = tmp_path / "third"
+    status = builder.main(
+        [
+            *common,
+            "--out",
+            str(third),
+            "--selection-pi-hi",
+            "1.0",
+            "--resume-size-checkpoint",
+            str(first),
+        ]
+    )
+    assert status in (0, 1)
+    redrawn = json.loads((third / builder.MANIFEST_FILENAME).read_text())
+    assert redrawn["solve"]["dataset_size"]["selection_pi_hi"] == 1.0
+    assert redrawn["solve"]["dataset_size"]["selection_search_pi_hi"] == 0.5
+
+    # A resume whose inputs differ refuses by name, before any solve.
+    different_epochs = list(common)
+    different_epochs[different_epochs.index("--epochs") + 1] = "3"
+    with pytest.raises(ValueError, match="epochs: checkpoint 2 != run 3"):
+        builder.main(
+            [
+                *different_epochs,
+                "--out",
+                str(tmp_path / "fourth"),
+                "--resume-size-checkpoint",
+                str(first),
+            ]
+        )
+    with pytest.raises(ValueError, match="requires --dataset-households"):
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(tmp_path / "fifth"),
+                "--resume-size-checkpoint",
+                str(first),
+            ]
+        )
+    # An --out that already holds a checkpoint refuses before any solve
+    # (Vahid's should-fix 2): the checkpoint writer's own refusal came hours
+    # too late.
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    (stale / SIZE_CHECKPOINT_ARRAYS_FILENAME).write_bytes(b"stale")
+    (stale / SIZE_CHECKPOINT_MANIFEST_FILENAME).write_text("{}")
+    with pytest.raises(FileExistsError, match="already holds a size checkpoint"):
+        builder.main([*common, "--out", str(stale)])
+    assert not (stale / builder.MANIFEST_FILENAME).exists()
+    assert manifest["solve"]["dataset_size"]["checkpoint"]["written"]["stage"] == (
+        "before_exact_count_draw"
+    )
+    resumed_receipt = resumed["solve"]["dataset_size"]["checkpoint"]["resumed_from"]
+    assert (
+        resumed_receipt["provenance"]["build_id"]
+        == checkpoint["provenance"]["build_id"]
+    )
+    assert "written_at" not in resumed_receipt

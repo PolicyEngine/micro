@@ -39,6 +39,10 @@ shard's real wheel, install into a clean uv-export-constrained venv, assert
 the wheel/import boundary and spec digests, and run the suite against installed
 wheels.
 
+New commits to a PR cancel older unfinished CI runs for that same PR.
+Each main-push run has a unique concurrency group, so all main-push runs
+remain independent and can finish validating their merged changes.
+
 `requires_us` and `requires_uk` are registered pytest markers. Mark new tests
 that need a live PolicyEngine engine with the appropriate marker; the root
 collection hook skips them when that engine is absent, and the marker also
@@ -124,3 +128,9 @@ with the journal pointing to them.
 Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
+
+UK size experiments use `tools/build_uk_rowwise_candidate.py --dataset-households`
+with the same pool inputs as the dense candidate. The flag changes exported
+support, not clone K. Sizes remain candidate-only until their matched comparison
+and promotion scorecard are adjudicated; see
+[the size plan](docs/uk-dataset-size-plan-355.md).
