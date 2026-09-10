@@ -220,11 +220,18 @@ receipts without reopening source bodies. This clears the national support
 normalization check; assigning households, evaluating geographic fit and
 calibrating the enriched survey remain separate acceptance steps.
 
-The financial successor's positive control reached its 600 CPU-second limit
-without a final receipt. A separate, bounded profile of the unchanged invented
-cold/required financial fixture now passes its test, original teardown and all
-final code/resource checks: 303.90 CPU seconds, 308.26 wall seconds and 594.3 MB
-peak RSS. This diagnoses the fixture; it does not accept the financial successor.
+The financial successor's unchanged positive control now passes with both
+original fixture teardowns and final code/resource checks: 647.19 CPU seconds,
+651.21 wall seconds and 570.9 MB peak RSS. This separately reviewed invocation
+used a 1,200 CPU-second budget; the earlier 600-second attempt remains recorded
+as incomplete. No memo or profiler was used. The [positive control evidence](../experiments/us-financial-successor-positive-20260910.json)
+checks financial replay and a subsequent weight-only change. Seven refusal and
+callback controls remain before accepting the complete admission path.
+
+A separate, bounded profile of the unchanged invented cold/required financial
+fixture passes its test, original teardown and all final code/resource checks:
+303.90 CPU seconds, 308.26 wall seconds and 594.3 MB peak RSS. This measures the
+fixture rather than the additional financial and weight-only admission work.
 See the [profile evidence](../experiments/us-financial-fixture-profile-20260910.json).
 Loaded ACS code verification accounts for 180.20 cumulative seconds inside the
 298.15-second profiled fixture. Its nested function checker runs 2,009,108 times
