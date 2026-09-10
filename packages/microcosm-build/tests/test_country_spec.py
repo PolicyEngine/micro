@@ -919,7 +919,6 @@ class TestUKCountryPackage:
             "cgt_band_donor_support_bounds.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
-            "hmrc_income_source_stages.json",
             "need_energy_targets.json",
             "lcfs_consumption_anchors.json",
             "etb_policy_anchors.json",
@@ -963,14 +962,14 @@ class TestUKCountryPackage:
             "local_target_reference_membership.json",
         )
 
-    def test_uk_source_manifest_loads_thirty_stages(self) -> None:
+    def test_uk_source_manifest_contains_only_canonical_spine_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 28 spine stages (uc_reporter_redraw #832, then uc_deduction_attributes
-        # #685 as the newest) plus the
-        # two certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 30
+        assert len(spec.sources.stages) == 28
+        assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
+            stage.stage for stage in spec.sources.stages
+        )
 
 
 class TestExistingPackagesGeneralize:
@@ -1013,7 +1012,6 @@ class TestExistingPackagesGeneralize:
             "cgt_band_donor_support_bounds.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
-            "hmrc_income_source_stages.json",
             "need_energy_targets.json",
             "lcfs_consumption_anchors.json",
             "etb_policy_anchors.json",

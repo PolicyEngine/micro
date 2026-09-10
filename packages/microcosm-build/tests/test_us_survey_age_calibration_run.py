@@ -310,20 +310,18 @@ def test_actual_seven_node_terminal_manifest_mutation_refuses(
     """Expensive actual source fixture: requires a separately approved workload."""
     from test_us_graph_survey_population import authenticated_arguments
 
-    actual_graph = stage.run_graph
-    actual_verify = stage.budgets.verify_survey_weight_only_successor
+    graph_code = stage.run_graph.__code__
+    verify_code = stage.budgets.verify_survey_weight_only_successor.__code__
     returned = []
     changed = []
 
-    def capture(compiled, **kwargs):
-        manifest = actual_graph(compiled, **kwargs)
-        if len(compiled.order) == 7:
-            returned.append(manifest)
-        return manifest
-
-    def late(value):
-        actual_verify(value)
-        if returned:
+    def observe_return(frame, event, value):
+        if event != "return":
+            return
+        if frame.f_code is graph_code and type(value) is RunManifest:
+            if len(frame.f_locals["compiled"].order) == 7:
+                returned.append(value)
+        elif frame.f_code is verify_code and returned and not changed:
             row = returned[-1].node(stage.numerical.CALIBRATION_NODE)
             if field == "capabilities":
                 object.__setattr__(row.capabilities, "consumes_se", True)
@@ -338,10 +336,12 @@ def test_actual_seven_node_terminal_manifest_mutation_refuses(
                 assert getattr(row, field) == value
             changed.append(True)
 
-    monkeypatch.setattr(stage, "run_graph", capture)
-    monkeypatch.setattr(stage.budgets, "verify_survey_weight_only_successor", late)
     arguments = authenticated_arguments(tmp_path, monkeypatch)
     arguments["seed_value"] = arguments.pop("seed")
+    # Observe the actual producers: substituting either callable changes the
+    # source-authority seal before the intended late manifest fault is reached.
+    previous_profile = sys.getprofile()
+    sys.setprofile(observe_return)
     try:
         with pytest.raises(ValueError, match="MANIFEST_NODE_STATE"):
             stage.run_survey_age_calibration(
@@ -351,13 +351,14 @@ def test_actual_seven_node_terminal_manifest_mutation_refuses(
                 learning_rate=0.1,
             )
     finally:
+        sys.setprofile(previous_profile)
         if field == "capabilities" and returned:
             object.__setattr__(
                 returned[-1].node(stage.numerical.CALIBRATION_NODE).capabilities,
                 "consumes_se",
                 False,
             )
-    assert changed
+    assert len(returned) == 1 and changed == [True]
 
 
 def _portable_array_values():

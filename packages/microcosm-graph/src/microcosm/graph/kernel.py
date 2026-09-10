@@ -57,7 +57,8 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 import pandas as pd
 
-from microcosm.frame import Frame, Weights
+from microcosm.frame import Frame, MassChangeRecord, Weights
+from microcosm.frame.bundle import _freeze_metadata
 
 from .decl import ArtifactType, Node, Param, StructuralDelta
 
@@ -321,6 +322,12 @@ class KernelContext:
         artifacts: Immutable typed bytes for declared artifact aliases only.
             Consumers validate versioned payloads before using them; nominal
             types do not themselves verify arbitrary serialized data.
+        frame_column_order: Original order restricted to projected columns;
+            undeclared column names are never exposed.
+        frame_metadata: Immutable metadata from the population version.
+        frame_mass_log: Immutable legacy Frame mass records. Consumers requiring
+            a completed stage log must run after its structural boundary or read
+            explicit predecessor evidence; incidental node order is not authority.
         sources: Source name to a content-verified path, for declared
             sources only.
         tolerances: ``(entity, column)`` of each declared input column to
@@ -343,8 +350,32 @@ class KernelContext:
     tolerances: Mapping[tuple[str, str], Tolerance | None] = field(default_factory=dict)
     numerics: Mapping[tuple[str, str], NumericScope] = field(default_factory=dict)
     artifacts: Mapping[str, ArtifactValue] = field(default_factory=dict)
+    frame_metadata: Mapping[str, object] = field(default_factory=dict)
+    frame_mass_log: tuple[MassChangeRecord, ...] = ()
+    frame_column_order: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "frame_metadata", _freeze_metadata(self.frame_metadata)
+        )
+        column_order = dict(self.frame_column_order)
+        for entity, columns in column_order.items():
+            if (
+                entity not in self.tables
+                or not isinstance(columns, tuple)
+                or len(columns) != len(set(columns))
+                or set(columns) != set(self.tables[entity].columns)
+            ):
+                raise TypeError(
+                    "KernelContext.frame_column_order must order exactly the projected columns."
+                )
+        object.__setattr__(self, "frame_column_order", MappingProxyType(column_order))
+        if not isinstance(self.frame_mass_log, tuple) or any(
+            not isinstance(record, MassChangeRecord) for record in self.frame_mass_log
+        ):
+            raise TypeError(
+                "KernelContext.frame_mass_log must contain immutable mass records."
+            )
         values = dict(self.artifacts)
         if any(
             not isinstance(name, str)

@@ -30,6 +30,7 @@ from .decl import (
     SourceRef,
     StructuralDelta,
     WeightTransition,
+    WeightUpdate,
     compile_graph,
 )
 from .errors import (
@@ -57,12 +58,15 @@ from .kernel import (
 )
 from .keys import platform_fingerprint
 from .randomness import keyed_uniform
+from .weight_update import weight_update_receipt
 
 __all__ = [
     "ArtifactInput",
     "ArtifactOutput",
     "ArtifactType",
     "ArtifactValue",
+    "WeightUpdate",
+    "weight_update_receipt",
     "keyed_uniform",
     "platform_fingerprint",
     "DESCRIPTIVE_FIELDS",

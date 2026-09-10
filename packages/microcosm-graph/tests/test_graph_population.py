@@ -1434,3 +1434,96 @@ def test_reweight_can_synthesize_frame_but_must_not_change_ids() -> None:
         )
     with pytest.raises(PopulationError, match="changed 'person' ids"):
         patch(population, node, KernelResult(frame=reordered))
+
+
+@pytest.mark.parametrize(
+    "dtype,values",
+    [
+        ("int64", [7, 8, 9, 10]),
+        ("bool", [True, False, True, False]),
+        ("string", ["a", "b", "c", "d"]),
+        ("float64", [0.1, 0.2, 0.3, 0.4]),
+    ],
+)
+def test_new_columns_preserve_noncontiguous_frame_labels(dtype, values):
+    original = _frame()
+    person = original.table("person").copy()
+    person.index = pd.Index([11, 21, 44, 105])
+    strata = original.strata.copy()
+    strata.index = person.index
+    frame = _replace_person_table(original, person, strata)
+    population = Population.from_frame(frame, "source")
+    node = Node("new_column", "test@1", outputs=(Owned("person", "new", dtype),))
+    incoming = pd.Series(list(reversed(values)), index=[4, 3, 2, 1], dtype=dtype)
+    updated = patch(
+        population, node, KernelResult(columns={("person", "new"): incoming})
+    )
+    actual = updated.frame.table("person")
+    assert actual.index.equals(person.index)
+    pd.testing.assert_series_equal(
+        actual["new"],
+        pd.Series(values, index=person.index, dtype=dtype_for_token(dtype), name="new"),
+    )
+    pd.testing.assert_frame_equal(actual.drop(columns="new"), person)
+    assert "new" not in population.frame.table("person")
+
+
+def test_new_masked_nullable_column_preserves_unowned_rows_with_noncontiguous_labels():
+    original = _frame()
+    person = original.table("person").copy()
+    person.index = pd.Index([11, 21, 44, 105])
+    strata = original.strata.copy()
+    strata.index = person.index
+    population = Population.from_frame(
+        _replace_person_table(original, person, strata), "source"
+    )
+    node = Node(
+        "new_masked",
+        "test@1",
+        inputs=(Slice("person", ("owned",)),),
+        outputs=(Owned("person", "new", "Int64", rows="owned"),),
+    )
+    result = patch(
+        population,
+        node,
+        KernelResult(
+            columns={("person", "new"): pd.Series([8, 10], index=[2, 4], dtype="Int64")}
+        ),
+    )
+    pd.testing.assert_series_equal(
+        result.frame.table("person")["new"],
+        pd.Series([pd.NA, 8, pd.NA, 10], index=person.index, dtype="Int64", name="new"),
+    )
+
+
+@pytest.mark.parametrize(
+    "dtype,values",
+    [
+        ("float32", [8.0, 10.0]),
+        ("float64", [8.0, 10.0]),
+        ("Int64", [8, 10]),
+        ("string", ["x", "y"]),
+    ],
+)
+def test_masked_constant_fillers_have_same_values_for_sampled_row_labels(dtype, values):
+    original = _frame()
+    person = original.table("person").copy()
+    person.index = pd.Index([11, 21, 44, 105])
+    strata = original.strata.copy()
+    strata.index = person.index
+    selected = _replace_person_table(original, person, strata)
+    node = Node(
+        "masked_new",
+        "test@1",
+        inputs=(Slice("person", ("owned",)),),
+        outputs=(Owned("person", "new", dtype, rows="owned"),),
+    )
+    incoming = pd.Series(values, index=[2, 4], dtype=dtype_for_token(dtype))
+    result = KernelResult(columns={("person", "new"): incoming})
+    ordinary = patch(Population.from_frame(original, "source"), node, result)
+    sampled = patch(Population.from_frame(selected, "source"), node, result)
+    pd.testing.assert_series_equal(
+        ordinary.frame.table("person")["new"],
+        sampled.frame.table("person")["new"].reset_index(drop=True),
+    )
+    assert sampled.frame.table("person")["new"].iloc[[0, 2]].isna().all()

@@ -28,7 +28,7 @@ import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.gates import GateReport, GateResult
 from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_logbook_row
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
-from microcosm.build.spec_engine import LegacyPayloadMismatchError
+from microcosm.build.spec_engine import LegacyPayloadMismatchError, load_bundle
 from microcosm.build.us_runtime.acs_transfer import transfer_acs_inputs
 from microcosm.build.us_runtime.acs_transfer_bank import (
     ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
@@ -2449,6 +2449,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
         capture_equality,
     )
 
+    current_spec_sha256 = load_bundle("us").spec_sha256
     # This call performs the real bundle load, compilation, and field-complete
     # equality assertion against the live generation-0 constructors.
     run_config = pool_tool._stacked_run_config(args)
@@ -2514,7 +2515,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "35a02b6b19c921faba1407d441e0b9d9623c496e2cd5b711be014def281a95c6",
+            "spec_sha256": current_spec_sha256,
         },
     }
 

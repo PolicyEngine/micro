@@ -7,6 +7,7 @@ import json
 import socket
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -76,6 +77,7 @@ from .store import (
     StoreCorrupt,
     StoreMiss,
     StoreUnavailable,
+    _encode_frame_metadata,
 )
 
 __all__ = ["NodeRejected", "NodeRejectedError", "run_graph"]
@@ -409,6 +411,9 @@ def _context_digest(context: KernelContext) -> bytes:
         digest.update(weights.kind.value.encode("ascii") + b"\0")
         _update_array(digest, weights.values)
     _update_series(digest, context.strata)
+    digest.update(canonical_json(_encode_frame_metadata(context.frame_metadata)))
+    digest.update(canonical_json([asdict(record) for record in context.frame_mass_log]))
+    digest.update(canonical_json(dict(context.frame_column_order)))
     for name, value in sorted(context.artifacts.items()):
         digest.update(
             canonical_json(
@@ -605,6 +610,16 @@ def _project_context(
         tolerances=tolerances,
         numerics=numerics,
         artifacts={} if artifacts is None else artifacts,
+        frame_metadata=frame.metadata,
+        frame_mass_log=frame.mass_log,
+        frame_column_order={
+            entity: tuple(
+                column
+                for column in frame.table(entity).columns
+                if column in table.columns
+            )
+            for entity, table in tables.items()
+        },
     )
 
 

@@ -118,6 +118,10 @@ def test_b2_executor_enforces_ownership(tmp_path: Path) -> None:
         "sources",
         "tolerances",  # amendment 13: declared tolerances of the inputs' owners
         "numerics",  # amendment 17: per-coordinate numeric class, bound, platform
+        "artifacts",  # declared typed dependencies, no undeclared Frame access
+        "frame_metadata",  # immutable evidence, bound by the population identity
+        "frame_mass_log",
+        "frame_column_order",  # ordering only, restricted to projected columns
     }
 
     graph = toy.small_graph(

@@ -24,8 +24,10 @@ from .decl import (
     Owned,
     Ownership,
     StructuralDelta,
+    WeightUpdate,
 )
 from .kernel import KernelResult
+from .weight_update import weight_update_receipt
 
 __all__ = [
     "MassRecord",
@@ -1800,6 +1802,10 @@ def _patch_columns(
                 continue
         else:
             incumbent = _empty_column(len(table), owned.dtype, owned_mask)
+            # Frame sampling can preserve non-contiguous pandas row labels.
+            # The temporary column is positional; label-alignment against a
+            # fresh RangeIndex would insert nulls and promote dense dtypes.
+            incumbent.index = table.index
             table[owned.column] = incumbent
 
         positions = pd.Series(
@@ -1914,6 +1920,16 @@ def _apply_weight_transition(
         )
     old = population.frame.weights_for(transition.entity)
     declared_kind = WeightKind(transition.to_kind)
+    if isinstance(transition, WeightUpdate):
+        if declared_kind is not old.kind or result.weights.kind is not old.kind:
+            raise PopulationError("WeightUpdate must preserve the same kind.")
+        id_column = population.frame.schema.entity_id_column(transition.entity)
+        axis = population.frame.table(transition.entity)[id_column]
+        if result.receipt.get("weight_update") != weight_update_receipt(axis):
+            raise PopulationError("WeightUpdate receipt differs from the ordered axis.")
+        if len(result.weights) != len(axis):
+            raise PopulationError("WeightUpdate values must match the ordered axis.")
+        return _replace_weights(frame, transition.entity, result.weights)
     # Forward moves only, matching the Frame kernel's own rule: design may go
     # straight to calibrated (the UK pipeline calibrates design weights), and
     # nothing moves backwards or stays in place.

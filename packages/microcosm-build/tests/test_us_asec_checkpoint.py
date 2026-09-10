@@ -118,7 +118,7 @@ def test_restored_raw_observations_carry_to_input_leaves_without_engine() -> Non
     )
 
 
-def test_v4_restoration_producer_authenticates_source_and_writes_new_bundle(
+def test_pinned_coverage_loader_and_exact_join_roundtrip_through_v4_codec(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -126,9 +126,11 @@ def test_v4_restoration_producer_authenticates_source_and_writes_new_bundle(
     from dataclasses import replace
 
     from microcosm.build.us_runtime import reported_coverage_source
-    from microcosm.build.us_runtime.asec_raw_stage_v4 import restore_asec_raw_stage_v4
 
     legacy = _raw_us_frame()
+    legacy.person["source_household_id"] = [1, 1]
+    legacy.person["P_SEQ"] = [1, 1]
+    legacy.person["A_LINENO"] = [1, 1]
     binding = _raw_binding(legacy)
     binding["source_receipt"]["sources"].append(
         dict(binding["source_receipt"]["sources"][0], year=2023)
@@ -169,53 +171,86 @@ def test_v4_restoration_producer_authenticates_source_and_writes_new_bundle(
     monkeypatch.setattr(
         reported_coverage_source, "ASEC_EDUCATION_ASSISTANCE_ARCHIVES", pins
     )
-    output_dir = tmp_path / "restored"
-    receipt = restore_asec_raw_stage_v4(
-        input_path,
-        expected_sha256=input_sha,
-        coverage_paths=paths,
-        output_dir=output_dir,
+    source = reported_coverage_source.load_asec_reported_coverage_sources(
+        paths, income_years=(2022, 2023)
     )
-    assert receipt["input_sha256"] == input_sha
-    output = output_dir / "asec_raw_stage.checkpoint.h5"
-    assert receipt["output_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
-    assert hashlib.sha256(input_path.read_bytes()).hexdigest() == input_sha
-    restored, metadata = checkpoint_module.load_asec_raw_stage_checkpoint_v4(output)
-    assert restored.table("person")["NOW_MCAID"].tolist() == [1, 2]
+    loaded_legacy, _ = load_asec_raw_stage_checkpoint(input_path)
+    person = reported_coverage_source.fill_asec_reported_coverage_source(
+        loaded_legacy.person, source.iloc[::-1]
+    )
+    restored = Frame(
+        {
+            entity: person if entity == "person" else loaded_legacy.table(entity)
+            for entity in loaded_legacy.entities
+        },
+        loaded_legacy.schema,
+        {
+            entity: loaded_legacy.weights_for(entity)
+            for entity in loaded_legacy.weighted_entities
+        },
+        loaded_legacy.strata,
+    )
+    # The maintained codec consumes an explicitly attested v4 artifact. This
+    # test supplies the attestation from the real pinned reader's audit; it
+    # does not claim an additional production restoration/bundle writer exists.
+    v4_binding = _v4_binding(restored)
+    v4_binding["source_receipt"] = binding["source_receipt"]
+    for column in checkpoint_module.ASEC_REPORTED_COVERAGE_RAW_COLUMNS:
+        v4_binding["raw_source_mappings"][column]["audit"] = {
+            str(year): {
+                "rows": audit["rows"],
+                **audit["columns"][column],
+            }
+            for year, audit in source.attrs["source_audit"].items()
+        }
+    output = tmp_path / "coverage-v4.h5"
+    write_frame_checkpoint(output, restored, metadata=v4_binding)
+    reloaded, metadata = checkpoint_module.load_asec_raw_stage_checkpoint_v4(output)
+    for column in checkpoint_module.ASEC_REPORTED_COVERAGE_RAW_COLUMNS:
+        assert reloaded.person[column].tolist() == [1, 2]
+        assert reloaded.person[column].dtype == np.dtype("int64")
     assert metadata["source_receipt"] == binding["source_receipt"]
-    assert json.loads((output_dir / "restoration.receipt.json").read_text()) == receipt
-    with pytest.raises(FileExistsError):
-        restore_asec_raw_stage_v4(
-            input_path,
-            expected_sha256=input_sha,
-            coverage_paths=paths,
-            output_dir=output_dir,
+    pd.testing.assert_frame_equal(
+        reloaded.person.drop(
+            columns=list(checkpoint_module.ASEC_REPORTED_COVERAGE_RAW_COLUMNS)
+        ),
+        loaded_legacy.person,
+    )
+    for entity in loaded_legacy.schema.group_entities:
+        pd.testing.assert_frame_equal(
+            reloaded.table(entity), loaded_legacy.table(entity)
         )
-    with pytest.raises(ValueError, match="SHA-256"):
-        restore_asec_raw_stage_v4(
-            input_path,
-            expected_sha256="f" * 64,
-            coverage_paths=paths,
-            output_dir=tmp_path / "bad",
+    assert frame_identity(loaded_legacy) == frame_identity(legacy)
+    assert hashlib.sha256(input_path.read_bytes()).hexdigest() == input_sha
+
+    with pytest.raises(ValueError, match="does not cover pooled income year"):
+        reported_coverage_source.fill_asec_reported_coverage_source(
+            loaded_legacy.person, source.loc[source.source_year.eq(2022)]
         )
-    with pytest.raises(ValueError, match="local coverage paths"):
-        restore_asec_raw_stage_v4(
-            input_path,
-            expected_sha256=input_sha,
-            coverage_paths={2022: paths[2022]},
-            output_dir=tmp_path / "missing",
+    inconsistent = source.copy()
+    inconsistent.loc[inconsistent.source_year.eq(2022), "PH_SEQ"] = 99
+    with pytest.raises(ValueError, match="redundant identity mismatch"):
+        reported_coverage_source.fill_asec_reported_coverage_source(
+            loaded_legacy.person, inconsistent
+        )
+    with pytest.raises(FileNotFoundError):
+        reported_coverage_source.load_asec_reported_coverage_sources(
+            {2022: paths[2022], 2023: tmp_path / "missing.csv"},
+            income_years=(2022, 2023),
+        )
+    original = paths[2022].read_bytes()
+    changed = bytearray(original)
+    changed[-4] ^= 1
+    paths[2022].write_bytes(changed)
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        reported_coverage_source.load_asec_reported_coverage_sources(
+            paths, income_years=(2022, 2023)
         )
     paths[2022].write_text("tampered")
     with pytest.raises(ValueError, match="byte length mismatch"):
-        restore_asec_raw_stage_v4(
-            input_path,
-            expected_sha256=input_sha,
-            coverage_paths=paths,
-            output_dir=tmp_path / "tampered",
+        reported_coverage_source.load_asec_reported_coverage_sources(
+            paths, income_years=(2022, 2023)
         )
-    assert not (tmp_path / "bad").exists()
-    assert not (tmp_path / "missing").exists()
-    assert not (tmp_path / "tampered").exists()
 
 
 @pytest.mark.parametrize(
