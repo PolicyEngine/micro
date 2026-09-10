@@ -408,3 +408,37 @@ def test_evaluator_cli_rejects_blocks_before_opening_inputs(blocks):
     assert result.returncode == 2
     assert "--engine-blocks" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_full_candidate_package_preserves_measured_byte_bindings():
+    from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
+        candidate_evaluation_manifest,
+    )
+
+    package = {
+        "schema_version": 1,
+        "kind": "uk_full_build_package",
+        "readback_passed": True,
+        "dataset": {"filename": "full.h5", "sha256": "a" * 64, "size_bytes": 42},
+        "evidence_files": {
+            "diagnostics": {
+                "filename": "full.diagnostics.json",
+                "sha256": "b" * 64,
+                "size_bytes": 21,
+            }
+        },
+        "build_bindings": {
+            "ledger": {"facts_sha256": "c" * 64, "manifest_sha256": "d" * 64}
+        },
+    }
+    result = candidate_evaluation_manifest(package)
+    assert result["outputs"]["dataset"] == {
+        "path": "full.h5",
+        "sha256": "a" * 64,
+        "bytes": 42,
+    }
+    assert result["outputs"]["calibration_diagnostics"]["sha256"] == "b" * 64
+    assert result["identity"]["ledger"] == package["build_bindings"]["ledger"]
+    package["dataset"]["filename"] = "../other.h5"
+    with pytest.raises(ValueError, match="filenames"):
+        candidate_evaluation_manifest(package)
