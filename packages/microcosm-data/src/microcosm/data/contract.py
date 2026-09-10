@@ -4771,7 +4771,13 @@ def release_dataset_role(release_dir: Path | str) -> str:
     return role if isinstance(role, str) and role else NATIONAL_DEFAULT_DATASET_ROLE
 
 
-def validate_release_dir(release_dir: Path | str) -> None:
+def validate_release_dir(
+    release_dir: Path | str,
+    *,
+    parent_h5: Path | str | None = None,
+    artifact_root: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
+) -> None:
     """Check a local release directory against its dataset-role contract.
 
     The directory name is the build id (``populace-us-2024-<sha>-<date>``)
@@ -4788,6 +4794,13 @@ def validate_release_dir(release_dir: Path | str) -> None:
       ``default_datasets`` map, and artifacts pinned to the release id. The
       national critical-target set deliberately does not apply: the artifact
       is calibrated to a local surface by design.
+
+    ``release_type=source_enrichment`` selects the separately reviewed BuildP
+    inheritance contract before role dispatch: exact schema-5 calibration bytes,
+    complete H5 preservation, pinned source role evidence, and replayed native
+    loader checks. It requires ``parent_h5``, ``artifact_root``, and the tested
+    ``compatibility_wheels``. Pending local candidates have a separate validator
+    and cannot pass this publication gate. Ordinary calibration stays on schema 6.
 
     TODO(#578 H5 household-count reconciliation): when the first modern UK
     exact-k release is actually cut, bind these manifest/diagnostic counts to
@@ -4821,6 +4834,29 @@ def validate_release_dir(release_dir: Path | str) -> None:
             manifest_probe = json.loads(manifest_probe_path.read_text())
         except (OSError, ValueError):
             manifest_probe = None
+        if isinstance(manifest_probe, Mapping) and "release_type" in manifest_probe:
+            from microcosm.data.source_enrichment import (
+                SOURCE_ENRICHMENT_RELEASE_TYPE,
+                validate_source_enrichment_candidate,
+            )
+
+            if manifest_probe["release_type"] == SOURCE_ENRICHMENT_RELEASE_TYPE:
+                validate_source_enrichment_candidate(
+                    release_dir,
+                    parent_h5=parent_h5,
+                    artifact_root=artifact_root,
+                    require_compatibility=True,
+                    compatibility_wheels=compatibility_wheels,
+                )
+                return
+            if manifest_probe["release_type"] != "calibration":
+                raise ReleaseContractError(
+                    release_dir,
+                    [
+                        "release_manifest.json declares unknown release_type "
+                        f"{manifest_probe['release_type']!r}."
+                    ],
+                )
         if isinstance(manifest_probe, Mapping) and "dataset_role" in manifest_probe:
             declared_role = manifest_probe["dataset_role"]
             if declared_role not in (
@@ -5293,6 +5329,14 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
             manifest_probe = json.loads(manifest_probe_path.read_text())
         except (OSError, ValueError):
             manifest_probe = None
+        if (
+            isinstance(manifest_probe, Mapping)
+            and manifest_probe.get("release_type", "calibration") != "calibration"
+        ):
+            raise ReleaseContractError(
+                release_dir,
+                ["evidence tier does not accept source-enrichment releases"],
+            )
         if isinstance(manifest_probe, Mapping) and "dataset_role" in manifest_probe:
             declared_role = manifest_probe["dataset_role"]
             if declared_role != NATIONAL_DEFAULT_DATASET_ROLE:

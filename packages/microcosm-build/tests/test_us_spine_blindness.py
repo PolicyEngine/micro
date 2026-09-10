@@ -291,6 +291,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Data-only live battery authority extraction; never reads or mutates Frames.
         "stacked_battery_contract.py",
         "spm_resources.py",
+        # Pinned ASEC role reconstruction and exact parent join; no population
+        # treatment. Remains subject to the all-runtime source-identity scan.
+        "spm_role_source.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
         "take_up.py",
