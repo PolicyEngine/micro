@@ -296,6 +296,26 @@ Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.
 
+### UK full-build registration extensions
+
+The UK registration adds two explicit contracts to the frozen declarations:
+
+- `WeightUpdate(entity, kind, reason, mass)` declares normalization without
+  changing the weight kind. It requires `conserve` or `declared` mass and an
+  ordered entity-ID receipt; it preserves design-weight ancestry.
+  `WeightTransition` retains its existing forward-only kind check.
+- `KernelContext.frame_metadata` and `frame_mass_log` expose immutable
+  population metadata and legacy mass records alongside declared table
+  slices. `frame_column_order` gives the original order of projected columns
+  only. The mutation guard covers these fields. A consumer that needs a
+  completed legacy ledger must depend on a structural population checkpoint
+  or explicit predecessor evidence; incidental execution order does not
+  establish that dependency. Graph mass accounting remains executor-authored.
+
+`test_weight_update.py` covers aligned identity, kind checks, mass validation,
+design ancestry, immutable context and replay. These extensions do not grant
+kernels access to undeclared population columns.
+
 ## Ownership
 
 Max's ruling (2026-09-01): the agents build all of it. The "implementer ≠

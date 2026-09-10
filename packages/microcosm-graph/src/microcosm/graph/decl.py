@@ -70,6 +70,7 @@ __all__ = [
     "SourceRef",
     "StructuralDelta",
     "WeightTransition",
+    "WeightUpdate",
     "compile_graph",
 ]
 
@@ -318,6 +319,35 @@ class WeightTransition:
 
 
 @dataclass(frozen=True)
+class WeightUpdate:
+    """An explicit same-kind numerical update, never a kind transition.
+
+    The kernel must bind its ordered entity axis using ``weight_update_receipt``.
+    A nonempty reason is normative. Mass must be conserved or declared; an
+    unconstrained free-mass update is intentionally not part of this contract.
+    Original design-weight ancestry is carried unchanged by the executor.
+    """
+
+    entity: str
+    kind: str
+    reason: str
+    mass: str = "declared"
+
+    def __post_init__(self) -> None:
+        _name("WeightUpdate.entity", self.entity)
+        _nonempty("WeightUpdate.reason", self.reason)
+        if self.kind not in WEIGHT_KINDS:
+            raise GraphError("WeightUpdate.kind must name an existing weight kind.")
+        if self.mass not in {"conserve", "declared"}:
+            raise GraphError("WeightUpdate requires conserved or declared mass.")
+
+    @property
+    def to_kind(self) -> str:
+        """The unchanged kind, for shared structural-weight accounting."""
+        return self.kind
+
+
+@dataclass(frozen=True)
 class Node:
     """One unit of computation and cell ownership.
 
@@ -363,7 +393,7 @@ class Node:
     structural: StructuralDelta = StructuralDelta.NONE
     base: str | None = None
     sources: tuple[str, ...] = ()
-    weights: WeightTransition | None = None
+    weights: WeightTransition | WeightUpdate | None = None
     mass: str = "conserve"
     description: str = ""
     citation: str = ""
@@ -451,6 +481,8 @@ class Node:
                 raise GraphError(
                     f"Node {self.id!r}: a REWEIGHT node declares its WeightTransition."
                 )
+            if not isinstance(self.weights, WeightTransition | WeightUpdate):
+                raise GraphError("REWEIGHT requires WeightTransition or WeightUpdate.")
             if self.mass != self.weights.mass:
                 raise GraphError(
                     f"Node {self.id!r}: mass policy {self.mass!r} disagrees with its "

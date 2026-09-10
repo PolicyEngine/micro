@@ -19,6 +19,7 @@ from .decl import (
     SourceRef,
     StructuralDelta,
     WeightTransition,
+    WeightUpdate,
 )
 
 __all__ = ["graph_from_json", "graph_to_json"]
@@ -160,6 +161,11 @@ def _node_payload(node: Node) -> dict[str, object]:
                 "entity": node.weights.entity,
                 "to_kind": node.weights.to_kind,
                 "mass": node.weights.mass,
+                **(
+                    {"update": True, "reason": node.weights.reason}
+                    if isinstance(node.weights, WeightUpdate)
+                    else {}
+                ),
             }
         ),
         "mass": node.mass,
@@ -292,10 +298,22 @@ def _owned_from_payload(value: object, label: str) -> Owned:
     )
 
 
-def _weights_from_payload(value: object, label: str) -> WeightTransition | None:
+def _weights_from_payload(
+    value: object, label: str
+) -> WeightTransition | WeightUpdate | None:
     if value is None:
         return None
     payload = _mapping(value, label)
+    if "update" in payload:
+        _exact_fields(payload, {"entity", "to_kind", "mass", "update", "reason"}, label)
+        if payload["update"] is not True:
+            raise ValueError("WeightUpdate requires update=true.")
+        return WeightUpdate(
+            entity=_string(payload["entity"], f"{label}.entity"),
+            kind=_string(payload["to_kind"], f"{label}.to_kind"),
+            reason=_string(payload["reason"], f"{label}.reason"),
+            mass=_string(payload["mass"], f"{label}.mass"),
+        )
     _exact_fields(payload, {"entity", "to_kind", "mass"}, label)
     return WeightTransition(
         entity=_string(payload["entity"], f"{label}.entity"),

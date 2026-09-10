@@ -191,9 +191,25 @@ def test_numeric_scope_validates_class_tolerance_and_platform() -> None:
 
 
 def test_context_numerics_default_empty_and_carry_scopes() -> None:
-    """Amendment 17: ``numerics`` defaults empty and rides at the end of the context."""
+    """New evidence fields retain the established positional context prefix."""
     fields = [f.name for f in dataclasses.fields(KernelContext)]
-    assert fields[-2:] == ["tolerances", "numerics"]
+    assert fields[:9] == [
+        "node",
+        "tables",
+        "weights",
+        "strata",
+        "params",
+        "rng",
+        "sources",
+        "tolerances",
+        "numerics",
+    ]
+    assert fields[9:] == [
+        "artifacts",
+        "frame_metadata",
+        "frame_mass_log",
+        "frame_column_order",
+    ]
     scope = NumericScope(
         numeric=Numeric.PLATFORM_BITWISE, platform="arm64/darwin/py3.13"
     )
