@@ -970,10 +970,133 @@ def main() -> int:
     return exit_code
 
 
+def outer_failure_context(error: Exception) -> bytes:
+    """Record fixed exception labels and code coordinates without file I/O.
+
+    This is stderr-only evidence. In particular, failed fixture cleanup must
+    leave the initial incomplete artifact intact rather than publish success.
+    """
+    labels = {
+        "AssertionError",
+        "AttributeError",
+        "FileNotFoundError",
+        "ImportError",
+        "IndexError",
+        "IsADirectoryError",
+        "KeyError",
+        "MemoryError",
+        "ModuleNotFoundError",
+        "NameError",
+        "NotADirectoryError",
+        "OSError",
+        "OverflowError",
+        "PermissionError",
+        "RecursionError",
+        "RuntimeError",
+        "TypeError",
+        "UnboundLocalError",
+        "UnicodeDecodeError",
+        "ValueError",
+    }
+    kind = type(error).__name__
+    exception_type = (
+        kind
+        if type(error).__module__ == "builtins" and kind in labels
+        else "other_exception"
+    )
+    code, boundary = "OUTER_FAILURE", None
+    if type(error) is RefusalError:
+        exception_type = "RefusalError"
+        value = error.args[0] if len(error.args) == 1 else None
+        code = (
+            value
+            if value
+            in {
+                "READ_SCOPE",
+                "WRITE_SCOPE",
+                "DATA_FILE",
+                "FILESYSTEM_PATH",
+                "FILESYSTEM_DESCRIPTOR",
+                "FILESYSTEM_LINK",
+                "NETWORK_OR_CHILD",
+                "WALL",
+                "OUTPUT_CHANGED",
+                "THREADS_CHANGED",
+                "BOUNDARY_REFUSAL",
+                "OUTPUT_CAP",
+                "OUTPUT_FILE",
+                "OUTPUT_FILES",
+                "OUTPUT_ROSTER",
+                "OUTPUT_SEAL",
+                "OUTPUT_PART",
+                "OUTPUT_STATUS",
+                "OUTPUT_ALREADY_COMPLETE",
+            }
+            else "OTHER_FIXED_REFUSAL"
+        )
+        if error.boundary_context is not None:
+            boundary = json.loads(error.boundary_context)
+    roots = (
+        ("repository", Path(__file__).absolute().parents[1]),
+        ("environment", Path(sys.prefix)),
+        ("base_environment", Path(sys.base_prefix)),
+        ("system_usr", Path("/usr")),
+        ("system_opt", Path("/opt")),
+        ("system_lib", Path("/lib")),
+    )
+    frames, visited = [], 0
+    trace = error.__traceback__
+    while trace is not None and visited < 32:
+        visited += 1
+        code_object = trace.tb_frame.f_code
+        filename = refusal_path_context(code_object.co_filename, roots)
+        name = code_object.co_name
+        if filename.get("path") is not None and (
+            re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name)
+            or name in {"<module>", "<listcomp>", "<dictcomp>", "<genexpr>", "<lambda>"}
+        ):
+            frames.append({"file": filename, "function": name, "line": trace.tb_lineno})
+            frames = frames[-8:]
+        trace = trace.tb_next
+    truncated = trace is not None or visited > 8
+    del trace
+    result = {
+        "diagnostic_outer_failure": True,
+        "completed": False,
+        "coverage_pass": False,
+        "exception_type": exception_type,
+        "code": code,
+        "boundary_refusal": boundary,
+        "traceback_code_frames": frames,
+        "traceback_truncated": truncated,
+        "artifact_status_not_modified": True,
+        "message_locals_source_lines_emitted": False,
+    }
+    payload = encoded(result)
+    if len(payload) > 8192:
+        payload = encoded(
+            {
+                "diagnostic_outer_failure": True,
+                "completed": False,
+                "coverage_pass": False,
+                "exception_type": exception_type,
+                "code": code,
+                "context": "size_bound",
+                "artifact_status_not_modified": True,
+            }
+        )
+    return payload
+
+
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except Exception:
-        # Bootstrap failures have no locals, paths or exception text in CI logs.
-        print("spec-seed diagnostics: bootstrap refused", file=sys.stderr)
+    except Exception as error:
+        # No second publication after failed cleanup. Emit only bounded metadata;
+        # never exception messages, locals, source lines or an unfiltered trace.
+        try:
+            context = outer_failure_context(error)
+        except Exception:
+            context = b'{"diagnostic_outer_failure":true,"completed":false,"context":"unavailable"}\n'
+        print(context.decode("ascii").rstrip("\n"), file=sys.stderr)
         raise SystemExit(1) from None

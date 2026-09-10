@@ -226,7 +226,7 @@ jobs:
           python-version: "3.14.4"
       - name: Sync workspace with US and UK engines
         run: uv sync --all-packages --locked --extra us --extra uk
-      - name: Check CPU-only diagnostic bootstrap
+      - name: Check diagnostic bootstrap and failure reporting
         timeout-minutes: 2
         env:
           PYTHONDONTWRITEBYTECODE: "1"
@@ -234,6 +234,7 @@ jobs:
         run: >-
           uv run --no-sync pytest --noconftest -p no:cacheprovider -q
           packages/microcosm-build/tests/test_spec_seed_identity_cpu_bootstrap.py
+          packages/microcosm-build/tests/test_spec_seed_identity_outer_failure.py
       - name: Derive candidate spec and seed identities (diagnostic only)
         id: spec_seed_diagnostics
         timeout-minutes: 15
