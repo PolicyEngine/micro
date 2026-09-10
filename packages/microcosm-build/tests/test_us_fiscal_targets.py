@@ -1822,6 +1822,35 @@ def test_soi_income_tax_liability_supplies_federal_income_tax_target() -> None:
     assert spec.metadata["base_variable"] == "income_tax"
 
 
+def test_state_income_tax_target_exposes_policyengine_variable() -> None:
+    source_record_id = (
+        "census_stc.fy2023.individual_income_tax_collections.ca.t40.collections"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="census_stc",
+                measure_id="collections",
+                value=150_000_000_000,
+                period_value=2023,
+                geography_level="state",
+                geography_id="0400000US06",
+            ),
+        ],
+        allow_unaged_dollar_targets=True,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "state_income_tax"
+    assert spec.metadata["materializer"] == "policyengine_variable"
+    assert spec.metadata["measure_mode"] == "sum"
+    assert spec.metadata["base_variable"] == "state_income_tax"
+    assert spec.metadata["state_fips"] == "06"
+
+
 def test_dynamic_us_fiscal_targets_choose_latest_available_source_period() -> None:
     registry = compile_us_fiscal_target_registry(
         [
