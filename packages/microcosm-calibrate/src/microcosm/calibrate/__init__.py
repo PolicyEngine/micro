@@ -96,6 +96,7 @@ from microcosm.calibrate.exact_k import (  # noqa: E402 - after the compat gate
     exact_k_design_feasibility,
     select_exact_k,
 )
+from microcosm.calibrate.group_bounds import GroupedUpperBounds  # noqa: E402
 from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
     CalibrationProblem,
     SkippedTarget,
@@ -137,6 +138,7 @@ __all__ = [
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
     "CONSERVE_MASS",
     "FREE_MASS",
+    "GroupedUpperBounds",
     "TARGET_LOSS_ATTRIBUTION_ABS_TOLERANCE",
     "TARGET_LOSS_ATTRIBUTION_REL_TOLERANCE",
     "TARGET_LOSS_ATTRIBUTION_WARNING_CODES",

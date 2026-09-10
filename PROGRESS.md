@@ -726,3 +726,65 @@ The still-earlier PolicyEngine-US 1.819.0 lock-bump lane merged into
 `origin/main` at `7b90bb18` on 2026-08-24; its final state remains at commit
 `05d254aa` and its detailed receipts remain in the historical section of
 `_LANE-NOTES.md`.
+
+## US launch integration staging — 2026-09-09
+
+### State
+Source-only staging in progress. Execution and source/data admission remain root-owned.
+
+### Done
+Verified requested clean branch, base HEAD, main ancestry and preservation pins.
+
+### Next
+Apply thirteen explicit source layers, commit each, then separately review isolated ordinary execution. Existing journal history above is retained.
+
+Layer 1: SAFE-ADDITIVE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 2: GRAPH-RESTORE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 3: ACCEPTED-SHARED-RESTORE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 4: PUF-SUPPORT-MERGE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 5: SOLVE-MERGE-PROPOSAL.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 6: J-GRAPH-COMPATIBILITY.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 7: F-CATALOGUE-OPTIMIZATION.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 8: GRAPH-ATTACHMENT-METADATA.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 9: F-JOINT-GEOGRAPHY-GATE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 10: SOURCE-CLOSURE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 11: PLACEMENT-ADDITIONS.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 12: ORDINARY-CLOSURE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 13: INTEGRATION-REGRESSIONS.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+### State
+All thirteen source layers staged and committed; behavioral qualification pending.
+
+### Done
+Per-layer pins and actual commit messages checked; store/current-main preservation retained.
+
+### Next
+Root reviews exact ordinary guard/source/resource admissions before execution. Full65 findings and survey/SCF lanes remain separately owned. No remote action is authorized.
+
+### Integration source-resource closure — 2026-09-09
+
+Root preflight found seven JSON source definitions declared by the ordinary guard but omitted by the staged patch delivery. Added the exact previously reviewed resource bytes from the accepted full65 source projection; no new resource admission or genuine payload. Preserved source staging and earlier evidence.
+
+## Layer14 full65 replay correction — 2026-09-09
+
+State: exact accepted two-file correction staged; successor57 integration execution pending.
+Done: verified clean84243 preimages, exact r2 postimages, fixed store/current-main sources and frozen36 evidence.
+Next: root admits the separate exact-allowlist57-case guard and final source identities before execution; no new resources.
+
+## Source review publication — 2026-09-09
+
+The user explicitly authorized pushing the current source work and creating PRs for Anthony to review. This supersedes earlier source-only local restrictions for source publication; it does not authorize a data release, merge or deployment.
+
+Integration controls passed 36 cases; the exact replay correction subsequently passed all 57 cases at dfa7f872cd3eba3c42adf5758cde8b3ca38f3d17. Source/control, model-declaration and resource hashes matched externally after both runs. A final formatting/import cleanup and explicit test-observer loop binding are included for CI; no release result is claimed. See docs/us-launch-review.md for current scope, evidence and related PRs.
