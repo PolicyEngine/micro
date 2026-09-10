@@ -6,9 +6,18 @@
     "tool": "ruff format"
   },
   "component": "US supplied-parent full/pruned/local export comparison",
+  "fable_source_review": {
+    "blocking_findings": 0,
+    "model": "Fable 5.1",
+    "record_note": "files identifies adopted bytes; tested_files identifies exact executed bytes. Full AST equality after Ruff formatting is recorded above.",
+    "reviewed_commit": "b591280674db6d606c7ab356cabffbb6ef582e2d",
+    "scope": "Six-file source review; no runtime or independent hash recomputation by the peer",
+    "sha256": "361eb8abccc7b227c7c2aef2e1704e807076b6481ce73e501839adf358143416",
+    "verdict": "clean"
+  },
   "files": {
     "packages/microcosm-build/src/microcosm/build/us_runtime/common_frame_export_contract.py": "206159abfad714563fa3434209092a05f8e847d9ffef99a913373331f2ecbb8c",
-    "packages/microcosm-build/tests/test_us_common_frame_export_contract.py": "7d5184303390508ff745f3d6f4f7d8bdd4cbb10f2e50a574adda38e5bf71c9c0"
+    "packages/microcosm-build/tests/test_us_common_frame_export_contract.py": "d6502d76a36796081e8c937c9b80caf74806558ed89f5466c6699f89e7b46c3c"
   },
   "guard_sha256": "f8d8184e582a443ccae781342df2b8c0accf4c87c552ccaed843f1bad0586bd1",
   "independent_review": {
@@ -32,6 +41,10 @@
   },
   "source_map_sha256": "d6bb7e1404569ec27c5231b37d92397399fca7f63b85744ff393dc630454215e",
   "source_revision_before_adoption": "162869d4d350b06c263b2fbdbeea93b7f1b05050",
+  "tested_files": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/common_frame_export_contract.py": "206159abfad714563fa3434209092a05f8e847d9ffef99a913373331f2ecbb8c",
+    "packages/microcosm-build/tests/test_us_common_frame_export_contract.py": "7d5184303390508ff745f3d6f4f7d8bdd4cbb10f2e50a574adda38e5bf71c9c0"
+  },
   "validation": {
     "actual_graph_calibration_ancestry_verified": false,
     "cpu_seconds": 1.769343,
