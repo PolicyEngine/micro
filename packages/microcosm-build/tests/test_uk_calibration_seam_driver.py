@@ -250,12 +250,16 @@ def test_driver_accepts_the_merged_national_feed_without_local_promotion():
         manifest_sha256="a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
         allow_unpinned_feed=False,
     )
+    # The local pin is its own reviewed declaration: microcosm#887 moved it to
+    # the same chronicle ec7169b artifact after a separate local re-pin review,
+    # so the national acceptance above neither reads nor promotes it.
     assert _LEDGER_FACT_FEED_PIN["facts_sha256"] == (
-        "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f"
+        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
     )
     assert _LEDGER_FACT_FEED_PIN["manifest_sha256"] == (
-        "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0"
+        "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f"
     )
+    assert _LEDGER_FACT_FEED_PIN["source_commit"] == "ec7169b"
 
 
 @pytest.mark.parametrize("manifest_sha256", ["c" * 64, None])

@@ -30,7 +30,7 @@ def _validate(payload: Any) -> None:
         raise ValueError("UK local validation-level register_kind is invalid.")
     feed = payload.get("source_feed")
     if not isinstance(feed, dict) or feed.get("sha256") != (
-        "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f"
+        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
     ):
         raise ValueError("UK local validation-level feed pin is missing or stale.")
     rows = payload.get("rows")

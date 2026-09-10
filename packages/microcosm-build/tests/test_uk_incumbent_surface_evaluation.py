@@ -408,3 +408,45 @@ def test_evaluator_cli_rejects_blocks_before_opening_inputs(blocks):
     assert result.returncode == 2
     assert "--engine-blocks" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_evaluator_requires_new_chronicle_target_identity() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    tool = (
+        Path(__file__).resolve().parents[3] / "tools/evaluate_uk_incumbent_surface.py"
+    )
+    spec = importlib.util.spec_from_file_location("evaluate_uk_incumbent_surface", tool)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    expected = {
+        "ledger_facts_sha256": "a" * 64,
+        "ledger_manifest_sha256": "b" * 64,
+    }
+    module._check_candidate_chronicle_identity(
+        {
+            "identity": {
+                "targets": {
+                    "chronicle": {
+                        "facts_sha256": "a" * 64,
+                        "manifest_sha256": "b" * 64,
+                    }
+                }
+            }
+        },
+        expected,
+    )
+    with pytest.raises(ValueError, match="identity.targets.chronicle"):
+        module._check_candidate_chronicle_identity(
+            {
+                "identity": {
+                    "ledger": {
+                        "facts_sha256": "a" * 64,
+                        "manifest_sha256": "b" * 64,
+                    }
+                }
+            },
+            expected,
+        )

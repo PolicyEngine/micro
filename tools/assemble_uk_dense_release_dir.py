@@ -289,13 +289,16 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             ).get("sha256"),
         )
     evaluation = _load_json(surface_path, label="incumbent surface evaluation")
-    ledger = _mapping(identity.get("ledger"), "manifest.identity.ledger")
+    chronicle = _mapping(
+        _mapping(identity.get("targets"), "manifest.identity.targets").get("chronicle"),
+        "manifest.identity.targets.chronicle",
+    )
     expected_surface_identity = {
         "candidate_dataset_sha256": measured["candidate"],
         "candidate_manifest_sha256": measured["candidate manifest"],
         "candidate_diagnostics_sha256": measured["diagnostics"],
-        "ledger_facts_sha256": ledger.get("facts_sha256"),
-        "ledger_manifest_sha256": ledger.get("manifest_sha256"),
+        "ledger_facts_sha256": chronicle.get("facts_sha256"),
+        "ledger_manifest_sha256": chronicle.get("manifest_sha256"),
         "incumbent_manifest_sha256": measured["incumbent manifest"],
         "incumbent_metrics_sha256": _mapping(
             incumbent_outputs.get("metrics"), "incumbent metrics"
@@ -451,7 +454,10 @@ def _stage_and_finalize(
     }
     _write_json(release_dir / "gate_summary.json", gate_summary)
     ladder = _mapping(identity.get("ladder"), "identity.ladder")
-    ledger = _mapping(identity.get("ledger"), "identity.ledger")
+    chronicle = _mapping(
+        _mapping(identity.get("targets"), "identity.targets").get("chronicle"),
+        "identity.targets.chronicle",
+    )
     spine = _mapping(identity.get("spine"), "identity.spine")
     coverage = {
         "schema_version": 1,
@@ -474,11 +480,11 @@ def _stage_and_finalize(
             },
         },
         "ledger_artifact": {
-            "path_name": ledger.get("path_name"),
-            "facts_sha256": ledger.get("facts_sha256"),
-            "manifest_sha256": ledger.get("manifest_sha256"),
-            "fact_row_count": ledger.get("fact_row_count"),
-            "schema_version": ledger.get("schema_version"),
+            "path_name": chronicle.get("path_name"),
+            "facts_sha256": chronicle.get("facts_sha256"),
+            "manifest_sha256": chronicle.get("manifest_sha256"),
+            "fact_row_count": chronicle.get("fact_row_count"),
+            "schema_version": chronicle.get("schema_version"),
         },
         "geography_ladder": {
             "sha256": ladder.get("sha256"),
@@ -524,13 +530,12 @@ def _stage_and_finalize(
             ),
         },
         "holdout": dict(_mapping(fit.get("rotated_holdout"), "fit.rotated_holdout")),
-        "uprating": {
-            k: v
-            for k, v in _mapping(
-                manifest.get("ladder_household_uprating"), "ladder_household_uprating"
-            ).items()
-            if k != "reason"
-        },
+        "uprating": dict(
+            _mapping(
+                manifest.get("census_household_uprating"),
+                "census_household_uprating",
+            )
+        ),
         "weights": {
             "calibration_mass_change": weights.get("calibration_mass_change"),
             "realized_max_weight_ratio_vs_design": weights.get(

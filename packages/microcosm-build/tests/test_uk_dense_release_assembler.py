@@ -204,10 +204,33 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
             ],
             "empty_legs_licensed": [1, 2],
         },
-        "ladder_household_uprating": {
+        "census_household_uprating": {
             "applied": True,
-            "factor": 1.0336,
-            "reason": "x",
+            "grains": {
+                "constituency": {"factor": 1.0335597414671631},
+                "local_authority": {"factor": 1.0335595204737118},
+            },
+            "household_cells": {
+                "applied": True,
+                "cells": 1,
+                "total_cells": 1,
+                "attempted_cells": 1,
+                "eligible_cells": 1,
+                "skipped_cells": 0,
+                "holds": [
+                    {
+                        "target_name": "ons.census.households@E14000001",
+                        "geography_level": "constituency",
+                        "from_period": 2021,
+                        "to_period": 2025,
+                        "attempted": True,
+                        "eligible": True,
+                        "applied": True,
+                        "skipped": False,
+                        "reason": "census_vintage_hold_uprated",
+                    }
+                ],
+            },
             "tenure_cells": {
                 "applied": True,
                 "cells": 1,
@@ -221,7 +244,10 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
                         "eligible": True,
                         "applied": True,
                         "skipped": False,
-                        "ladder_oa_vintage": "2021_census",
+                        "target_name": "ons.tenure.owned_outright@E14000001",
+                        "geography_level": "constituency",
+                        "from_period": 2021,
+                        "to_period": 2025,
                         "reason": "census_vintage_hold_uprated",
                     }
                 ],
@@ -256,12 +282,15 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
                 "bytes": 1,
                 "layer_vintages": {"constituency": "2024_pcon"},
             },
-            "ledger": {
-                "path_name": "chronicle-uk-artifact-1cab809",
-                "facts_sha256": "1" * 64,
-                "manifest_sha256": "2" * 64,
-                "fact_row_count": 3,
-                "schema_version": "v1",
+            "targets": {
+                "chronicle": {
+                    "path_name": "chronicle-uk-artifact-1cab809",
+                    "facts_sha256": "1" * 64,
+                    "manifest_sha256": "2" * 64,
+                    "fact_row_count": 3,
+                    "schema_version": "v1",
+                },
+                "paired_ladder_sha256": "d" * 64,
             },
             "code": {"git_commit": "b" * 40, "git_dirty": False},
             "runtime": {
@@ -601,6 +630,10 @@ def test_assembler_preserves_full_measure_approval_provenance(
         (out / UK_DENSE_RELEASE_ID / "uk_source_coverage.json").read_text()
     )
     assert coverage["measure_exclusions"] == original["measure_exclusions"]
+    assert (
+        coverage["uprating"]["grains"]
+        == original["census_household_uprating"]["grains"]
+    )
 
 
 @pytest.mark.parametrize("expiry", [None, "2026-09-01", "not-a-date"])

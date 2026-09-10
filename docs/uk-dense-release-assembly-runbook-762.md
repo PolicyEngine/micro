@@ -58,7 +58,8 @@ uv run --no-sync python tools/score_uk_local_candidate.py ... --output-json <can
 The pre-flight checks the manifest and the signed gate report for everything
 the contract will demand: release posture attested, shippable, every
 release-blocking gate passed, single-block engine, the doctrine values, the
-A15/A17 uprating, the measure exclusions and their windows, the holdout, the
+A15 census household uprating and A17 tenure application, the measure
+exclusions and their windows, the holdout, the
 Logbook row, the artifact digest.
 
 Measure the full pinned incumbent surface before assembly:

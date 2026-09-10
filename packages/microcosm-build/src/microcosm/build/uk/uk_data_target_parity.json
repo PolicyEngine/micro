@@ -467,6 +467,16 @@
     },
     {
       "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.census.households",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.census.households; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/local_authorities/loss.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
       "concern_id": "local_contract.ons.equiv_housing_costs",
       "covers": [
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",

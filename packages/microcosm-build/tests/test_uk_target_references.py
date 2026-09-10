@@ -46,6 +46,7 @@ from tools.build_uk_ledger_compile_parity_signed_differences import (
     _compile_for_receipt,
     _fixture_for_receipt,
 )
+from tools.generate_uk_local_target_references import _support_floor_register_scope
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
     _annual_uc_award_band_token,
@@ -57,6 +58,13 @@ from tools.generate_uk_target_references import (
 
 ACTIVE_REFERENCE_COUNT = 415
 UK_DATA_REPO = "policyengine-" + "uk-data"
+
+
+def test_local_generator_support_floor_scope_comes_from_signed_register() -> None:
+    area_ids, binding_families = _support_floor_register_scope()
+    assert area_ids == ("E06000053", "E09000001")
+    assert binding_families == frozenset({"census_households"})
+
 
 FIXTURE_REFERENCE_NAMES = {
     "obr.income_tax",
@@ -126,7 +134,7 @@ def test_committed_surfaces_regenerate_from_pinned_feed(
     else:
         facts_sha256 = _LEDGER_FACT_FEED_PIN["facts_sha256"]
         manifest_sha256 = _LEDGER_FACT_FEED_PIN["manifest_sha256"]
-        expected_rows = 128_717
+        expected_rows = int(_LEDGER_FACT_FEED_PIN["fact_row_count"])
     artifact = load_ledger_consumer_artifact(
         artifact_path,
         expected_facts_sha256=facts_sha256,
