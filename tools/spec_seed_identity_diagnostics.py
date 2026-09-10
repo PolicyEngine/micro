@@ -162,6 +162,8 @@ SOURCE_PATHS = (
     "packages/microcosm-build/src/microcosm/build/us_runtime/workers_compensation.py",
     "packages/microcosm-build/tests/test_spec_engine_loader.py",
     "packages/microcosm-calibrate/src/microcosm/calibrate/exact_k.py",
+    "packages/microcosm-calibrate/src/microcosm/calibrate/gates.py",
+    "packages/microcosm-calibrate/src/microcosm/calibrate/initialization.py",
     "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py",
     "packages/microcosm-fit/src/microcosm/fit/qrf.py",
     "packages/microcosm-frame/src/microcosm/frame/adapters/_policyengine_us_source_index.py",
@@ -208,6 +210,8 @@ SEED_MODULES = (
     "microcosm.build.us_runtime.wic_claim",
     "microcosm.build.us_runtime.workers_compensation",
     "microcosm.calibrate.exact_k",
+    "microcosm.calibrate.gates",
+    "microcosm.calibrate.initialization",
     "microcosm.calibrate.solve",
     "microcosm.fit.qrf",
 )
