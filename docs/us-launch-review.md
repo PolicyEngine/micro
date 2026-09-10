@@ -229,15 +229,22 @@ See the [profile evidence](../experiments/us-financial-fixture-profile-20260910.
 Loaded ACS code verification accounts for 180.20 cumulative seconds inside the
 298.15-second profiled fixture. Its nested function checker runs 2,009,108 times
 and uses 91.05 self seconds; complete Frame identity uses 7.31 cumulative seconds.
-Cumulative timings overlap and profiling adds overhead. The next change targets
-repeated comparisons of immutable code objects within a single verification,
-while preserving fresh source reads, aliases, globals, closure checks and final
-mutation seals. That optimization, the remaining successor controls and the
-native financial pilot have not yet passed.
+Cumulative timings overlap and profiling adds overhead. The invocation-local
+code comparison memo now passes all 18 focused invented controls, including
+changed source, aliases, globals, closures, mutable constants and the historical
+catalogue caller. Source and resource checks pass before, after and in the
+external postcheck. See the [control evidence](../experiments/us-acs-loaded-code-controls-20260910.json).
+The paired full-fixture run also passed correctness and final checks, but took
+319.79 wall seconds versus 308.26 for the baseline. The memo added eligibility
+work and demonstrated no speed improvement, so its implementation was not
+adopted. The exact experimental patch and [paired comparison](../experiments/us-acs-code-memo-comparison-20260910.json)
+remain recorded. Further profiling is narrowing the original verification cost;
+the remaining successor controls and native financial pilot remain pending.
 
-Current CI separately reports stale source-attested spec/seed fingerprints and
-an imported-resource identity expectation. These failures remain open; neither
-the component passes nor this profile establishes a green consolidation.
+Current CI separately reports stale source-attested spec/seed fingerprints.
+The worker resource identity test now follows the actual lazy import closure
+and includes an invented opened-JSON regression; its new CI result is pending.
+Neither the component passes nor this profile establishes a green consolidation.
 
 ## Related reviews
 
