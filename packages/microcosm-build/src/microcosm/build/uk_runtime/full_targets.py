@@ -22,6 +22,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_target_registry,
     load_uk_local_area_crosswalk,
 )
+from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
 from microcosm.build.uk_runtime.measure_simulation import (
     apply_uk_calibration_measure_exclusions,
     load_uk_calibration_measure_exclusions,
@@ -31,6 +32,27 @@ from microcosm.build.uk_runtime.national_chronicle_feed import (
 )
 from microcosm.build.uk_runtime.weighted_integrity import exclusion_evaluation_date
 from microcosm.calibrate import TargetRegistry
+
+CHRONICLE_SOURCE_CODEC = "chronicle-consumer-facts-v1"
+
+
+def load_chronicle_source_bytes(path: Path, *, store=None) -> bytes:
+    """Read facts from a manifest-verified consumer artifact or a bare feed.
+
+    Graph source identity binds every file in an artifact directory, including
+    the manifest. The target compiler independently enforces reviewed UK pins.
+    """
+
+    del store
+    load_ledger_consumer_artifact(path)
+    path = Path(path)
+    return (path / "consumer_facts.jsonl" if path.is_dir() else path).read_bytes()
+
+
+def load_uk_local_chronicle_pin() -> dict[str, Any]:
+    """Return the independently reviewed local target census feed identity."""
+
+    return dict(_LEDGER_FACT_FEED_PIN)
 
 
 def load_uk_full_target_inputs(
@@ -43,7 +65,7 @@ def load_uk_full_target_inputs(
     calibration_year: int | None = None,
     exclusions_evaluated_on: date | None = None,
 ) -> dict[str, Any]:
-    """Compile the full target surface with the national source/review contract.
+    """Compile the full target surface with both reviewed source contracts.
 
     Default hashes are the reviewed national feed pins. Explicit hashes must
     agree with those pins as well: a target-scope filter does not authorize a
@@ -51,6 +73,13 @@ def load_uk_full_target_inputs(
     pre-exclusion national register, matching its completeness role.
     """
     pin = load_uk_national_chronicle_feed()
+    local_pin = load_uk_local_chronicle_pin()
+    for field in ("facts_sha256", "manifest_sha256", "fact_row_count"):
+        if local_pin[field] != getattr(pin, field):
+            raise ValueError(
+                "UK full-build independently reviewed national and local feed "
+                f"pins disagree on {field}."
+            )
     for label, supplied, committed in (
         ("facts", expected_facts_sha256, pin.facts_sha256),
         ("manifest", expected_manifest_sha256, pin.manifest_sha256),
@@ -70,6 +99,11 @@ def load_uk_full_target_inputs(
     ):
         raise ValueError(
             "UK full-build Ledger artifact differs from the national feed pin."
+        )
+    if len(artifact.facts) != pin.fact_row_count:
+        raise ValueError(
+            "UK full-build Chronicle fact row count differs from the reviewed "
+            "national and local feed pins."
         )
     year = (
         load_uk_frs_release().calibration_year
@@ -135,6 +169,7 @@ def load_uk_full_target_inputs(
         "measure_exclusions": exclusion_receipt,
         "reviewed_unbound_higher_targets": reviewed_unbound,
         "national_source_pin": pin.to_dict(),
+        "local_source_pin": local_pin,
         "ledger_provenance": _ledger_provenance(artifact),
         "register_completeness": {
             "compiled_registry_version": band_edges.version,
@@ -145,6 +180,8 @@ def load_uk_full_target_inputs(
             "measure_exclusion_count": len(exclusion_receipt),
             "exclusions_evaluated_on": evaluated_on.isoformat(),
             "band_edge_registry_reconciled": True,
+            "compiled_local_reference_count": len(local_registries[year].specs),
+            "local_registry_version": local_registries[year].version,
         },
         "uk_ledger_compiled_registries": national_registries,
         "uk_ledger_compiled_local_registries": local_registries,

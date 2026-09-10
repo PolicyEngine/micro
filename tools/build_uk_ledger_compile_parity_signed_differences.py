@@ -248,6 +248,13 @@ _LEDGER_ONLY_RATIONALE = (
     "crosswalk area is a genuine incumbent roster gap, not a dropped row."
 )
 
+_CENSUS_HOUSEHOLDS_LEDGER_ONLY_RATIONALE = (
+    "Coverage the incumbent lacks after microcosm#887: the contract binds the "
+    "published disclosure-controlled census household cell compiled from the "
+    "pinned Chronicle feed; the retired fixture supplied this family from OA-"
+    "ladder sums outside the contract instead."
+)
+
 _LOCAL_DRIFT_RATIONALES = {
     "uc_households": _UC_TOTALS_DRIFT_RATIONALE,
     **{
@@ -443,6 +450,8 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
             row["reason"] = _LOCAL_DRIFT_RATIONALES[metric]
         elif kind == "fixture_only" and metric in _LOCAL_FIXTURE_ONLY_RATIONALES:
             row["reason"] = _LOCAL_FIXTURE_ONLY_RATIONALES[metric]
+        elif kind == "ledger_only" and metric == "households":
+            row["reason"] = _CENSUS_HOUSEHOLDS_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only":
             row["reason"] = _LEDGER_ONLY_RATIONALE
 

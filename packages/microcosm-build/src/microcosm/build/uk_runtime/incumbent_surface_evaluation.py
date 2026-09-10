@@ -589,5 +589,5 @@ def candidate_evaluation_manifest(payload: dict) -> dict:
         }
     return {
         "outputs": outputs,
-        "identity": {"ledger": payload["build_bindings"]["ledger"]},
+        "identity": {"targets": payload["build_bindings"]["targets"]},
     }

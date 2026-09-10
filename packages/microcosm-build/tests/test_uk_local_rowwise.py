@@ -165,7 +165,7 @@ def test_surface_builder_omits_absent_cells_and_uses_canonical_order() -> None:
                 "area_code": "L2",
                 "metric": "households",
                 "value": 1.0,
-                "target_name": "external:census_households/households@L2",
+                "target_name": "ons.census.households@L2",
                 "family": "census_households",
             },
             {
@@ -173,7 +173,7 @@ def test_surface_builder_omits_absent_cells_and_uses_canonical_order() -> None:
                 "area_code": "S001",
                 "metric": "households",
                 "value": 1.0,
-                "target_name": "external:census_households/households@S001",
+                "target_name": "ons.census.households@S001",
                 "family": "census_households",
             },
             {
@@ -189,7 +189,7 @@ def test_surface_builder_omits_absent_cells_and_uses_canonical_order() -> None:
                 "area_code": "E001",
                 "metric": "households",
                 "value": 2.0,
-                "target_name": "external:census_households/households@E001",
+                "target_name": "ons.census.households@E001",
                 "family": "census_households",
             },
             {
@@ -205,7 +205,7 @@ def test_surface_builder_omits_absent_cells_and_uses_canonical_order() -> None:
                 "area_code": "L1",
                 "metric": "households",
                 "value": 2.0,
-                "target_name": "external:census_households/households@L1",
+                "target_name": "ons.census.households@L1",
                 "family": "census_households",
             },
         ]

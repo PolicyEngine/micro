@@ -7,6 +7,7 @@ composition; an arbitrary historical uk-data H5 is not a build source.
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
@@ -241,11 +242,18 @@ class UKBoundSpineKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        return source_hash(type(self), national_frame, calibration_run, release_certification)
+        return source_hash(
+            type(self), national_frame, calibration_run, release_certification
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
-        if dict(context.params["spine_gate_digests"]) != calibration_run.uk_spine_checkpoint_gate_digests():
-            raise ValueError("Bound spine gate declarations differ from the compiled checkpoint request.")
+        if (
+            json.loads(context.params["spine_gate_digests"])
+            != calibration_run.uk_spine_checkpoint_gate_digests()
+        ):
+            raise ValueError(
+                "Bound spine gate declarations differ from the compiled checkpoint request."
+            )
         frame = _load_spine_h5(context.sources["uk_spine"])
         sidecar_path = context.sources["uk_spine_evidence"]
         sidecar = calibration_run.load_bound_spine_checkpoint(
@@ -307,7 +315,11 @@ def bound_spine_graph(frame: Frame) -> Graph:
                 UKBoundSpineKernel.ref,
                 structural=StructuralDelta.CREATE,
                 sources=("uk_spine", "uk_spine_evidence", "uk_spine_gates"),
-                params={"spine_gate_digests": calibration_run.uk_spine_checkpoint_gate_digests()},
+                params={
+                    "spine_gate_digests": canonical_json(
+                        calibration_run.uk_spine_checkpoint_gate_digests()
+                    ).decode()
+                },
                 outputs=outputs,
                 artifact_outputs=(
                     ArtifactOutput("spine_provenance", SPINE_PROVENANCE_TYPE),

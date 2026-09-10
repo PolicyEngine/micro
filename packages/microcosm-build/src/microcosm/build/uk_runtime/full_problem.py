@@ -9,10 +9,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.uk_runtime import (
-    UkOaLadder,
     UKRowwiseLocalMatrix,
     uk_local_target_surface,
 )
+from microcosm.build.uk_runtime.ledger_targets import _spec_geography
 from microcosm.build.uk_runtime.local_rowwise import (
     build_uk_rowwise_local_surface_matrix,
     empty_uk_local_problem,
@@ -26,6 +26,7 @@ def _national_contract_target_ids(registry: TargetRegistry) -> tuple[str, ...]:
             {
                 str(spec.metadata.get("contract_target_id", spec.name))
                 for spec in registry.specs
+                if _spec_geography(spec)[0] == "country"
             }
         )
     )
@@ -35,10 +36,22 @@ def _joint_surface_registry(
     local_registry: TargetRegistry,
     national_registry: TargetRegistry,
 ) -> TargetRegistry:
-    """Put national controls beside local cells for cross-grain reconciliation."""
+    """Put country controls beside local cells for declared reconciliation.
+
+    Regional constraints stay in the national solve registry. They are outside
+    the country/constituency/LA reconciliation rule and cannot be passed as
+    country controls or silently assigned a new reconciliation policy.
+    """
 
     return TargetRegistry(
-        [*local_registry.specs, *national_registry.specs],
+        [
+            *local_registry.specs,
+            *(
+                spec
+                for spec in national_registry.specs
+                if _spec_geography(spec)[0] == "country"
+            ),
+        ],
         country="uk",
     )
 
@@ -46,14 +59,13 @@ def _joint_surface_registry(
 def build_uk_full_local_problem(
     assignment: Any,
     *,
-    target_ladder: UkOaLadder,
     local_registry: TargetRegistry,
     national_registry: TargetRegistry,
     local_metrics: Mapping[str, pd.DataFrame],
     period: int,
     sample_fraction: float,
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]],
-    ladder_household_uprating: Mapping[str, Any] | None = None,
+    census_household_uprating: Mapping[str, Any] | None = None,
     selected_surface: pd.DataFrame | None = None,
     surface_receipt: Mapping[str, Any] | None = None,
 ) -> tuple[
@@ -63,10 +75,6 @@ def build_uk_full_local_problem(
     tuple[str, ...],
     dict[str, Any],
 ]:
-    if assignment.ladder is not target_ladder:
-        raise ValueError(
-            "assignment and targets must come from the same loaded UK OA ladder object."
-        )
     household = assignment.result.frame.table("household").reset_index(drop=True)
     household_index = pd.Index(household["household_id"], name="household_id")
     metrics = {
@@ -88,11 +96,10 @@ def build_uk_full_local_problem(
     if selected_surface is None:
         surface, cross_grain = uk_local_target_surface(
             _joint_surface_registry(local_registry, national_registry),
-            target_ladder,
             bound_national_target_ids=national_ids,
             period=period,
             reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
-            ladder_household_uprating=ladder_household_uprating,
+            census_household_uprating=census_household_uprating,
         )
     else:
         surface = selected_surface.copy()
@@ -169,8 +176,8 @@ def build_uk_full_local_problem(
         ),
     }
     rosters = {
-        "constituency": tuple(map(str, np.unique(target_ladder.constituency_code))),
-        "la": tuple(map(str, np.unique(target_ladder.local_authority_code))),
+        "constituency": tuple(map(str, np.unique(assignment.ladder.constituency_code))),
+        "la": tuple(map(str, np.unique(assignment.ladder.local_authority_code))),
     }
     if surface.empty:
         problem = empty_uk_local_problem(household_index)

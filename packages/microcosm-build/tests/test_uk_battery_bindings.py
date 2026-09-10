@@ -1011,18 +1011,16 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 19_419
+        assert result.details["candidate_targets"] == 20_430
         assert result.details["reference_targets"] == 22_530
-        # 2,100 signed area deferrals from the membership file plus the 1,011
-        # ladder-derived households@area rows: census_households binds from the
-        # OA-ladder artifact (microcosm#542), never from Chronicle facts, so the
-        # in-code default surface excludes it by rule rather than by absence.
+        # Only the 2,100 signed area deferrals remain; the 1,011 household rows
+        # are ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 2_100 + 1_011
+        assert len(exclusions) == 2_100
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
-        assert len(households) == 1_011
+        assert households == []
         assert result.details["missing_reference_targets"] == []
 
     def test_missing_required_stage_fails_with_the_assertion_text(
@@ -1092,10 +1090,11 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
         "local_authority/E09000001",
     }
     assert committed.details["excluded_area_count"] == 2
-    exclusions = battery_bindings.load_uk_reviewed_exclusion_register(
+    support_register = battery_bindings.load_uk_local_area_support_exclusion_register(
         None,
         resource="local_area_support_exclusions.json",
     )
+    exclusions = support_register["exclusions"]
     a14_suffix = (
         " Per microcosm#762 A14 the authority's own local-authority cells are "
         "signed-deferred (`local_authority_support_floor_excluded`)."
@@ -1104,20 +1103,25 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
 
     monkeypatch.setattr(
         battery_bindings,
-        "load_uk_reviewed_exclusion_register",
+        "load_uk_local_area_support_exclusion_register",
         lambda *_args, **_kwargs: {
-            "constituency/E14000001": UKReviewedExclusion(
-                reason="synthetic expired support review",
-                approved_by="reviewer",
-                adjudication="microcosm#762",
-                approved_on="2026-01-01",
-                expires_on="2026-02-01",
-            )
+            "exclusions": {
+                "constituency/E14000001": UKReviewedExclusion(
+                    reason="synthetic expired support review",
+                    approved_by="reviewer",
+                    adjudication="microcosm#762",
+                    approved_on="2026-01-01",
+                    expires_on="2026-02-01",
+                )
+            },
+            "bound_despite_support_floor": {},
         },
     )
     expired = binding.evaluate(context, entry.parameters)
     assert expired.passed is False
-    assert expired.details["invalid_reviewed_exclusions"] == ["constituency/E14000001"]
+    assert expired.details["invalid_reviewed_exclusions"] == [
+        "exclusions/constituency/E14000001"
+    ]
     assert "outside its approval window" in expired.failures[0]
 
 

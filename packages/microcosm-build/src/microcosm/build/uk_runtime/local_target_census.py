@@ -55,7 +55,6 @@ __all__ = [
     "METRIC_STATUS_BOUND_IN_CODE",
     "SOURCE_STATUS_DOCUMENTED_UNPINNED",
     "SOURCE_STATUS_PINNED_IN_LEDGER_FACTS",
-    "SOURCE_STATUS_PINNED_IN_LADDER",
     "SOURCE_STATUS_SIGNED_DEFERRED",
     "assert_uk_local_target_census_current",
     "build_uk_local_target_census",
@@ -71,7 +70,6 @@ CENSUS_RESOURCE = "uk_local_target_census.json"
 METRIC_STATUS_BOUND_IN_CODE = "bound_in_code"
 SOURCE_STATUS_DOCUMENTED_UNPINNED = "documented_unpinned"
 SOURCE_STATUS_PINNED_IN_LEDGER_FACTS = "pinned_in_ledger_facts"
-SOURCE_STATUS_PINNED_IN_LADDER = "pinned_in_ladder"
 SOURCE_STATUS_SIGNED_DEFERRED = "signed_deferred"
 FENCE_ENFORCEMENT_REVIEW = "review_required_before_binding"
 
@@ -79,17 +77,18 @@ FENCE_ENFORCEMENT_REVIEW = "review_required_before_binding"
 #: product description checked on this date (microcosm#495 scoping).
 _SOURCES_VERIFIED_ON = "2026-07-22"
 
-_LEDGER_FACT_FEED_PIN: dict[str, str] = {
+_LEDGER_FACT_FEED_PIN: dict[str, str | int] = {
     "artifact": ".codex-work/consumer_facts_uk.jsonl",
     "manifest": ".codex-work/consumer_facts_uk_manifest.json",
     "facts_sha256": (
-        "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f"
+        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
     ),
     "manifest_sha256": (
-        "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0"
+        "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f"
     ),
+    "fact_row_count": 131450,
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "6fb700e",
+    "source_commit": "ec7169b",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
 }
 
@@ -111,8 +110,8 @@ _EXACT_FAMILY_RULES: dict[str, str] = {
 
 #: Metric-name prefixes mapping to a census family. Every prefix ends at a
 #: separator so it cannot swallow near-miss sibling names.
-#: Exact names continued: the census household-count family is bound via
-#: the ladder artifact rather than an in-code engine metric alone.
+#: Exact names continued: Chronicle census household counts bind the local
+#: household denominator at both supported grains.
 _EXACT_FAMILY_RULES["households"] = "census_households"
 
 _PREFIX_FAMILY_RULES: tuple[tuple[str, str], ...] = (
@@ -149,18 +148,15 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
     {
         "family": "census_households",
         "description": (
-            "Weighted household counts by area, bound to census occupied-"
-            "household totals summed from the sha-pinned UK OA ladder "
-            "artifact (constituency_household_targets / "
-            "local_authority_household_targets). Universe-compatible with "
-            "the FRS instrument: census occupied households match the "
-            "survey's own household frame, so the person-universe "
+            "Weighted household counts by area, compiled from Chronicle's "
+            "sha-pinned Census 2021 and 2022 household facts. Census occupied "
+            "households match the FRS household frame, so the person-universe "
             "adjudication does not bind here."
         ),
         "sources": [
-            "nomis_ts041_ew_oa_households",
-            "nrs_census_2022_index",
-            "nisra_dz21_households",
+            "ons_census2021_ts041_households",
+            "nrs_census2022_uv404_households",
+            "nisra_census2021_households",
         ],
         "adjudications": [_CENSUS_DISCLOSURE_FENCE_ID],
     },
@@ -287,55 +283,66 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
-        "source_id": "nomis_ts041_ew_oa_households",
+        "source_id": "ons_census2021_ts041_households",
         "publisher": "Office for National Statistics (via Nomis)",
         "product": (
-            "Census 2021 table TS041 (number of households), England and "
-            "Wales, output-area grain — the E&W leg of the ladder's "
-            "household counts."
+            "Nomis NM_2059_1 Census 2021 TS041 household counts at TYPE172 "
+            "(Westminster Parliamentary Constituencies, July 2024) and "
+            "TYPE424 (local authority districts, April 2023), compiled by "
+            "Chronicle."
         ),
-        "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip",
+        "url": (
+            "https://www.nomisweb.co.uk/api/v01/dataset/NM_2059_1.data.csv?"
+            "geography=TYPE172&date=latest&c2021_hh_1=0&measures=20100&"
+            "select=geography_name,geography_code,c2021_hh_1_name,"
+            "measures_name,obs_value"
+        ),
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2021-03-21",
-        "status": SOURCE_STATUS_PINNED_IN_LADDER,
-        "verified_on": _SOURCES_VERIFIED_ON,
-        "notes": (
-            "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py "
-            "(recorded in the artifact's source_files map)."
-        ),
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": "2026-09-09",
+        "notes": ("The pinned Ledger fact feed carries the compiled household cells."),
     },
     {
-        "source_id": "nrs_census_2022_index",
+        "source_id": "nrs_census2022_uv404_households",
         "publisher": "National Records of Scotland",
         "product": (
-            "Census 2022 index zip: Postcode_To_OA.csv census occupied "
-            "household counts (cell-key perturbed), summed by OA2022 — the "
-            "Scotland leg of the ladder's household counts."
+            "NRS Census 2022 UV404 tenure-household CSVs for United Kingdom "
+            "Parliamentary Constituency 2024 and Local_authority, hosted by "
+            "the UKDS CKAN archive and compiled by Chronicle."
         ),
-        "url": "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip",
+        "url": (
+            "https://ukds-ckan.s3.eu-west-1.amazonaws.com/2022/NRS/UV404/"
+            "Census_2022_UV404_Tenure_Households_United_Kingdom_"
+            "Parliamentary_Constituency_2024.csv"
+        ),
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2022-03-20",
-        "status": SOURCE_STATUS_PINNED_IN_LADDER,
-        "verified_on": _SOURCES_VERIFIED_ON,
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": "2026-09-09",
         "notes": (
-            "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py; "
-            "the in-zip specification defines HouseholdCount as the 2022 "
-            "Census occupied household count."
+            "The pinned Ledger fact feed carries the compiled household cells; "
+            "the source specification defines HouseholdCount as occupied households."
         ),
     },
     {
-        "source_id": "nisra_dz21_households",
+        "source_id": "nisra_census2021_households",
         "publisher": "Northern Ireland Statistics and Research Agency",
         "product": (
-            "Census 2021 table-builder HOUSEHOLD dataset at DZ21 grain — "
-            "the NI leg of the ladder's household counts."
+            "NISRA Census 2021 table-builder HOUSEHOLD tables at PARLCON24 "
+            "and LGD14, compiled by Chronicle."
         ),
-        "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21",
+        "url": (
+            "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=PARLCON24"
+        ),
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2021-03-21",
-        "status": SOURCE_STATUS_PINNED_IN_LADDER,
-        "verified_on": _SOURCES_VERIFIED_ON,
-        "notes": ("Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py."),
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": "2026-09-09",
+        "notes": "The pinned Ledger fact feed carries the compiled household cells.",
     },
     {
         "source_id": "dwp_stat_xplore_uc",
@@ -591,16 +598,21 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
             "All three census household-count legs are disclosure-controlled "
-            "(ONS/NRS cell-key perturbation; NISRA flexible-table-builder "
-            "controls), so area counts carry small deliberate noise and do "
-            "not add exactly across grains (measured constituency-sum vs "
-            "national-total deltas at review: E&W +105, Scotland -554, NI "
-            "+3). Binding treats the published counts as the target values "
-            "with that noise documented — never as exact controls — and any "
-            "cross-grain reconciliation applies the standing cross-grain rule "
-            "declared in uk_runtime.ledger_targets: country wins, so a bound "
-            "national same-concept control rescales the constituency values "
-            "before the solve."
+            "(ONS/NRS cell-key perturbation; NISRA table-builder controls). "
+            "Per-area dispersion of the retired OA-ladder sums against the "
+            "published cells at review: England mean 7.4 / max 29, Wales 6.4 / "
+            "15, Scotland net −557 (NRS applies disclosure control per output "
+            "level; same shortfall at both grains), Northern Ireland mean 7 / "
+            "max 16 after the NI constituency leg moved to NISRA's published "
+            "DZ2021→PARLCON24 lookup (the earlier postcode inference was a "
+            "mapping defect of 10 Data Zones, max 694, not perturbation). When "
+            "a national same-concept control is bound, the standing cross-grain "
+            "rule declared in uk_runtime.ledger_targets rescales both grains; "
+            "country wins. The census cells count the occupied-household "
+            "universe and pair only through the household-composition bridge, "
+            "never with dwelling stock; that cross-grain rescale applies once "
+            "the bridge is bound. Today it is reviewed-unbound, so the cells "
+            "bind as published after A15 uprating."
         ),
         "authority": (
             "ONS/NRS/NISRA statistical disclosure control documentation; "
@@ -659,12 +671,6 @@ _STATUS_DEFINITIONS: dict[str, str] = {
     SOURCE_STATUS_PINNED_IN_LEDGER_FACTS: (
         "The official product's target facts are present in the sha-pinned "
         "Ledger consumer fact feed recorded on the source row."
-    ),
-    SOURCE_STATUS_PINNED_IN_LADDER: (
-        "The product is downloaded and sha-pinned per build by the UK OA "
-        "ladder artifact tool, which records every source hash in the "
-        "artifact metadata; target values derive from the artifact's own "
-        "sums."
     ),
     SOURCE_STATUS_SIGNED_DEFERRED: (
         "The official product is present or documented, but this target "

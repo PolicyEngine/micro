@@ -67,10 +67,12 @@ the corrected order needs its own implementation and replay checks.
 Paths beginning `us_runtime/` are relative to
 `packages/microcosm-build/src/microcosm/build/`.
 The branch contains a substantial consolidation; review each area and its tests
-before deciding how to land it. Shared runtime changes overlap with
-[#873](https://github.com/PolicyEngine/microcosm/pull/873) and Anthony's
-[#885](https://github.com/PolicyEngine/microcosm/pull/885). Their final contracts
-need reconciliation; this draft does not supersede either review.
+before deciding how to land it. Shared model work overlaps with
+[#873](https://github.com/PolicyEngine/microcosm/pull/873). Anthony considers his
+runtime proposal [#885](https://github.com/PolicyEngine/microcosm/pull/885)
+superseded by this direction; it is reference material, not a prerequisite to
+retain or merge separately. This does not imply that its GitHub PR is closed or
+that this draft has received his approval.
 
 ## Parallel review and dependencies
 
@@ -81,15 +83,27 @@ source/target reconciliation and shared runtime work moving in parallel.
 
 | Reviewer | Review focus in this draft | Work that can continue independently |
 | --- | --- | --- |
-| Anthony | Shared graph/Frame contracts, artifact and replay behavior, calibration changes, and overlap with #885/#873; agree the implementation to retain and the smallest shared prerequisites to land | Runtime standardization and UK staging telemetry; a complete US PUF build is not their prerequisite |
-| Maria | UK-facing shared calibration behavior, source/input contracts and proposed atomic-geography adapter; identify compatibility requirements for the current UK candidate | #900, Chronicle/lookup reconciliation, UK support/fit diagnosis and candidate validation; these do not depend on native US PUF integration |
+| Anthony | Shared graph/Frame and calibration compatibility; target hierarchy and metadata flow into diagnostics/dashboard, including #855 | Target/dashboard changes follow #900; UK staging #896 proceeds independently of full UK graph conversion and native US PUF integration |
+| Maria | Register each existing UK pipeline stage as a graph node using this branch's shared machinery; verify UK behavior and coverage | #900 lands before graph conversion; UK imputation, support/fit diagnosis and candidate validation continue; graph-node registration stacks on #893, with stage reordering in a later separate PR |
 | US integration owner | Resolve overlap, maintain exact compatibility evidence, complete the US population and release checks, and extract shared changes agreed in review | US-specific source preparation, imputation, quality diagnostics and progressive local builds |
 
-Review the shared contracts first and record each dependency as a named change
-with a pinned revision. Country work can remain based on current main; do not
-rebase it onto this entire moving integration branch merely to participate in
-review. Extract an agreed shared prerequisite into a smaller PR when a consumer
-actually needs it, with compatibility checks for both countries.
+Coordination updated 10 September: Maria is deliberately stacking her UK
+graph-node registration on #893. That specific dependent work should pin the
+parent revision and coordinate shared-interface changes here. Her source/target
+repairs and Anthony's staging work do not have to wait for the whole draft.
+PR #900 merged at 14:54 UTC and is incorporated here from main at
+`6f7571e1ab8c516154289bd8ebf75cb2646f03b5`. The combination preserves both parent
+histories and does not rerun or recertify the frozen US controls.
+Anthony's hierarchy/diagnostics [#855](https://github.com/PolicyEngine/microcosm/pull/855)
+and its dashboard consumer follow the target reconciliation in
+[#900](https://github.com/PolicyEngine/microcosm/pull/900). Registering UK graph
+nodes and changing their order are separate review steps. The US integration
+work must not build a competing full UK graph; its shared atomic-area adapter
+is an input to Maria's owned integration.
+
+Record shared dependencies as named changes with pinned revisions. Extract a
+smaller shared prerequisite where useful, while preserving compatibility with
+Maria's intentional stack. Proposed sequencing does not certify or merge any PR.
 
 The shared post-clone geography interface is under revision following the
 10 September ordering correction. Consumers adopting that new path should agree

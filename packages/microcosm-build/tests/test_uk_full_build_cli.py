@@ -3,6 +3,7 @@
 import hashlib
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from test_uk_graph_terminal import _frame
@@ -392,7 +393,9 @@ def test_dry_run_has_no_files_or_kernel_execution(tmp_path, monkeypatch, capsys)
     assert not args.out.exists()
 
 
-def test_rejected_output_inside_source_never_writes_failure_sidecar(tmp_path, monkeypatch):
+def test_rejected_output_inside_source_never_writes_failure_sidecar(
+    tmp_path, monkeypatch
+):
     args = arguments(tmp_path)
     build = prepared(tmp_path)
     build = replace(build, sources={"fixture": tmp_path})
@@ -400,3 +403,61 @@ def test_rejected_output_inside_source_never_writes_failure_sidecar(tmp_path, mo
     monkeypatch.setattr(cli, "prepare_full_build", lambda args: build)
     assert cli.main([]) == 1
     assert not args.out.exists()
+
+
+@pytest.mark.parametrize("resume", ["auto", "require"])
+def test_source_phase_evidence_survives_later_exception(tmp_path, monkeypatch, resume):
+    args = arguments(tmp_path)
+    build = prepared(tmp_path)
+    assembled = Node(
+        "spine.gates.assembled",
+        Evidence.ref,
+        population="uk.full.calibrated",
+        params={"phase": "preflight", "failed": None},
+        artifact_outputs=(ArtifactOutput("gate_report", FULL_GATE_REPORT_TYPE),),
+    )
+    transferred = replace(assembled, id="spine.gates.transferred")
+    graph = replace(
+        build.full.graph, nodes=(*build.full.graph.nodes, assembled, transferred)
+    )
+    build = replace(build, full=replace(build.full, graph=graph))
+    args.out.mkdir()
+    previous = b'{"kind":"previous-complete-build"}'
+    (args.out / "build.json").write_bytes(previous)
+    args.resume = resume
+    original_run = cli.run_graph
+    if resume == "require":
+        original_run(
+            cli.compile_graph(cli._through(graph, assembled.id)),
+            sources=build.sources,
+            store=cli.ContentStore(args.out / ".graph-store"),
+            kernels=build.kernels,
+        )
+        monkeypatch.setattr(
+            Fixture, "run", lambda *a: pytest.fail("Checkpoint replay reran the source")
+        )
+        monkeypatch.setattr(
+            Evidence, "run", lambda *a: pytest.fail("Checkpoint replay reran the gate")
+        )
+
+    def refuse_transferred(compiled, **kwargs):
+        if transferred.id in {node.id for node in compiled.graph.nodes}:
+            raise RuntimeError("downstream source donor bin is empty")
+        return original_run(compiled, **kwargs)
+
+    monkeypatch.setattr(cli, "run_graph", refuse_transferred)
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(cli, "prepare_full_build", lambda args: build)
+    assert cli.main([]) == 1
+    assert (args.out / "build.json").read_bytes() == previous
+    failure = json.loads((args.out / "failure.json").read_bytes())
+    durable = Path(failure["evidence_directory"])
+    assert (durable / "spine.gates.assembled.graph.json").is_file()
+    assert not (durable / "spine.gates.transferred.graph.json").exists()
+    gate_bytes = (durable / "spine.gates.assembled.gate_report.json").read_bytes()
+    assert gate_bytes == gate_payload("preflight")
+    index = json.loads((durable / "evidence-index.json").read_bytes())
+    assert (
+        index["artifacts"]["spine.gates.assembled/gate_report"]["sha256"]
+        == hashlib.sha256(gate_bytes).hexdigest()
+    )

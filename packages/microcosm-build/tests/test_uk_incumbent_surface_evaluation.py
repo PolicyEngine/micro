@@ -428,7 +428,10 @@ def test_full_candidate_package_preserves_measured_byte_bindings():
             }
         },
         "build_bindings": {
-            "ledger": {"facts_sha256": "c" * 64, "manifest_sha256": "d" * 64}
+            "targets": {
+                "chronicle": {"facts_sha256": "c" * 64, "manifest_sha256": "d" * 64},
+                "paired_ladder_sha256": "e" * 64,
+            }
         },
     }
     result = candidate_evaluation_manifest(package)
@@ -438,7 +441,49 @@ def test_full_candidate_package_preserves_measured_byte_bindings():
         "bytes": 42,
     }
     assert result["outputs"]["calibration_diagnostics"]["sha256"] == "b" * 64
-    assert result["identity"]["ledger"] == package["build_bindings"]["ledger"]
+    assert result["identity"]["targets"] == package["build_bindings"]["targets"]
     package["dataset"]["filename"] = "../other.h5"
     with pytest.raises(ValueError, match="filenames"):
         candidate_evaluation_manifest(package)
+
+
+def test_evaluator_requires_new_chronicle_target_identity() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    tool = (
+        Path(__file__).resolve().parents[3] / "tools/evaluate_uk_incumbent_surface.py"
+    )
+    spec = importlib.util.spec_from_file_location("evaluate_uk_incumbent_surface", tool)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    expected = {
+        "ledger_facts_sha256": "a" * 64,
+        "ledger_manifest_sha256": "b" * 64,
+    }
+    module._check_candidate_chronicle_identity(
+        {
+            "identity": {
+                "targets": {
+                    "chronicle": {
+                        "facts_sha256": "a" * 64,
+                        "manifest_sha256": "b" * 64,
+                    }
+                }
+            }
+        },
+        expected,
+    )
+    with pytest.raises(ValueError, match="identity.targets.chronicle"):
+        module._check_candidate_chronicle_identity(
+            {
+                "identity": {
+                    "ledger": {
+                        "facts_sha256": "a" * 64,
+                        "manifest_sha256": "b" * 64,
+                    }
+                }
+            },
+            expected,
+        )

@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
+from microcosm.build import cross_grain
 from microcosm.build.country_spec import load_country_spec
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import (
@@ -41,10 +42,12 @@ from microcosm.graph import (
     source_hash,
 )
 from microcosm.graph.canonical import canonical_json
+from microcosm.graph.codecs import SOURCE_CODECS
 
-from . import full_measure, full_problem, ledger_targets, local_doctrine
+from . import full_measure, full_problem, ladder_targets, ledger_targets, local_doctrine
 from .full_measure import resolve_uk_full_measures
 from .full_problem import build_uk_full_local_problem
+from .full_targets import CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes
 from .geography_ladder import load_uk_oa_ladder
 from .graph_population import (
     GEOGRAPHY_GATE_TYPE,
@@ -52,12 +55,15 @@ from .graph_population import (
     population_columns,
     population_slices,
 )
-from .ledger_targets import uk_ladder_household_uprating, uk_ledger_households_total
+from .ladder_targets import ladder_vs_chronicle_household_dispersion
+from .ledger_targets import uk_census_household_uprating, uk_ledger_households_total
 from .local_rowwise import UKRowwiseNationalRows, prepare_uk_full_solve
 
 TARGET_SURFACE_TYPE = ArtifactType("microcosm.uk.full-target-surface", 1)
 TARGET_SELECTION_TYPE = ArtifactType("microcosm.uk.full-target-selection", 1)
 MEASURE_TYPE = ArtifactType("microcosm.uk.full-measured-contributions", 1)
+
+SOURCE_CODECS.register_bytes(CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes)
 
 
 def registry_payload(registry: TargetRegistry) -> dict:
@@ -149,6 +155,8 @@ class _TargetKernel(KernelBase):
             full_measure,
             full_problem,
             full_targets,
+            cross_grain,
+            ladder_targets,
             ledger_targets,
             local_doctrine,
         )
@@ -182,20 +190,20 @@ class UKFullTargetCompilationKernel(_TargetKernel):
         period = int(inputs["calibration_year"])
         national = inputs["national_registry"]
         local = inputs["local_registry"]
-        uprating = uk_ladder_household_uprating(
-            ladder,
+        uprating = uk_census_household_uprating(
+            local,
             uk_ledger_households_total(inputs["artifact"].facts, period=period),
             period=period,
         )
+        dispersion = ladder_vs_chronicle_household_dispersion(ladder, local.specs)
         surface, reconciliation = uk_local_target_surface(
             full_problem._joint_surface_registry(local, national),
-            ladder,
             bound_national_target_ids=full_problem._national_contract_target_ids(
                 national
             ),
             period=period,
             reviewed_unbound_higher_targets=inputs["reviewed_unbound_higher_targets"],
-            ladder_household_uprating=uprating,
+            census_household_uprating=uprating,
         )
         full = TargetRegistry(
             [
@@ -214,6 +222,8 @@ class UKFullTargetCompilationKernel(_TargetKernel):
             ],
             country="uk",
         )
+        with Path(context.sources["uk_ladder"]).open("rb") as stream:
+            ladder_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
         payload = {
             "registry": registry_payload(full),
             "local_registry": registry_payload(local),
@@ -222,15 +232,21 @@ class UKFullTargetCompilationKernel(_TargetKernel):
             "surface": _surface_records(surface),
             "surface_columns": surface.columns.tolist(),
             "cross_geography": reconciliation,
-            "ladder_household_uprating": uprating,
+            "census_household_uprating": reconciliation["census_household_uprating"],
+            "household_dispersion": dispersion,
             "measure_exclusions": inputs["measure_exclusions"],
             "reviewed_unbound_higher_targets": inputs[
                 "reviewed_unbound_higher_targets"
             ],
             "source_validation": {
                 "national_source_pin": inputs["national_source_pin"],
+                "local_source_pin": inputs["local_source_pin"],
                 "register_completeness": inputs["register_completeness"],
                 "ledger_provenance": inputs["ledger_provenance"],
+                "targets": {
+                    "chronicle": inputs["ledger_provenance"],
+                    "paired_ladder_sha256": ladder_sha256,
+                },
             },
             "uk_ledger_compiled_registries": {
                 str(period): registry_payload(registry)
@@ -407,7 +423,6 @@ def reconstruct_uk_full_problem_inputs(context: KernelContext) -> UKFullProblemI
     ladder = load_uk_oa_ladder(context.sources["uk_ladder"])
     _, local_problem, cross, bound_families, rung = build_uk_full_local_problem(
         SimpleNamespace(result=SimpleNamespace(frame=frame), ladder=ladder),
-        target_ladder=ladder,
         local_registry=registry_from_payload(full["local_registry"]),
         national_registry=national,
         local_metrics=metrics,
@@ -546,7 +561,7 @@ def append_uk_target_nodes(
                 "country_contract_sha256": contract_identity,
             },
             artifact_outputs=(ArtifactOutput("surface", TARGET_SURFACE_TYPE),),
-            description="Compile pinned national and local evidence plus ladder target rows.",
+            description="Compile Chronicle national and local targets and validate the paired assignment ladder.",
         ),
         Node(
             "uk.full.target_selection",
@@ -598,7 +613,10 @@ def append_uk_target_nodes(
     )
     existing = {source.name for source in graph.sources}
     sources = tuple(
-        SourceRef(name, "raw-bytes-v1")
+        SourceRef(
+            name,
+            CHRONICLE_SOURCE_CODEC if name == "uk_ledger_facts" else "raw-bytes-v1",
+        )
         for name in compile_sources
         if name not in existing
     )

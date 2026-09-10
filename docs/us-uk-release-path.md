@@ -88,6 +88,29 @@ for candidate-specific verification, not proof every historical defect remains.
 
 ## Team meeting decisions
 
+This document is the shared US/UK release-path reference. The country review
+guides and run receipts provide supporting detail; update the sequence and
+ownership here when they change.
+
+The 10 September coordination sequence is:
+
+- Maria's #900 source/target reconciliation merged on 10 September at 14:54 UTC;
+  Anthony's #855 target hierarchy/diagnostics and corresponding dashboard
+  consumer follow it. Its merge clears that dependency, not all release gates.
+- Maria owns registering every existing UK stage as a graph node, stacking on
+  #893. Changes to UK stage order follow in a separate PR. The shared atomic-area
+  adapter work supports that integration and does not create a second UK graph.
+- Anthony's UK staging #896 can proceed independently. His earlier runtime
+  proposal #885 is superseded in intent, not another required implementation.
+- US construction and verification continue alongside these changes. Complete
+  graph coverage in both countries is required for the broader advertised
+  launch; passing tests for individual stages does not establish that coverage.
+
+The latest UK full rebuild and evaluation were reported as underway at the
+meeting. Its new report must replace historical quality evidence only after the
+actual candidate and results are available; the approximate four-hour runtime
+reported for that build is not a US or release ETA.
+
 1. Confirm the release years, advertised geographies and full/compact products.
 2. Assign one accountable owner to each country candidate and one owner to each
    shared dependency: runtime, calibration, diagnostics and release consumers.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import math
-import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import lru_cache
@@ -30,10 +29,6 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
-from microcosm.build.uk_runtime.ladder_targets import (
-    constituency_household_targets,
-    local_authority_household_targets,
-)
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
     AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
@@ -63,6 +58,7 @@ UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
 _UK_LOCAL_FIXTURE_METRIC_ALIASES = {
     f"voa/council_tax/{band}": f"council_tax/band_{band.lower()}" for band in "ABCDEFGH"
 }
+UK_CENSUS_HOUSEHOLDS_TARGET_ID = "ons.census.households"
 
 
 def _uk_cross_grain_leg_of_area(area_code: str) -> str:
@@ -95,7 +91,7 @@ UK_CROSS_GRAIN_BRIDGES = (
             "ons.household_composition.lone_parent_non_dependent_children_households",
             "ons.household_composition.multi_family_households",
         ),
-        lower_side="external:census_households/households",
+        lower_side=f"contract:{UK_CENSUS_HOUSEHOLDS_TARGET_ID}",
     ),
     CrossGrainBridge(
         bridge_id="national_uc_caseload_vs_uc_households_by_area",
@@ -989,8 +985,9 @@ def apply_uk_cross_grain_reconciliation(
     )
 
 
-#: The Ledger concept the A15 ladder uprating stands on: ONS "Families and
-#: households in the UK", Table 5 all-households row, UK, calendar year.
+#: The Ledger concept the A15 Chronicle census-household uprating stands on:
+#: ONS "Families and households in the UK", Table 5 all-households row, UK,
+#: calendar year.
 UK_LEDGER_HOUSEHOLDS_TOTAL_CONCEPT = "ons.households_total"
 UK_LEDGER_HOUSEHOLDS_TOTAL_GEOGRAPHY = "K02000001"
 
@@ -1005,7 +1002,7 @@ def uk_ledger_households_total(
     Exactly one fact must carry the ``ons.households_total`` concept at the
     UK country geography for the calendar year ``period`` with no
     dimensions; zero or several fail closed by name, so an artifact that
-    lacks the vintage cannot silently bind the census-vintage ladder rows.
+    lacks the vintage cannot silently bind the census-vintage household rows.
     """
 
     target_period = int(period)
@@ -1036,7 +1033,7 @@ def uk_ledger_households_total(
         matches.append(fact)
     if len(matches) != 1:
         raise ValueError(
-            f"UK ladder household uprating needs exactly one Ledger fact for "
+            f"UK census household uprating needs exactly one Ledger fact for "
             f"{UK_LEDGER_HOUSEHOLDS_TOTAL_CONCEPT!r} at "
             f"{UK_LEDGER_HOUSEHOLDS_TOTAL_GEOGRAPHY} for calendar year "
             f"{target_period}; found {len(matches)}."
@@ -1045,7 +1042,7 @@ def uk_ledger_households_total(
     value = float(fact.get("value"))
     if not np.isfinite(value) or value <= 0:
         raise ValueError(
-            f"UK ladder household uprating reference must be a positive finite "
+            f"UK census household uprating reference must be a positive finite "
             f"count, got {fact.get('value')!r}."
         )
     lineage = fact.get("lineage")
@@ -1061,51 +1058,78 @@ def uk_ledger_households_total(
     }
 
 
-def uk_ladder_household_uprating(
-    ladder: Any,
+def uk_census_household_uprating(
+    local_registry: TargetRegistry,
     households_reference: Mapping[str, Any],
     *,
     period: int | str,
 ) -> dict[str, Any]:
-    """Derive the single national factor that moves the ladder's census
-    household counts to the calibration period (microcosm#762 A15).
+    """Derive per-grain factors from compiled Chronicle census households."""
 
-    The OA ladder's household counts are the 2021 (England, Wales, Northern
-    Ireland) and 2022 (Scotland) census counts; the candidate calibrates at
-    ``period``. One factor — the Ledger's published UK household total at
-    ``period`` over the ladder's total — uprates every ladder household row
-    while the ladder keeps its census shares for assignment and support.
-    """
-
-    households = np.asarray(ladder.households, dtype=np.float64)
-    total = float(households.sum())
-    if not np.isfinite(total) or total <= 0:
-        raise ValueError("ladder household total must be positive and finite.")
     reference_value = float(households_reference["value"])
     if int(households_reference.get("period", period)) != int(period):
         raise ValueError(
-            "UK ladder household uprating reference period "
+            "UK census household uprating reference period "
             f"{households_reference.get('period')!r} is not the calibration "
             f"period {period!r}."
         )
-    factor = reference_value / total
-    if not np.isfinite(factor) or factor <= 0:
-        raise ValueError(f"UK ladder household uprating factor is invalid: {factor!r}.")
-    metadata = getattr(ladder, "metadata", {}) or {}
+    grouped: dict[str, list[TargetSpec]] = {}
+    for spec in local_registry.specs:
+        if not spec.name.startswith(f"{UK_CENSUS_HOUSEHOLDS_TARGET_ID}@"):
+            continue
+        level, _ = _spec_geography(spec)
+        if level not in {"constituency", "local_authority"}:
+            raise ValueError(
+                f"UK census household target {spec.name!r} has unsupported "
+                f"geography level {level!r}."
+            )
+        from_period = spec.metadata.get("uprating_from_period")
+        to_period = spec.metadata.get("uprating_to_period")
+        try:
+            held_to_period = int(to_period) == int(period)
+            int(from_period)
+        except (TypeError, ValueError):
+            held_to_period = False
+        if not held_to_period:
+            raise ValueError(
+                f"UK census household target {spec.name!r} must carry an "
+                f"identity hold to period {period!r}."
+            )
+        grouped.setdefault(level, []).append(spec)
+    if set(grouped) != {"constituency", "local_authority"}:
+        raise ValueError(
+            "UK census household uprating requires compiled constituency and "
+            "local_authority cells."
+        )
+    grains: dict[str, dict[str, Any]] = {}
+    for level, specs in sorted(grouped.items()):
+        total = math.fsum(float(spec.value) for spec in specs)
+        if not np.isfinite(total) or total <= 0:
+            raise ValueError(
+                f"UK census household {level} total must be positive and finite."
+            )
+        factor = reference_value / total
+        if not np.isfinite(factor) or factor <= 0:
+            raise ValueError(
+                f"UK census household {level} uprating factor is invalid: {factor!r}."
+            )
+        grains[level] = {
+            "cells": len(specs),
+            "census_households_total": total,
+            "census_years": sorted(
+                {int(spec.metadata["uprating_from_period"]) for spec in specs}
+            ),
+            "factor": factor,
+        }
     return {
         "applied": True,
         "period": int(period),
-        "factor": factor,
-        "ladder_households_total": total,
-        "ladder_oa_vintage": str(metadata.get("oa_vintage", "")),
         "reference": dict(households_reference),
-        "adjudication": "microcosm#762 (A15, ruling 2026-09-03)",
-        "reason": (
-            "The OA ladder's household counts are census-vintage (2021; "
-            "Scotland 2022); the candidate calibrates at the FRS release's "
-            "calibration year, so every ladder household row is scaled by one "
-            "national factor to the Ledger's published UK household total for "
-            "that year. Assignment shares and support counts stay census-based."
+        "grains": grains,
+        "adjudication": (
+            "microcosm#887 (per-grain Chronicle denominator supersedes #762 "
+            "A15; A17 rule unchanged, factor moves from 1.0335759 to the "
+            "LA-grain 1.0335595)"
         ),
     }
 
@@ -1122,6 +1146,11 @@ def uk_private_rent_mean_to_total(
     bound ``tenure/private_rent`` household count and the months in a year.
     """
 
+    if target_frame.empty or "metric" not in target_frame.columns:
+        return target_frame.copy(deep=True), {
+            "applied": False,
+            "reason": "no private_rent rows on the surface",
+        }
     rent_positions = np.flatnonzero(
         target_frame["metric"].astype(str).to_numpy() == "rent/private_rent"
     )
@@ -1230,35 +1259,13 @@ def uk_private_rent_mean_to_total(
     }
 
 
-def _census_vintage_years(oa_vintage: Any) -> frozenset[int]:
-    """The census years named by the ladder's ``oa_vintage`` metadata.
-
-    ``"ew:2021_census;scotland:2022_census;ni:dz2021"`` names 2021 and 2022;
-    a later ladder names its own years, so a hold from that vintage takes the
-    factor without anyone editing a constant.
-    """
-
-    return frozenset(
-        int(census_year or dz_year)
-        for census_year, dz_year in re.findall(
-            r"(?<!\d)(\d{4})_census\b|\bdz(\d{4})(?!\d)", str(oa_vintage or "")
-        )
-    )
-
-
 def _is_census_vintage_hold(
     metadata: Mapping[str, Any],
     period: int | str,
     *,
     census_years: frozenset[int] | None = None,
 ) -> bool:
-    """True for a compiled reference held from the ladder's census vintage to
-    ``period``.
-
-    The household factor is the growth from the ladder's census counts to the
-    calibration period, so only a hold from one of those census years may take
-    it; a hold from any other vintage (a 2023 estimate, say) keeps its value.
-    """
+    """True for a compiled reference held from its grain's census vintage."""
 
     years = frozenset({2021, 2022}) if census_years is None else census_years
     from_period = metadata.get("uprating_from_period")
@@ -1273,54 +1280,49 @@ def _is_census_vintage_hold(
 
 def uk_local_target_surface(
     local_registry: TargetRegistry,
-    ladder: Any,
     *,
     bound_national_target_ids: Iterable[str],
     period: int | str,
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
-    ladder_household_uprating: Mapping[str, Any] | None = None,
+    census_household_uprating: Mapping[str, Any] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Assemble and reconcile the present-cell UK local target surface.
 
-    ``ladder_household_uprating`` is the A15 receipt from
-    :func:`uk_ladder_household_uprating`; when given, every ladder household
-    row is scaled by its ``factor`` and the receipt rides the returned
-    cross-grain receipt. Without it the ladder rows bind as published and
-    the receipt says so.
+    ``census_household_uprating`` is the #887 per-grain receipt. Eligible
+    census-household and tenure holds take their grain's factor.
     """
 
-    if ladder_household_uprating is None:
-        uprating_factor = 1.0
+    if census_household_uprating is None:
         uprating_receipt: dict[str, Any] = {
             "applied": False,
-            "reason": (
-                "no Ledger household reference supplied; ladder household rows "
-                "bind at their census vintage."
-            ),
+            "grains": {},
+            "reason": "no census household uprating receipt supplied.",
         }
-    elif not ladder_household_uprating.get("applied"):
-        # A declined receipt (no Ledger facts on this path) rides through
-        # unchanged so the manifest says why the rows bind as published.
-        uprating_factor = 1.0
-        uprating_receipt = dict(ladder_household_uprating)
+    elif not census_household_uprating.get("applied"):
+        uprating_receipt = dict(census_household_uprating)
         uprating_receipt["applied"] = False
+        uprating_receipt.setdefault("grains", {})
     else:
-        uprating_factor = float(ladder_household_uprating["factor"])
-        if not np.isfinite(uprating_factor) or uprating_factor <= 0:
-            raise ValueError(
-                f"ladder household uprating factor is invalid: {uprating_factor!r}."
-            )
-        uprating_receipt = dict(ladder_household_uprating)
-    # microcosm#762 A17 (ruling 2026-09-03): the census tenure cells are the
-    # same household universe as the ladder rows split by tenure, carried
-    # with identity holds from their census vintage; when the ladder rows
-    # uprate, the held tenure cells uprate by the same national factor so the
-    # partition keeps its published shares at the uprated level. A tenure
-    # cell compiled from a fact at the calibration period carries no hold
-    # and is never touched.
+        uprating_receipt = dict(census_household_uprating)
+        grains = uprating_receipt.get("grains")
+        if not isinstance(grains, Mapping):
+            raise ValueError("census household uprating grains must be a mapping.")
+        for level, grain in grains.items():
+            factor = float(grain["factor"])
+            if not np.isfinite(factor) or factor <= 0:
+                raise ValueError(
+                    f"census household {level} uprating factor is invalid: {factor!r}."
+                )
+    # microcosm#762 A17 (ruling 2026-09-03): census tenure cells share the
+    # Chronicle census-household universe at the same grain. Identity-held
+    # household and tenure cells take that grain's factor, preserving the
+    # published tenure shares. A tenure cell compiled directly at the
+    # calibration period carries no hold and is never touched.
     tenure_uprated: dict[str, int] = {}
     tenure_holds: list[dict[str, Any]] = []
+    household_uprated: dict[str, int] = {}
+    household_holds: list[dict[str, Any]] = []
 
     level_to_area_type = {
         level: area_type
@@ -1353,38 +1355,52 @@ def uk_local_target_surface(
                 )
             output_position = len(output_rows)
             value = float(spec.value)
-            if contract_target_id.startswith("ons.tenure."):
+            is_households = contract_target_id == UK_CENSUS_HOUSEHOLDS_TARGET_ID
+            is_tenure = contract_target_id.startswith("ons.tenure.")
+            if is_households or is_tenure:
                 from_period = spec.metadata.get("uprating_from_period")
                 to_period = spec.metadata.get("uprating_to_period")
-                vintage = uprating_receipt.get("ladder_oa_vintage")
-                years = _census_vintage_years(vintage)
+                grain = uprating_receipt.get("grains", {}).get(geography_level)
+                years = (
+                    frozenset(grain.get("census_years", ())) if grain else frozenset()
+                )
                 attempted = from_period is not None or to_period is not None
                 eligible = attempted and _is_census_vintage_hold(
                     spec.metadata, period, census_years=years
                 )
-                applied = bool(eligible and uprating_receipt.get("applied"))
+                factor = float(grain["factor"]) if grain else 1.0
+                applied = bool(
+                    eligible and grain is not None and uprating_receipt.get("applied")
+                )
+                if is_households and uprating_receipt.get("applied") and not applied:
+                    raise ValueError(
+                        f"UK census household denominator {spec.name!r} is not "
+                        f"eligible for its {geography_level} grain factor."
+                    )
                 if applied:
-                    value *= uprating_factor
-                    tenure_uprated[str(from_period)] = (
-                        tenure_uprated.get(str(from_period), 0) + 1
+                    value *= factor
+                    applied_by_vintage = (
+                        household_uprated if is_households else tenure_uprated
+                    )
+                    applied_by_vintage[str(from_period)] = (
+                        applied_by_vintage.get(str(from_period), 0) + 1
                     )
                     reason = "census_vintage_hold_uprated"
                 elif not attempted:
                     reason = "no_identity_hold"
-                elif not vintage:
-                    reason = "missing_ladder_oa_vintage"
-                elif not years:
-                    reason = "non_census_ladder_vintage"
+                elif grain is None:
+                    reason = "missing_grain_uprating"
                 elif not eligible:
-                    reason = "hold_not_from_ladder_census_vintage_or_wrong_period"
+                    reason = "hold_not_from_grain_census_vintage_or_wrong_period"
                 else:
-                    reason = "ladder_household_uprating_not_applied"
-                tenure_holds.append(
+                    reason = "census_household_uprating_not_applied"
+                hold_rows = household_holds if is_households else tenure_holds
+                hold_rows.append(
                     {
                         "target_name": spec.name,
+                        "geography_level": geography_level,
                         "from_period": from_period,
                         "to_period": to_period,
-                        "ladder_oa_vintage": vintage,
                         "attempted": attempted,
                         "eligible": eligible,
                         "applied": applied,
@@ -1501,7 +1517,7 @@ def uk_local_target_surface(
             {
                 "grain": geography_level,
                 "geography_id": geography_id,
-                "target_id": target_id,
+                "target_id": f"contract:{target_id}",
                 "value": value,
                 "_output_position": None,
             }
@@ -1514,38 +1530,10 @@ def uk_local_target_surface(
         if str(target_id) not in fanout_target_ids
     )
 
-    for area_type, targets in (
-        ("constituency", constituency_household_targets(ladder)),
-        ("la", local_authority_household_targets(ladder)),
-    ):
-        for row in targets.itertuples(index=False):
-            output_position = len(output_rows)
-            output_rows.append(
-                {
-                    "area_type": area_type,
-                    "area_code": str(row.code),
-                    "metric": "households",
-                    "value": float(row.households) * uprating_factor,
-                    "target_name": (
-                        f"external:census_households/households@{row.code}"
-                    ),
-                    "family": "census_households",
-                    "source": "UK OA geography ladder",
-                    "period": period,
-                    "contract_target_id": "external:census_households/households",
-                }
-            )
-            reconciliation_rows.append(
-                {
-                    "grain": area_type,
-                    "geography_id": str(row.code),
-                    "target_id": "external:census_households/households",
-                    "value": float(row.households) * uprating_factor,
-                    "_output_position": output_position,
-                }
-            )
-
-    reconciliation = pd.DataFrame(reconciliation_rows)
+    reconciliation = pd.DataFrame(
+        reconciliation_rows,
+        columns=["grain", "geography_id", "target_id", "value", "_output_position"],
+    )
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
         reconciliation[["grain", "geography_id", "target_id", "value"]],
         bound_control_ids,
@@ -1553,24 +1541,35 @@ def uk_local_target_surface(
         licensed_empty_legs=licensed_empty_legs,
     )
     receipt["fanout_targets_not_controls"] = fanout_targets_not_controls
+
+    def cell_receipt(
+        holds: list[dict[str, Any]],
+        uprated: Mapping[str, int],
+    ) -> dict[str, Any]:
+        return {
+            "applied": bool(uprated),
+            "cells": int(sum(uprated.values())),
+            "total_cells": len(holds),
+            "attempted_cells": sum(row["attempted"] for row in holds),
+            "eligible_cells": sum(row["eligible"] for row in holds),
+            "skipped_cells": sum(row["skipped"] for row in holds),
+            "holds": holds,
+            "by_census_vintage": dict(sorted(uprated.items())),
+        }
+
+    uprating_receipt["household_cells"] = cell_receipt(
+        household_holds, household_uprated
+    )
     uprating_receipt["tenure_cells"] = {
-        "applied": bool(tenure_uprated),
-        "cells": int(sum(tenure_uprated.values())),
-        "total_cells": len(tenure_holds),
-        "attempted_cells": sum(r["attempted"] for r in tenure_holds),
-        "eligible_cells": sum(r["eligible"] for r in tenure_holds),
-        "skipped_cells": sum(r["skipped"] for r in tenure_holds),
-        "holds": tenure_holds,
-        "by_census_vintage": dict(sorted(tenure_uprated.items())),
+        **cell_receipt(tenure_holds, tenure_uprated),
         "adjudication": "microcosm#762 (A17, ruling 2026-09-03)",
         "reason": (
-            "census tenure cells (ONS Census 2021; Scotland's Census 2022) held "
-            "to the calibration period are the ladder's household universe split "
-            "by tenure; they take the ladder rows' national household factor so "
-            "the published tenure shares hold at the uprated level."
+            "Census tenure cells held to the calibration period take the "
+            "corresponding Chronicle census-household grain factor so their "
+            "published shares remain unchanged."
         ),
     }
-    receipt["ladder_household_uprating"] = uprating_receipt
+    receipt["census_household_uprating"] = uprating_receipt
     for position, value in enumerate(reconciled["value"].to_numpy(dtype=np.float64)):
         output_position = reconciliation.iloc[position]["_output_position"]
         if pd.notna(output_position):
@@ -1590,11 +1589,13 @@ def _validate_uk_cross_grain_declarations() -> None:
         for target_id in bridge.higher_target_ids:
             if target_id not in contract:
                 unknown.append(target_id)
+        if not bridge.lower_side.startswith("contract:"):
+            raise ValueError(
+                f"UK cross-grain bridge {bridge.bridge_id!r} lower side must "
+                f"start with 'contract:', got {bridge.lower_side!r}."
+            )
         lower_target_id = bridge.lower_side.removeprefix("contract:")
-        if (
-            bridge.lower_side.startswith("contract:")
-            and lower_target_id not in contract
-        ):
+        if lower_target_id not in contract:
             unknown.append(lower_target_id)
         for side in (*bridge.higher_target_ids, bridge.lower_side):
             canonical = side.removeprefix("contract:")

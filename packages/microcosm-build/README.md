@@ -67,7 +67,9 @@ binding, exact-count sizing, replay, diagnostics and certification readiness.
 solve helpers used by the full graph: one
 weight per cloned household, each household assigned to exactly one area by
 the OA geography ladder, so an area's target rows draw support only from the
-households assigned there. The matrix builder fails closed when an assigned
+households assigned there. The ladder supplies assignment and diagnostic
+household sums; every bound local target family, including census households,
+compiles from the pinned Chronicle feed. The matrix builder fails closed when an assigned
 area is missing from the target surface, and every solve runs under the
 reviewed `UK_LOCAL_SOLVE_DOCTRINE` (declared loss cap and weight-ratio
 stretch bound, no per-target knobs) with the microcosm#492 past-cap census on

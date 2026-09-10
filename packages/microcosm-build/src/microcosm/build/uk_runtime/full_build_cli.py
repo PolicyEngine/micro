@@ -12,6 +12,7 @@ import hashlib
 import json
 import sys
 import tempfile
+import uuid
 from dataclasses import asdict, dataclass, replace
 from datetime import date
 from pathlib import Path
@@ -452,9 +453,12 @@ def prepare_full_build(args: argparse.Namespace) -> PreparedUKFullBuild:
         "engine_identity": engine_identity,
         "release_candidate": args.release_candidate,
         "skip_holdout": args.skip_holdout,
-        "ledger": {
-            "facts_sha256": feed.facts_sha256,
-            "manifest_sha256": feed.manifest_sha256,
+        "targets": {
+            "chronicle": {
+                "facts_sha256": feed.facts_sha256,
+                "manifest_sha256": feed.manifest_sha256,
+            },
+            "paired_ladder_sha256": pins["ladder"]["sha256"],
         },
     }
     graph = add_uk_export_preparation(
@@ -528,6 +532,30 @@ def _materialize_evidence(manifest, store, out: Path) -> dict:
     return inventory
 
 
+def _persist_checkpoint(manifest, store, args, phase: str) -> None:
+    """Keep receipts and small evidence durable if a later kernel refuses."""
+    payload = manifest.to_json_bytes()
+    materialize_bytes(payload, args.out / f"{phase}.graph.json")
+    attempt = Path(args.attempt_evidence)
+    materialize_bytes(payload, attempt / f"{phase}.graph.json")
+    evidence = {}
+    for node_id, receipt in manifest.nodes.items():
+        for name, key in receipt.opaque_artifacts.items():
+            if name not in {"gate_report", "stage_evidence", "spine_provenance"}:
+                continue
+            filename = f"{node_id}.{name}.json"
+            if Path(filename).name != filename:
+                raise ValueError("Checkpoint artifact names must be simple filenames.")
+            evidence[f"{node_id}/{name}"] = {
+                "key": key,
+                **materialize_bytes(store.load_bytes(key), attempt / filename),
+            }
+    materialize_bytes(
+        canonical_json({"phase": phase, "artifacts": evidence}),
+        attempt / "evidence-index.json",
+    )
+
+
 def _output_locations(prepared: PreparedUKFullBuild, args: argparse.Namespace):
     output = args.out.resolve()
     graph_store = (args.graph_store or output / ".graph-store").resolve()
@@ -554,6 +582,8 @@ def execute_full_build(prepared: PreparedUKFullBuild, args: argparse.Namespace) 
 
     output, graph_store = _output_locations(prepared, args)
     output.parent.mkdir(parents=True, exist_ok=True)
+    # Operational attempt identity never enters a scientific node/cache key.
+    args.attempt_evidence = graph_store / "uk-full-attempts" / uuid.uuid4().hex
     with tempfile.TemporaryDirectory(
         prefix=f".{output.name}.full-build-", dir=output.parent
     ) as temporary:
@@ -601,18 +631,41 @@ def _execute_full_build(prepared: PreparedUKFullBuild, args: argparse.Namespace)
     materialize_bytes(
         canonical_json(full.operation_inventory()), args.out / "operations.json"
     )
-    # Persist preflight outcomes before any solver can reject them. The second
-    # endpoint reuses the same stored node identities, never repeats fitting.
+    materialize_bytes(
+        canonical_json(prepared.bindings), args.attempt_evidence / "request.json"
+    )
+    # Preserve source evidence before downstream transforms can raise. Each is
+    # an ancestor-closed checkpoint of this graph, with the same node keys/RNG.
+    resume = args.resume
+    node_ids = {node.id for node in graph.nodes}
+    for endpoint in (
+        "spine.gates.assembled",
+        "spine.gates.transferred",
+        "uk.full.spine_checkpoint",
+    ):
+        if endpoint not in node_ids:
+            continue
+        checkpoint = run_graph(
+            compile_graph(_through(graph, endpoint)),
+            sources=sources,
+            store=store,
+            kernels=kernels,
+            resume=resume,
+            population_retention="lazy",
+        )
+        _persist_checkpoint(checkpoint, store, args, endpoint)
+        resume = "require" if args.resume == "require" else "auto"
+    # Persist preflight outcomes before any solver can reject them.
     preflight_graph = _through(graph, "uk.full.gates.preflight")
     preflight = run_graph(
         compile_graph(preflight_graph),
         sources=sources,
         store=store,
         kernels=kernels,
-        resume=args.resume,
+        resume=resume,
         population_retention="lazy",
     )
-    preflight.save(args.out / "preflight.graph.json")
+    _persist_checkpoint(preflight, store, args, "preflight")
     _materialize_evidence(preflight, store, args.out)
     _, admission = decode_full_gate_report(
         _payload(preflight, store, "uk.full.gates.preflight", "gate_report")
@@ -627,7 +680,7 @@ def _execute_full_build(prepared: PreparedUKFullBuild, args: argparse.Namespace)
         resume="require" if args.resume == "require" else "auto",
         population_retention="lazy",
     )
-    manifest.save(args.out / "numerical.graph.json")
+    _persist_checkpoint(manifest, store, args, "numerical")
     _materialize_evidence(manifest, store, args.out)
     terminal_files = materialize_uk_terminal_artifacts(
         manifest,
@@ -785,6 +838,9 @@ def main(argv: list[str] | None = None) -> int:
                         "schema": "microcosm.uk.full-build-failure.v1",
                         "error_type": type(error).__name__,
                         "message": str(error),
+                        "evidence_directory": str(args.attempt_evidence)
+                        if hasattr(args, "attempt_evidence")
+                        else None,
                         "release_authorized": False,
                     }
                 ),

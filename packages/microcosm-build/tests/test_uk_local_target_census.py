@@ -22,7 +22,6 @@ from microcosm.build.uk_runtime.local_target_census import (
     CENSUS_SCHEMA_VERSION,
     METRIC_STATUS_BOUND_IN_CODE,
     SOURCE_STATUS_DOCUMENTED_UNPINNED,
-    SOURCE_STATUS_PINNED_IN_LADDER,
     SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
     SOURCE_STATUS_SIGNED_DEFERRED,
     assert_uk_local_target_census_current,
@@ -98,21 +97,48 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
         assert source["status"] in {
             SOURCE_STATUS_DOCUMENTED_UNPINNED,
             SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
-            SOURCE_STATUS_PINNED_IN_LADDER,
             SOURCE_STATUS_SIGNED_DEFERRED,
         }
         if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:
             pin = source["ledger_fact_pin"]
             assert pin["facts_sha256"] == (
-                "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f"
+                "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
             )
-            assert pin["source_commit"] == "6fb700e"
+            assert pin["source_commit"] == "ec7169b"
             assert pin["source_repo"] == "PolicyEngine/chronicle"
         if source["status"] == SOURCE_STATUS_SIGNED_DEFERRED:
             assert source["signed_reason_id"], source["source_id"]
             assert source["signed_rationale"], source["source_id"]
         assert source["geographies"], source["source_id"]
         assert set(source["geographies"]) <= {"constituency", "la", "msoa"}
+
+    household_family = next(
+        family
+        for family in census["families"]
+        if family["family"] == "census_households"
+    )
+    household_sources = {
+        source["source_id"]: source
+        for source in census["sources"]
+        if source["source_id"] in household_family["sources"]
+    }
+    assert set(household_sources) == set(household_family["sources"])
+    for source in household_sources.values():
+        assert source["status"] in {
+            SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+            SOURCE_STATUS_SIGNED_DEFERRED,
+        }
+        if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:
+            assert source["ledger_fact_pin"]
+    assert "NM_2059_1" in household_sources["ons_census2021_ts041_households"]["url"]
+    assert "TYPE424" in household_sources["ons_census2021_ts041_households"]["product"]
+    assert "UV404" in household_sources["nrs_census2022_uv404_households"]["url"]
+    assert (
+        "Local_authority"
+        in household_sources["nrs_census2022_uv404_households"]["product"]
+    )
+    assert "v=PARLCON24" in household_sources["nisra_census2021_households"]["url"]
+    assert "LGD14" in household_sources["nisra_census2021_households"]["product"]
 
 
 def test_banded_fence_carries_the_national_authority() -> None:
