@@ -19,6 +19,7 @@ from microcosm.graph.kernel import KernelResult
 from microcosm.graph.population import (
     Population,
     PopulationError,
+    _storage_parts,
     dtype_for_token,
     dtype_matches,
     entrant_strata_receipt,
@@ -1434,3 +1435,226 @@ def test_reweight_can_synthesize_frame_but_must_not_change_ids() -> None:
         )
     with pytest.raises(PopulationError, match="changed 'person' ids"):
         patch(population, node, KernelResult(frame=reordered))
+
+
+# ---------------------------------------------------------------------------
+# Object-dtype storage hashing (issue #907)
+# ---------------------------------------------------------------------------
+
+
+def _fresh_str(value: str) -> str:
+    """Return an equal ``str`` that is a distinct object from every literal."""
+
+    return "".join(list(value))
+
+
+def _object_series(values: list[object]) -> pd.Series:
+    return pd.Series(values, dtype=object)
+
+
+_ALL_ROWS = np.ones(3, dtype=np.bool_)
+
+
+def test_object_storage_hashes_content_not_pyobject_pointers() -> None:
+    left = _object_series([_fresh_str("alpha"), _fresh_str("beta"), None])
+    right = _object_series([_fresh_str("alpha"), _fresh_str("beta"), None])
+
+    assert left.dtype == object
+    assert [id(value) for value in left.to_numpy()[:2]] != [
+        id(value) for value in right.to_numpy()[:2]
+    ]
+    assert _storage_parts(left, _ALL_ROWS) == _storage_parts(right, _ALL_ROWS)
+    assert storage_equal(left, right)
+
+
+def test_object_storage_separates_differing_content() -> None:
+    left = _object_series([_fresh_str("alpha"), _fresh_str("beta"), None])
+    right = _object_series([_fresh_str("alpha"), _fresh_str("gamma"), None])
+
+    assert _storage_parts(left, _ALL_ROWS) != _storage_parts(right, _ALL_ROWS)
+    assert not storage_equal(left, right)
+
+
+def test_object_storage_keeps_the_null_bitmap_separate_from_values() -> None:
+    series = _object_series([_fresh_str("alpha"), None, _fresh_str("beta")])
+
+    values, bitmap = _storage_parts(series, _ALL_ROWS)
+
+    assert bitmap == np.array([False, True, False]).tobytes()
+    assert (
+        values
+        == _storage_parts(
+            _object_series([_fresh_str("alpha"), None, _fresh_str("beta")]), _ALL_ROWS
+        )[0]
+    )
+    # A moved null is a different column even though the value bytes of the
+    # surviving labels are unchanged, exactly as in the StringDtype branch.
+    moved = _object_series([None, _fresh_str("alpha"), _fresh_str("beta")])
+    assert _storage_parts(series, _ALL_ROWS) != _storage_parts(moved, _ALL_ROWS)
+
+
+def test_object_storage_respects_the_selection_mask() -> None:
+    left = _object_series([_fresh_str("alpha"), _fresh_str("beta"), None])
+    right = _object_series([_fresh_str("alpha"), _fresh_str("zeta"), None])
+    selected = np.array([True, False, True])
+
+    assert _storage_parts(left, selected) == _storage_parts(right, selected)
+    assert storage_equal(left, right, selected)
+    assert not storage_equal(left, right)
+
+
+@pytest.mark.parametrize(
+    ("left_leaf", "right_leaf"),
+    [
+        ("1", 1),
+        ("1", b"1"),
+        (1, b"1"),
+        (1, True),
+        (1, 1.0),
+        (True, 1.0),
+        ("", None),
+        (b"", None),
+        (0.0, -0.0),
+        ("a", "a\x00"),
+        ("ab", "a"),
+    ],
+)
+def test_object_storage_does_not_conflate_distinct_leaves(
+    left_leaf: object, right_leaf: object
+) -> None:
+    left = _object_series([left_leaf, None, None])
+    right = _object_series([right_leaf, None, None])
+
+    assert _storage_parts(left, _ALL_ROWS) != _storage_parts(right, _ALL_ROWS)
+
+
+@pytest.mark.parametrize(
+    "leaf",
+    [
+        _fresh_str("label"),
+        b"label",
+        7,
+        -(2**70),
+        0,
+        1.5,
+        -0.0,
+        True,
+        False,
+        None,
+    ],
+)
+def test_object_storage_accepts_every_supported_leaf(leaf: object) -> None:
+    left = _object_series([leaf, None, _fresh_str("tail")])
+    right = _object_series([leaf, None, _fresh_str("tail")])
+
+    assert _storage_parts(left, _ALL_ROWS) == _storage_parts(right, _ALL_ROWS)
+
+
+def test_object_storage_preserves_negative_zero_and_nan_payloads() -> None:
+    nan_payload = np.frombuffer(
+        np.uint64(0x7FF8_0000_0000_0001).tobytes(), dtype=np.float64
+    )[0]
+    quiet_nan = float("nan")
+
+    assert _storage_parts(
+        _object_series([-0.0, None, None]), _ALL_ROWS
+    ) != _storage_parts(_object_series([0.0, None, None]), _ALL_ROWS)
+    assert _storage_parts(
+        _object_series([float(nan_payload), None, None]), _ALL_ROWS
+    ) != _storage_parts(_object_series([quiet_nan, None, None]), _ALL_ROWS)
+
+
+@pytest.mark.parametrize(
+    "leaf",
+    [
+        pd.NA,
+        pd.NaT,
+        object(),
+        ("tuple",),
+        ["list"],
+        {"set"},
+        {"dict": 1},
+        bytearray(b"mutable"),
+        np.int64(3),
+        np.bool_(True),
+    ],
+)
+def test_object_storage_refuses_unsupported_leaves(leaf: object) -> None:
+    series = _object_series([leaf, None, None])
+
+    with pytest.raises(PopulationError, match="storage-object-leaf"):
+        _storage_parts(series, _ALL_ROWS)
+
+
+def test_object_storage_refusal_message_excludes_the_value_repr() -> None:
+    class _Loud:
+        def __repr__(self) -> str:  # pragma: no cover - must never be called
+            raise AssertionError("storage refusal must not repr the leaf")
+
+    series = _object_series([_Loud(), None, None])
+
+    with pytest.raises(PopulationError, match="storage-object-leaf") as excinfo:
+        _storage_parts(series, _ALL_ROWS)
+    assert "_Loud" in str(excinfo.value)
+
+
+def test_object_storage_flows_through_storage_equal_dtype_guard() -> None:
+    objects = _object_series([_fresh_str("alpha"), _fresh_str("beta"), None])
+    strings = pd.Series(
+        ["alpha", "beta", None],
+        dtype=pd.StringDtype(storage="python", na_value=pd.NA),
+    )
+
+    # Different dtypes short-circuit before any encoding is compared, so the
+    # object encoding never has to agree byte-for-byte with the string branch.
+    assert not storage_equal(objects, strings)
+
+
+@pytest.mark.parametrize(
+    ("dtype", "values", "expected_values", "expected_bitmap"),
+    [
+        (
+            "Int64",
+            [1, 2, 3, pd.NA],
+            "010000000000000002000000000000000100000000000000",
+            "000001",
+        ),
+        ("boolean", [True, False, pd.NA, True], "010001", "000000"),
+        (
+            "float64",
+            [-0.0, 1.5, 2.0, float("nan")],
+            "0000000000000080000000000000f83f000000000000f87f",
+            "000001",
+        ),
+        (
+            "int64",
+            [1, 2, 3, 4],
+            "010000000000000002000000000000000400000000000000",
+            "000000",
+        ),
+        ("bool", [True, False, True, False], "010000", "000000"),
+    ],
+)
+def test_masked_and_numeric_storage_encodings_stay_byte_identical(
+    dtype: str, values: list[object], expected_values: str, expected_bitmap: str
+) -> None:
+    series = pd.Series(values, dtype=dtype)
+    selected = np.array([True, True, False, True])
+
+    payload, bitmap = _storage_parts(series, selected)
+
+    assert payload.hex() == expected_values
+    assert bitmap.hex() == expected_bitmap
+
+
+def test_string_storage_encoding_stays_byte_identical() -> None:
+    series = pd.Series(
+        ["a", "bb", "c", None],
+        dtype=pd.StringDtype(storage="python", na_value=pd.NA),
+    )
+    selected = np.array([True, True, False, True])
+
+    payload, bitmap = _storage_parts(series, selected)
+
+    assert payload.hex() == ("020000000000000061030000000000000062620000000000000000")
+    assert bitmap.hex() == "000001"
