@@ -11159,6 +11159,52 @@
       },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_fare_receipts.london",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_fare_receipts",
+        "layout_groupby_value_id": "london",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "dft/bus_fare_receipts/london",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_fare_receipts.london",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_net_support.london",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_total_estimated_net_support",
+        "layout_groupby_value_id": "london",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "dft/bus_net_support/london",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_net_support.london",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     }
   ]
 }

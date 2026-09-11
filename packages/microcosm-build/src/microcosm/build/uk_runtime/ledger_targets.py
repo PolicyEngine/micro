@@ -29,6 +29,7 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
     AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
@@ -254,11 +255,13 @@ def compile_uk_target_registry(
         )
         candidate_facts = _candidate_facts_for_reference(fact_rows, restamped)
         try:
+            _assert_national_region_pin(restamped)
             registry = compile_ledger_target_references(
                 candidate_facts,
                 [restamped],
                 country="uk",
             )
+            registry = _assert_region_facts_resolved_at_region(restamped, registry)
             registry = validate_uc_source_month_coverage(
                 restamped, registry, candidate_facts
             )
@@ -285,6 +288,49 @@ def compile_uk_target_registry(
         TargetRegistry(compiled, country="uk"),
         tuple(unsupported),
     )
+
+
+#: National references may pin a region only from the published English
+#: region roster; the codes are the ladder's own (geography_ladder), so no
+#: second register carries them.
+UK_NATIONAL_REGION_ROSTER: frozenset[str] = frozenset(
+    code for code in UK_ENGLAND_WALES_REGION_CODES if code.startswith("E12")
+)
+
+
+def _assert_national_region_pin(reference: LedgerTargetReference) -> None:
+    """Refuse a region-pinned national reference outside the region roster."""
+
+    selector = reference.ledger_selector
+    level = str(selector.get("geography_level") or "")
+    if level != "region":
+        return
+    geography_id = str(selector.get("geography_id") or "")
+    if geography_id not in UK_NATIONAL_REGION_ROSTER:
+        raise ValueError(
+            f"UK national reference {reference.name!r} pins region "
+            f"{geography_id!r}, which is not in the English region roster "
+            f"{sorted(UK_NATIONAL_REGION_ROSTER)}."
+        )
+
+
+def _assert_region_facts_resolved_at_region(
+    reference: LedgerTargetReference, registry: TargetRegistry
+) -> TargetRegistry:
+    """A region-pinned reference must resolve a region-stamped fact."""
+
+    if str(reference.ledger_selector.get("geography_level") or "") != "region":
+        return registry
+    for spec in registry.specs:
+        level = str(spec.metadata.get("ledger_geography_level") or "")
+        geography_id = str(spec.metadata.get("ledger_geography_id") or "")
+        if level != "region" or geography_id not in UK_NATIONAL_REGION_ROSTER:
+            raise ValueError(
+                f"UK national reference {reference.name!r} resolved a fact at "
+                f"{level!r} {geography_id!r}; a region pin must resolve a "
+                "region-stamped fact inside the roster."
+            )
+    return registry
 
 
 def _cgt_cash_diagnostic_metadata(

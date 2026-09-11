@@ -12312,7 +12312,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "DfT closing-year label: period 2025 means YE March 2025. BUS05i is consumed; NTS0705a and BUS0415 are not consumed pending #790."
+          "notes": "DfT closing-year label: period 2025 means YE March 2025. BUS05i is consumed. The London row binds at region level (E12000007) and England outside London is derived, so the partition is checked, not double-bound. BUS0415 aligns the fare receipts to the calibration year in the compile pass; NTS0705a shapes the imputed column inside the LCFS stage (#890)."
         },
         "axiom": {
           "metric_name": "dft/bus_fare_receipts/england",
@@ -12355,7 +12355,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "DfT closing-year label: period 2025 means YE March 2025. BUS05i is consumed; BUS0415 is not selectable for support."
+          "notes": "DfT closing-year label: period 2025 means YE March 2025. BUS05i is consumed; the London row binds at region level (E12000007) and England outside London is derived. BUS0415 is never applied to net support (#789 scope item 5)."
         },
         "axiom": {
           "metric_name": "dft/bus_net_support/england",
