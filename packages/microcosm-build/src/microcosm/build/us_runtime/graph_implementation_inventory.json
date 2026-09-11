@@ -429,7 +429,7 @@
         "microcosm.build.us_runtime"
       ],
       "resource_accesses_sha256": "2622beb3c86b2a9e1cea2db1c6b34a1ec2d2cf29824c3d3e276ea41baeb4f93b",
-      "unbound_uses_sha256": "05ea2b2c3d774e57d76e89616228798fa8ef05c1f6c8524b08816b5ad3844a81"
+      "unbound_uses_sha256": "138ac0967786b481d52704c91d5d5cefc4e39f92d7cab4154215bc77a981ef6e"
     },
     "microcosm.build/us_runtime/asec_prepared_source.py": {
       "imports": [

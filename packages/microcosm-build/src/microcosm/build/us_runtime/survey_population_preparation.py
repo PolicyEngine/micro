@@ -1076,9 +1076,7 @@ def _nested_seals(
             )
         )
         if module is asec_catalogue:
-            values.append(
-                asec_catalogue._records_identity(state.households, state.ledger)
-            )
+            values.append(asec_catalogue._current_records_identity(state))
     return tuple(values)
 
 

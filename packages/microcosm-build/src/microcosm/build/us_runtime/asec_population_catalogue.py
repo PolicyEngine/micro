@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import operator
 import sys
 import weakref
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
+from itertools import chain
 from pathlib import Path
 from typing import NamedTuple
 
@@ -144,9 +146,27 @@ def _record(row):
     return result
 
 
-def _records_identity(households, ledger):
+class _RecordsMemo(NamedTuple):
+    """The issued record roots, their projected leaves, and the identity streamed."""
+
+    households: tuple
+    ledger: tuple
+    household_leaves: tuple
+    ledger_leaves: tuple
+    identity: tuple
+
+
+def _records_identity(households, ledger, *, memo=False):
+    """Stream every canonical record; optionally bind a leaf snapshot memo.
+
+    With ``memo=True`` the result is ``(identity, memo)``. The memo's leaves are
+    projected from the exact rows encoded in this same pass, so it can only
+    stand for this identity. It is ``None`` when any record carries a leaf
+    that is not an exact ``str``/``int`` or the ASEC source member.
+    """
     _require(type(households) is tuple and type(ledger) is tuple, "RECORD_TYPE")
     digest, count, size, persons = hashlib.sha256(), 0, 0, 0
+    household_leaves, ledger_leaves, eligible = [], [], memo
     for kind, rows in (("household", households), ("unrepresented", ledger)):
         for row in rows:
             data = _encode([kind, _record(row)]) + b"\n"
@@ -156,7 +176,141 @@ def _records_identity(households, ledger):
             count += 1
             if kind == "household":
                 persons += len(row.persons)
-    return (digest.hexdigest(), size, count, persons)
+            if eligible:
+                projected = _eligible_leaves(row, kind)
+                if projected is None:
+                    eligible = False
+                elif kind == "household":
+                    household_leaves.append(projected)
+                else:
+                    ledger_leaves.append(projected)
+    identity = (digest.hexdigest(), size, count, persons)
+    if not memo:
+        return identity
+    if not eligible:
+        return identity, None
+    return identity, _RecordsMemo(
+        households, ledger, tuple(household_leaves), tuple(ledger_leaves), identity
+    )
+
+
+_KEY_LEAVES = operator.attrgetter("source", "source_year", "survey_year", "native_id")
+_HOUSEHOLD_LITERALS = operator.attrgetter(
+    "h_hhtype", "hrhtype", "h_livqrt", "h_numper", "hsup_wgt"
+)
+_HOUSEHOLD_LEAVES = operator.attrgetter(
+    "key", "h_hhtype", "hrhtype", "h_livqrt", "h_numper", "hsup_wgt", "persons"
+)
+_PERSON_LITERALS = operator.attrgetter(
+    "peridnum", "a_lineno", "age", "prpertyp", "prpertyp_state"
+)
+_PERSON_LEAVES = operator.attrgetter(
+    "peridnum", "a_lineno", "age", "prpertyp", "prpertyp_state", "household_key"
+)
+_LEDGER_LITERALS = operator.attrgetter(
+    "h_hhtype", "hrhtype", "h_livqrt", "h_numper", "hsup_wgt", "reason"
+)
+_LEDGER_LEAVES = operator.attrgetter(
+    "key", "h_hhtype", "hrhtype", "h_livqrt", "h_numper", "hsup_wgt", "reason"
+)
+
+
+def _household_leaves(row):
+    key, *literals, persons = _HOUSEHOLD_LEAVES(row)
+    return (
+        key,
+        *_KEY_LEAVES(key),
+        *literals,
+        persons,
+        *chain.from_iterable(
+            (*_PERSON_LEAVES(person), *_KEY_LEAVES(person.household_key))
+            for person in persons
+        ),
+    )
+
+
+def _ledger_leaves(row):
+    key, *literals = _LEDGER_LEAVES(row)
+    return (key, *_KEY_LEAVES(key), *literals)
+
+
+def _eligible_key(key):
+    return (
+        type(key) is domains.HouseholdKey
+        and key.source is domains.Source.ASEC
+        and type(key.source_year) is int
+        and type(key.survey_year) is int
+        and type(key.native_id) is str
+    )
+
+
+def _eligible_leaves(row, kind):
+    """Project one record's leaves when every one is an exact immutable value."""
+    if not _eligible_key(row.key):
+        return None
+    if kind == "household":
+        if type(row) is not domains.AsecHousehold or type(row.persons) is not tuple:
+            return None
+        literals = list(_HOUSEHOLD_LITERALS(row))
+        for person in row.persons:
+            if type(person) is not domains.AsecPerson or not _eligible_key(
+                person.household_key
+            ):
+                return None
+            literals.extend(_PERSON_LITERALS(person))
+        leaves = _household_leaves(row)
+    else:
+        if type(row) is not UnrepresentedAsecHousehold:
+            return None
+        literals = _LEDGER_LITERALS(row)
+        leaves = _ledger_leaves(row)
+    if any(type(item) is not str for item in literals):
+        return None
+    return leaves
+
+
+def _leaves_unchanged(rows, snapshot, project):
+    if len(rows) != len(snapshot):
+        return False
+    for row, expected in zip(rows, snapshot, strict=True):
+        try:
+            current = project(row)
+        except (AttributeError, TypeError):
+            return False
+        if len(current) != len(expected) or not all(
+            map(operator.is_, current, expected)
+        ):
+            return False
+    return True
+
+
+def _memoized_records_identity(
+    households, ledger, memo=None, *, expected_identity=None
+):
+    """Reuse the issued records identity only over the same unchanged leaves.
+
+    A hit needs the exact issued household and ledger tuples, a memo identity
+    equal to the owner's retained one, and every projected leaf (literals,
+    keys, person rosters and their members' fields) to be the very object seen
+    while the identity streamed. Frozen dataclasses stay writable through
+    ``object.__setattr__``, so the leaves carry the proof, not the records.
+    Anything else falls back to the full canonical encoding and its refusals.
+    """
+    if (
+        type(households) is tuple
+        and type(ledger) is tuple
+        and type(memo) is _RecordsMemo
+        and households is memo.households
+        and ledger is memo.ledger
+        and type(memo.household_leaves) is tuple
+        and type(memo.ledger_leaves) is tuple
+        and type(memo.identity) is tuple
+        and memo.identity == expected_identity
+        and _leaves_unchanged(households, memo.household_leaves, _household_leaves)
+        and _leaves_unchanged(ledger, memo.ledger_leaves, _ledger_leaves)
+    ):
+        return memo.identity
+    return _records_identity(households, ledger)
 
 
 def _bound_records_identity(rows, roster):
@@ -234,6 +388,16 @@ class _State(NamedTuple):
     households: tuple
     ledger: tuple
     records_identity: tuple
+    records_memo: _RecordsMemo | None = None
+
+
+def _current_records_identity(state):
+    return _memoized_records_identity(
+        state.households,
+        state.ledger,
+        state.records_memo,
+        expected_identity=state.records_identity,
+    )
 
 
 def _validate_state(state):
@@ -245,8 +409,7 @@ def _validate_state(state):
         "PARENT_CHANGED",
     )
     _require(
-        _records_identity(state.households, state.ledger) == state.records_identity,
-        "RECORDS_CHANGED",
+        _current_records_identity(state) == state.records_identity, "RECORDS_CHANGED"
     )
     state.parent.validate()
     native.coverage_owner.verify_asec_coverage_parent(state.coverage, state.parent)
@@ -261,8 +424,7 @@ def _validate_state(state):
         "PARENT_CHANGED",
     )
     _require(
-        _records_identity(state.households, state.ledger) == state.records_identity,
-        "RECORDS_CHANGED",
+        _current_records_identity(state) == state.records_identity, "RECORDS_CHANGED"
     )
     # Pure final seals after source/resource I/O; no recursively repeated reads.
     current = native._attached_evidence(
@@ -389,7 +551,9 @@ def issue_asec_source_catalogue(
         )
         _, _, rows, roster = native._roster(parent, coverage, anchors, fields, None)
         households, ledger = _rows(rows, roster, anchors, fields)
-        records_identity = _records_identity(households, ledger)
+        records_identity, records_memo = _records_identity(
+            households, ledger, memo=True
+        )
         identity = json.loads(parent.source.identity)
         files = [
             (
@@ -440,6 +604,7 @@ def issue_asec_source_catalogue(
             households,
             ledger,
             records_identity,
+            records_memo,
         )
         payload = _encode(
             {
