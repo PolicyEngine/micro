@@ -69,11 +69,16 @@ def _fact(
     value: float = 30.0,
 ) -> dict:
     return {
+        "label": "Test Universal Credit fact",
         "aggregate_fact_key": "ledger.aggregate_fact.v2:uc-fixture",
         "aggregation": {"method": "sum"},
         "assertion": "observation",
         "entity": {"name": "person"},
-        "geography": {"level": "country", "id": "K02000001"},
+        "geography": {
+            "level": "country",
+            "id": "K02000001",
+            "name": "United Kingdom",
+        },
         "observed_measure": {
             "source_name": source_name,
             "source_concept": concept,
@@ -245,7 +250,29 @@ def _fact_for_reference(
         )
         if key in selector
     }
+    groupby_dimension = str(layout.get("groupby_dimension") or "")
+    groupby_value_id = str(layout.get("groupby_value_id") or "")
+    hierarchy_dimensions = dict(dimensions)
+    if groupby_dimension:
+        hierarchy_dimensions.setdefault(groupby_dimension, groupby_value_id)
+    dimension_labels = {
+        dimension_id: f"Test dimension {dimension_id}"
+        for dimension_id in hierarchy_dimensions
+    }
+    dimension_value_labels = {
+        dimension_id: {
+            str(dimension_value): f"Test value {dimension_id}={dimension_value}"
+        }
+        for dimension_id, dimension_value in hierarchy_dimensions.items()
+    }
+    if groupby_dimension:
+        layout["groupby_dimension_label"] = dimension_labels[groupby_dimension]
+        if groupby_value_id:
+            layout["groupby_value_label"] = dimension_value_labels[groupby_dimension][
+                groupby_value_id
+            ]
     return {
+        "label": f"Test label for {reference.name}",
         "aggregate_fact_key": selector.get(
             "aggregate_fact_key", f"ledger.aggregate_fact.v2:{reference.name}"
         ),
@@ -253,9 +280,12 @@ def _fact_for_reference(
         "assertion": "observation",
         "entity": {"name": selector.get("entity_name", reference.entity)},
         "dimensions": dimensions,
+        "dimension_labels": dimension_labels,
+        "dimension_value_labels": dimension_value_labels,
         "geography": {
             "level": selector.get("geography_level", "country"),
             "id": selector.get("geography_id", "K02000001"),
+            "name": "United Kingdom",
         },
         "layout": layout,
         "observed_measure": {
@@ -282,6 +312,18 @@ def _facts_for_reference(reference: LedgerTargetReference, value: float) -> list
             fact = _fact_for_reference(reference, value / len(reference.value_operands))
             fact["aggregate_fact_key"] += f":{month}:{cell}"
             fact["dimensions"] = dict(operand["dimension_values"])
+            fact["dimension_labels"] = {
+                dimension_id: f"Test dimension {dimension_id}"
+                for dimension_id in fact["dimensions"]
+            }
+            fact["dimension_value_labels"] = {
+                dimension_id: {
+                    str(dimension_value): (
+                        f"Test value {dimension_id}={dimension_value}"
+                    )
+                }
+                for dimension_id, dimension_value in fact["dimensions"].items()
+            }
             fact["period"] = {"type": "month", "value": month}
             fact["source_release_key"] = "ledger.source_release.v2:uc-paid-fixture"
             fact["source"] = {"source_sha256": "a" * 64}

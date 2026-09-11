@@ -127,11 +127,13 @@ LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
 )
 
 # Lockstep with microcosm.calibrate.diagnostics.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-# (schema 6 = final per-target loss attribution plus warning-only degradation).
+# (schema 8 = a complete producer-supplied hierarchy on every registry-backed
+# target row).
 # microcosm-data cannot import
 # microcosm-calibrate (dependency direction), so the builder test suite pins the
 # two constants equal — see test_calibration_diagnostics_schema_lockstep.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 6
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
+_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({6, 7, 8})
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -3253,14 +3255,16 @@ def _check_calibration_diagnostics(
             "calibration_diagnostics.json grandfathered June UK release "
             f"requires legacy schema version 2, got {schema_version!r}."
         )
-    elif (
-        not grandfathered_uk_june
-        and schema_version != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    elif not grandfathered_uk_june and (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version not in _SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
     ):
         failures.append(
             f"calibration_diagnostics.json 'schema_version' is {schema_version!r}; "
-            f"this library publishes version "
-            f"{CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+            "supported versions are "
+            f"{sorted(_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS)} and "
+            f"this library publishes version {CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
         )
 
     expected_sections = {
@@ -3293,6 +3297,15 @@ def _check_calibration_diagnostics(
     )
 
     targets = diagnostics.get("targets")
+    dimension_definitions = diagnostics.get("dimensions")
+    if schema_version == 7 and not isinstance(dimension_definitions, Mapping):
+        failures.append(
+            "calibration_diagnostics.json schema 7 requires a top-level "
+            "'dimensions' object."
+        )
+        dimension_definitions = {}
+    if schema_version == 7 and isinstance(dimension_definitions, Mapping):
+        _check_diagnostics_dimension_definitions(dimension_definitions, failures)
     if isinstance(targets, list):
         surface = diagnostics.get("target_surface")
         if isinstance(surface, Mapping) and surface.get("n_targets") != len(targets):
@@ -3329,6 +3342,23 @@ def _check_calibration_diagnostics(
                     "calibration_diagnostics.json target row "
                     f"{index} is missing non-empty 'source'."
                 )
+            if schema_version == 7:
+                _check_structured_diagnostics_target(
+                    target,
+                    index=index,
+                    dimension_definitions=(
+                        dimension_definitions
+                        if isinstance(dimension_definitions, Mapping)
+                        else {}
+                    ),
+                    failures=failures,
+                )
+            elif schema_version == 8:
+                _check_hierarchy_diagnostics_target(
+                    target,
+                    index=index,
+                    failures=failures,
+                )
             if not grandfathered_uk_june:
                 if not isinstance(target.get("measure"), Mapping):
                     failures.append(
@@ -3346,6 +3376,204 @@ def _check_calibration_diagnostics(
                     "calibration_diagnostics.json target row "
                     f"{index} is missing 'metadata' object."
                 )
+
+
+def _check_diagnostics_dimension_definitions(
+    dimensions: Mapping,
+    failures: list[str],
+) -> None:
+    """Validate the schema-7 dimension dictionary."""
+
+    for dimension_id, definition in dimensions.items():
+        owner = f"calibration_diagnostics.json dimension {dimension_id!r}"
+        if not isinstance(dimension_id, str) or not dimension_id:
+            failures.append(
+                "calibration_diagnostics.json dimension ids must be non-empty strings."
+            )
+            continue
+        if not isinstance(definition, Mapping):
+            failures.append(f"{owner} must be an object.")
+            continue
+        if (
+            not isinstance(definition.get("label"), str)
+            or not str(definition.get("label")).strip()
+        ):
+            failures.append(f"{owner} requires a non-empty string 'label'.")
+        role = definition.get("role")
+        if role not in {None, "geography"}:
+            failures.append(f"{owner} has unsupported role {role!r}.")
+        if role == "geography" and (
+            not isinstance(definition.get("level"), str)
+            or not str(definition.get("level")).strip()
+        ):
+            failures.append(
+                f"{owner} with role 'geography' requires a non-empty string 'level'."
+            )
+        value_labels = definition.get("values")
+        if value_labels is not None and not isinstance(value_labels, Mapping):
+            failures.append(f"{owner} 'values' must be an object when provided.")
+        elif isinstance(value_labels, Mapping):
+            for raw_value, label in value_labels.items():
+                if (
+                    not isinstance(raw_value, str)
+                    or not raw_value
+                    or not isinstance(label, str)
+                    or not label.strip()
+                ):
+                    failures.append(
+                        f"{owner} value labels must map non-empty strings to "
+                        "non-empty strings."
+                    )
+                    break
+        order = definition.get("order")
+        if order is not None and (
+            not isinstance(order, list)
+            or any(not isinstance(value, str) or not value for value in order)
+            or len(set(order)) != len(order)
+        ):
+            failures.append(
+                f"{owner} 'order' must be a list of unique non-empty strings."
+            )
+
+
+def _check_structured_diagnostics_target(
+    target: Mapping,
+    *,
+    index: int,
+    dimension_definitions: Mapping,
+    failures: list[str],
+) -> None:
+    """Validate complete structured identity on one schema-7 target row."""
+
+    owner = f"calibration_diagnostics.json target row {index}"
+    if not isinstance(target.get("label"), str) or not str(target.get("label")).strip():
+        failures.append(f"{owner} schema 7 requires a non-empty string 'label'.")
+    for field in ("source", "variable"):
+        value = target.get(field)
+        if (
+            not isinstance(value, Mapping)
+            or not isinstance(value.get("id"), str)
+            or not str(value.get("id")).strip()
+        ):
+            failures.append(
+                f"{owner} schema 7 requires {field!r} to be an object with a "
+                "non-empty string 'id'."
+            )
+        if (
+            isinstance(value, Mapping)
+            and "label" in value
+            and (
+                not isinstance(value.get("label"), str)
+                or not str(value.get("label")).strip()
+            )
+        ):
+            failures.append(
+                f"{owner} schema 7 {field} 'label' must be a non-empty string "
+                "when provided."
+            )
+    values = target.get("dimensions")
+    if not isinstance(values, Mapping):
+        failures.append(f"{owner} schema 7 requires a 'dimensions' object.")
+        return
+    geography_count = 0
+    for dimension_id, raw_value in values.items():
+        if dimension_id not in dimension_definitions:
+            failures.append(f"{owner} references undefined dimension {dimension_id!r}.")
+            continue
+        if not isinstance(raw_value, str) or not raw_value.strip():
+            failures.append(
+                f"{owner} dimension {dimension_id!r} must have a non-empty "
+                "string value."
+            )
+            continue
+        definition = dimension_definitions.get(dimension_id)
+        if not isinstance(definition, Mapping):
+            continue
+        if definition.get("role") == "geography":
+            geography_count += 1
+            labels = definition.get("values")
+            if isinstance(labels, Mapping) and raw_value not in labels:
+                failures.append(
+                    f"{owner} geography value {raw_value!r} has no label in "
+                    f"dimension {dimension_id!r}."
+                )
+    if geography_count > 1:
+        failures.append(f"{owner} may populate at most one geography-role dimension.")
+
+
+def _check_hierarchy_diagnostics_target(
+    target: Mapping,
+    *,
+    index: int,
+    failures: list[str],
+) -> None:
+    """Validate one complete schema-8 provider-to-target hierarchy."""
+
+    owner = f"calibration_diagnostics.json target row {index}"
+    hierarchy = target.get("hierarchy")
+    if not isinstance(hierarchy, Mapping):
+        failures.append(f"{owner} schema 8 requires a 'hierarchy' object.")
+        return
+    provider = hierarchy.get("provider")
+    category = hierarchy.get("category")
+    geography = hierarchy.get("geography")
+    target_node = hierarchy.get("target")
+    for field, node in (
+        ("provider", provider),
+        ("category", category),
+        ("geography", geography),
+        ("target", target_node),
+    ):
+        if not isinstance(node, Mapping):
+            failures.append(f"{owner} hierarchy.{field} must be an object.")
+            continue
+        for required in ("id", "label"):
+            value = node.get(required)
+            if not isinstance(value, str) or not value.strip():
+                failures.append(
+                    f"{owner} hierarchy.{field}.{required} must be a non-empty string."
+                )
+    if isinstance(category, Mapping) and isinstance(provider, Mapping):
+        if category.get("provider_id") != provider.get("id"):
+            failures.append(
+                f"{owner} hierarchy.category.provider_id must equal "
+                "hierarchy.provider.id."
+            )
+    if isinstance(geography, Mapping):
+        level = geography.get("level")
+        if not isinstance(level, str) or not level.strip():
+            failures.append(
+                f"{owner} hierarchy.geography.level must be a non-empty string."
+            )
+    if isinstance(target_node, Mapping) and target_node.get("id") != target.get(
+        "target_name"
+    ):
+        failures.append(
+            f"{owner} hierarchy.target.id must equal the row's target_name."
+        )
+    dimensions = hierarchy.get("dimensions")
+    if not isinstance(dimensions, list):
+        failures.append(f"{owner} hierarchy.dimensions must be an array.")
+        return
+    seen: set[str] = set()
+    for dimension_index, dimension in enumerate(dimensions):
+        dimension_owner = f"{owner} hierarchy.dimensions[{dimension_index}]"
+        if not isinstance(dimension, Mapping):
+            failures.append(f"{dimension_owner} must be an object.")
+            continue
+        for required in ("id", "label", "value_id", "value_label"):
+            value = dimension.get(required)
+            if not isinstance(value, str) or not value.strip():
+                failures.append(
+                    f"{dimension_owner}.{required} must be a non-empty string."
+                )
+        dimension_id = dimension.get("id")
+        if isinstance(dimension_id, str):
+            if dimension_id in seen:
+                failures.append(
+                    f"{owner} hierarchy dimensions repeat id {dimension_id!r}."
+                )
+            seen.add(dimension_id)
 
 
 def _uk_non_negative_int(
@@ -4771,7 +4999,13 @@ def release_dataset_role(release_dir: Path | str) -> str:
     return role if isinstance(role, str) and role else NATIONAL_DEFAULT_DATASET_ROLE
 
 
-def validate_release_dir(release_dir: Path | str) -> None:
+def validate_release_dir(
+    release_dir: Path | str,
+    *,
+    parent_h5: Path | str | None = None,
+    artifact_root: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
+) -> None:
     """Check a local release directory against its dataset-role contract.
 
     The directory name is the build id (``populace-us-2024-<sha>-<date>``)
@@ -4788,6 +5022,13 @@ def validate_release_dir(release_dir: Path | str) -> None:
       ``default_datasets`` map, and artifacts pinned to the release id. The
       national critical-target set deliberately does not apply: the artifact
       is calibrated to a local surface by design.
+
+    ``release_type=source_enrichment`` selects the separately reviewed BuildP
+    inheritance contract before role dispatch: exact schema-5 calibration bytes,
+    complete H5 preservation, pinned source role evidence, and replayed native
+    loader checks. It requires ``parent_h5``, ``artifact_root``, and the tested
+    ``compatibility_wheels``. Pending local candidates have a separate validator
+    and cannot pass this publication gate. Ordinary calibration stays on schema 6.
 
     TODO(#578 H5 household-count reconciliation): when the first modern UK
     exact-k release is actually cut, bind these manifest/diagnostic counts to
@@ -4821,6 +5062,29 @@ def validate_release_dir(release_dir: Path | str) -> None:
             manifest_probe = json.loads(manifest_probe_path.read_text())
         except (OSError, ValueError):
             manifest_probe = None
+        if isinstance(manifest_probe, Mapping) and "release_type" in manifest_probe:
+            from microcosm.data.source_enrichment import (
+                SOURCE_ENRICHMENT_RELEASE_TYPE,
+                validate_source_enrichment_candidate,
+            )
+
+            if manifest_probe["release_type"] == SOURCE_ENRICHMENT_RELEASE_TYPE:
+                validate_source_enrichment_candidate(
+                    release_dir,
+                    parent_h5=parent_h5,
+                    artifact_root=artifact_root,
+                    require_compatibility=True,
+                    compatibility_wheels=compatibility_wheels,
+                )
+                return
+            if manifest_probe["release_type"] != "calibration":
+                raise ReleaseContractError(
+                    release_dir,
+                    [
+                        "release_manifest.json declares unknown release_type "
+                        f"{manifest_probe['release_type']!r}."
+                    ],
+                )
         if isinstance(manifest_probe, Mapping) and "dataset_role" in manifest_probe:
             declared_role = manifest_probe["dataset_role"]
             if declared_role not in (
@@ -5293,6 +5557,14 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
             manifest_probe = json.loads(manifest_probe_path.read_text())
         except (OSError, ValueError):
             manifest_probe = None
+        if (
+            isinstance(manifest_probe, Mapping)
+            and manifest_probe.get("release_type", "calibration") != "calibration"
+        ):
+            raise ReleaseContractError(
+                release_dir,
+                ["evidence tier does not accept source-enrichment releases"],
+            )
         if isinstance(manifest_probe, Mapping) and "dataset_role" in manifest_probe:
             declared_role = manifest_probe["dataset_role"]
             if declared_role != NATIONAL_DEFAULT_DATASET_ROLE:

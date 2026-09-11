@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from microcosm.build.ledger_targets import (  # pyright: ignore[reportPrivateUsage]
+    LedgerHierarchyMetadataError,
     LedgerTargetReference,
     _assertion_allowed,
     _fact_matches_selector,
@@ -128,6 +129,31 @@ class AreaTargetReferenceAuthoringConfig:
         return rosters
 
 
+def _validated_reference_targets(
+    contract: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], ...]:
+    """Require every declared target to resolve its value from Chronicle."""
+
+    selected: list[Mapping[str, Any]] = []
+    for target in contract.get("targets", ()):
+        if not isinstance(target, Mapping):
+            raise ValueError("Every target declaration must be a mapping.")
+        target_id = str(target.get("target_id") or "").strip()
+        if "materialization" in target:
+            raise ValueError(
+                f"Contract target {target_id!r} declares unsupported "
+                "materialization; target values must resolve from Chronicle."
+            )
+        selector = target.get("ledger_selector")
+        if not isinstance(selector, Mapping) or not selector:
+            raise ValueError(
+                f"Contract target {target_id!r} must declare a non-empty "
+                "ledger_selector."
+            )
+        selected.append(target)
+    return tuple(selected)
+
+
 def author_target_references(
     contract: Mapping[str, Any],
     facts: Iterable[Mapping[str, Any]],
@@ -136,6 +162,8 @@ def author_target_references(
     """Build active target references and a membership report."""
 
     fact_rows = tuple(facts)
+    reference_targets = _validated_reference_targets(contract)
+    _validate_hierarchy_contract(contract)
     facts_by_source = _facts_by_source(fact_rows)
     _validate_contract_bindings(contract, config.binding_vocabulary)
     active_rows: list[dict[str, Any]] = []
@@ -144,7 +172,7 @@ def author_target_references(
     genuine_sum_residue: list[str] = []
     uprating_holds: list[dict[str, str]] = []
 
-    for target in contract.get("targets", ()):
+    for target in reference_targets:
         target_id = str(target["target_id"])
         pin = config.geography_pins.get(target_id, {})
         geography_pin_report[target_id] = dict(pin)
@@ -176,7 +204,15 @@ def author_target_references(
                 ],
             }
             continue
-        candidates = tuple(_candidate_rows(target, source_facts, pin, config))
+        candidates = tuple(
+            _candidate_rows(
+                target,
+                source_facts,
+                pin,
+                config,
+                hierarchy_catalog=contract["hierarchy"],
+            )
+        )
         candidate_entries: list[dict[str, Any]] = []
         for row in candidates:
             reference = LedgerTargetReference(**row)
@@ -202,6 +238,8 @@ def author_target_references(
                     [reference],
                     country=str(contract["country"]),
                 )
+            except LedgerHierarchyMetadataError:
+                raise
             except ValueError as error:
                 entry["status"] = _classify_deferral(error, matched, eligible)
                 entry["error"] = _compact_compile_error(entry["status"])
@@ -248,7 +286,7 @@ def author_target_references(
         "candidate_count": sum(
             len(target["candidates"]) for target in target_entries.values()
         ),
-        "contract_target_count": len(tuple(contract.get("targets", ()))),
+        "contract_target_count": len(reference_targets),
         "active_reference_count": len(active_rows),
         "status_counts": dict(sorted(status_counts.items())),
         "geography_pins": geography_pin_report,
@@ -267,6 +305,8 @@ def author_area_target_references(
     """Build area-grain target references over a declared geography roster."""
 
     fact_rows = tuple(facts)
+    reference_targets = _validated_reference_targets(contract)
+    _validate_hierarchy_contract(contract)
     areas_by_level = config.normalized_areas()
     signed = _area_deferral_index(config, contract, areas_by_level)
     facts_by_area = _facts_by_geography_id(fact_rows)
@@ -276,7 +316,7 @@ def author_area_target_references(
     target_entries: dict[str, Any] = {}
     uprating_holds: list[dict[str, str]] = []
 
-    for target in contract.get("targets", ()):
+    for target in reference_targets:
         target_id = str(target["target_id"])
         level_entries: dict[str, Any] = {}
         for geography_level in target.get("geography_levels", ()):
@@ -308,6 +348,7 @@ def author_area_target_references(
                     geography_level=geography_level,
                     area_id=area_id,
                     config=config,
+                    hierarchy_catalog=contract["hierarchy"],
                 )
                 source_facts = facts_by_area.get(area_id, ())
                 matched = [
@@ -333,6 +374,8 @@ def author_area_target_references(
                         [reference],
                         country=str(contract["country"]),
                     )
+                except LedgerHierarchyMetadataError:
+                    raise
                 except ValueError as error:
                     status = _classify_area_deferral(error, matched, eligible)
                     entry["status"] = status
@@ -422,7 +465,7 @@ def author_area_target_references(
             for target in target_entries.values()
             for level in target["geography_levels"].values()
         ),
-        "contract_target_count": len(tuple(contract.get("targets", ()))),
+        "contract_target_count": len(reference_targets),
         "active_reference_count": len(active_rows),
         "status_counts": dict(sorted(status_counts.items())),
         "areas_by_geography_level": {
@@ -453,12 +496,58 @@ def target_references_resource(
     country: str,
     description: str,
     authored: AuthoredTargetReferences,
+    hierarchy: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Return a serialisable ``target_references.json`` resource."""
 
+    normalized_references = []
+    target_categories: dict[str, str] = {}
+    target_labels: dict[str, str] = {}
+    for reference in authored.references:
+        seed = reference.get("hierarchy")
+        if not isinstance(seed, Mapping):
+            raise ValueError(
+                f"Authored reference {reference.get('name')!r} has no hierarchy seed."
+            )
+        category = seed.get("category")
+        if not isinstance(category, Mapping) or not category.get("id"):
+            raise ValueError(
+                f"Authored reference {reference.get('name')!r} has no category id."
+            )
+        contract_target_id = str(
+            (reference.get("metadata") or {}).get("contract_target_id") or ""
+        )
+        if not contract_target_id:
+            raise ValueError(
+                f"Authored reference {reference.get('name')!r} has no contract target id."
+            )
+        category_id = str(category["id"])
+        previous = target_categories.setdefault(contract_target_id, category_id)
+        if previous != category_id:
+            raise ValueError(
+                f"Contract target {contract_target_id!r} resolves to conflicting "
+                f"hierarchy categories {previous!r} and {category_id!r}."
+            )
+        target_label = str(seed.get("target_label") or "").strip()
+        if target_label:
+            previous_label = target_labels.setdefault(contract_target_id, target_label)
+            if previous_label != target_label:
+                raise ValueError(
+                    f"Contract target {contract_target_id!r} resolves to conflicting "
+                    f"target labels {previous_label!r} and {target_label!r}."
+                )
+        normalized_references.append(
+            {key: value for key, value in reference.items() if key != "hierarchy"}
+        )
     return {
+        "schema_version": 2,
         "country": country,
         "description": description,
+        "hierarchy": {
+            **dict(hierarchy),
+            "target_categories": dict(sorted(target_categories.items())),
+            "target_labels": dict(sorted(target_labels.items())),
+        },
         "allowed_value_operations": [
             "identity",
             "sum",
@@ -475,7 +564,7 @@ def target_references_resource(
                 }
             ),
         ],
-        "target_references": list(authored.references),
+        "target_references": normalized_references,
     }
 
 
@@ -495,19 +584,100 @@ def _validate_contract_bindings(
             )
 
 
+def _validate_hierarchy_contract(contract: Mapping[str, Any]) -> None:
+    """Require each flat target declaration to reference one catalog category."""
+
+    if contract.get("schema_version") != 2:
+        raise ValueError(
+            "Calibration target contracts must use schema_version 2 to declare "
+            "their normalized hierarchy."
+        )
+    hierarchy = contract.get("hierarchy")
+    if not isinstance(hierarchy, Mapping):
+        raise ValueError("Calibration target contract hierarchy must be a mapping.")
+    providers = hierarchy.get("providers")
+    categories = hierarchy.get("categories")
+    if not isinstance(providers, Mapping) or not providers:
+        raise ValueError("Calibration target hierarchy.providers must be non-empty.")
+    if not isinstance(categories, Mapping) or not categories:
+        raise ValueError("Calibration target hierarchy.categories must be non-empty.")
+    for provider_id, provider in providers.items():
+        if not str(provider_id) or not isinstance(provider, Mapping):
+            raise ValueError("Each hierarchy provider must be a named mapping.")
+        if not str(provider.get("label") or "").strip():
+            raise ValueError(f"Hierarchy provider {provider_id!r} needs a label.")
+    for category_id, category in categories.items():
+        if not str(category_id) or not isinstance(category, Mapping):
+            raise ValueError("Each hierarchy category must be a named mapping.")
+        provider_id = str(category.get("provider_id") or "")
+        if provider_id not in providers:
+            raise ValueError(
+                f"Hierarchy category {category_id!r} references unknown provider "
+                f"{provider_id!r}."
+            )
+        if not str(category.get("label") or "").strip():
+            raise ValueError(f"Hierarchy category {category_id!r} needs a label.")
+    for target in contract.get("targets", ()):
+        category_id = str(target.get("category_id") or "")
+        if category_id not in categories:
+            raise ValueError(
+                f"Contract target {target.get('target_id')!r} references unknown "
+                f"hierarchy category {category_id!r}."
+            )
+        label = target.get("label")
+        if label is not None and not str(label).strip():
+            raise ValueError(
+                f"Contract target {target.get('target_id')!r} label must be a "
+                "non-empty string when declared."
+            )
+
+
+def _hierarchy_seed(
+    target: Mapping[str, Any], hierarchy_catalog: Mapping[str, Any]
+) -> dict[str, Any]:
+    category_id = str(target["category_id"])
+    category = hierarchy_catalog["categories"][category_id]
+    provider_id = str(category["provider_id"])
+    provider = hierarchy_catalog["providers"][provider_id]
+    seed = {
+        "provider": {"id": provider_id, "label": str(provider["label"])},
+        "category": {
+            "id": category_id,
+            "label": str(category["label"]),
+            "provider_id": provider_id,
+        },
+    }
+    target_label = str(target.get("label") or "").strip()
+    if target_label:
+        seed["target_label"] = target_label
+    return seed
+
+
 def _candidate_rows(
     target: Mapping[str, Any],
     facts: tuple[Mapping[str, Any], ...],
     geography_pin: GeographyPin,
     config: TargetReferenceAuthoringConfig,
+    hierarchy_catalog: Mapping[str, Any],
 ) -> Iterable[dict[str, Any]]:
     selector = _target_selector(target, geography_pin, config)
     if "groupby_dimension" in selector:
-        rows = _fanout_rows(target, facts, selector, config)
+        rows = _fanout_rows(
+            target,
+            facts,
+            selector,
+            config,
+            hierarchy_catalog=hierarchy_catalog,
+        )
         if rows:
             yield from rows
             return
-    yield _reference_row(target, selector, config)
+    yield _reference_row(
+        target,
+        selector,
+        config,
+        hierarchy_catalog=hierarchy_catalog,
+    )
 
 
 def _target_selector(
@@ -562,6 +732,7 @@ def _area_reference_row(
     geography_level: str,
     area_id: str,
     config: AreaTargetReferenceAuthoringConfig,
+    hierarchy_catalog: Mapping[str, Any],
 ) -> dict[str, Any]:
     target_id = str(target["target_id"])
     binding = target["bindings"]["policyengine"]
@@ -579,6 +750,7 @@ def _area_reference_row(
             "geography_id": area_id,
             **dict(config.reference_metadata_by_target_id.get(target_id, {})),
         },
+        "hierarchy": _hierarchy_seed(target, hierarchy_catalog),
     }
     assertion_policy = target.get("assertion_policy")
     if assertion_policy is not None:
@@ -594,6 +766,7 @@ def _fanout_rows(
     facts: tuple[Mapping[str, Any], ...],
     selector: Mapping[str, Any],
     config: TargetReferenceAuthoringConfig,
+    hierarchy_catalog: Mapping[str, Any],
 ) -> tuple[dict[str, Any], ...]:
     dimension = str(selector["groupby_dimension"])
     matches = [fact for fact in facts if _fact_matches_selector(fact, selector)]
@@ -631,7 +804,15 @@ def _fanout_rows(
         )
         if not name:
             continue
-        rows.append(_reference_row(target, pinned_selector, config, name=name))
+        rows.append(
+            _reference_row(
+                target,
+                pinned_selector,
+                config,
+                name=name,
+                hierarchy_catalog=hierarchy_catalog,
+            )
+        )
     return tuple(rows)
 
 
@@ -748,6 +929,7 @@ def _reference_row(
     config: TargetReferenceAuthoringConfig,
     *,
     name: str | None = None,
+    hierarchy_catalog: Mapping[str, Any],
 ) -> dict[str, Any]:
     target_id = str(target["target_id"])
     binding = target["bindings"]["policyengine"]
@@ -763,6 +945,7 @@ def _reference_row(
             "measure_kind": "prepared_column",
             **dict(config.reference_metadata_by_target_id.get(target_id, {})),
         },
+        "hierarchy": _hierarchy_seed(target, hierarchy_catalog),
     }
     assertion_policy = target.get("assertion_policy")
     if assertion_policy is not None:

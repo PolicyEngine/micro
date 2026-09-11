@@ -22,6 +22,10 @@ from microcosm.build.uk_runtime.diagnostics import (
 )
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyGeography,
+    HierarchyNode,
     TargetRegistry,
     TargetSpec,
     diagnostics_payload,
@@ -31,6 +35,31 @@ from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 _SPI_COLUMN = "household_is_spi_synthetic"
 _CG_COLUMN = "household_is_capital_gains_clone"
+
+
+def _fixture_hierarchy(name: str, geography_level: str) -> CalibrationHierarchy:
+    geography_ids = {
+        "national": "K02000001",
+        "region": "E12000001",
+        "country": "E92000001",
+        "local_authority": "E09000001",
+        "constituency": "E14000001",
+    }
+    return CalibrationHierarchy(
+        provider=HierarchyNode("fixture", "Fixture provider"),
+        category=HierarchyCategory(
+            "fixture.diagnostics",
+            "Diagnostic fixtures",
+            "fixture",
+        ),
+        geography=HierarchyGeography(
+            geography_ids[geography_level],
+            geography_level.replace("_", " ").title(),
+            geography_level,
+        ),
+        dimensions=(),
+        target=HierarchyNode(name, name.replace("_", " ").title()),
+    )
 
 
 def _local_target_row(
@@ -262,6 +291,7 @@ def _diagnostics_case(*, with_skipped: bool = False):
                 metadata=(
                     {"observation_basis": "annual_flow"} if row_index == 0 else {}
                 ),
+                hierarchy=_fixture_hierarchy(name, level),
             )
         )
         geography[f"{name}@2023"] = "la" if level == "local_authority" else level
@@ -275,6 +305,10 @@ def _diagnostics_case(*, with_skipped: bool = False):
                 period=2023,
                 source="Synthetic UK diagnostics fixture",
                 family="fixture",
+                hierarchy=_fixture_hierarchy(
+                    "skipped_national_target",
+                    "national",
+                ),
             )
         )
         geography["skipped_national_target@2023"] = "national"
@@ -667,7 +701,7 @@ def test_payload_requires_a_valid_matching_uk_registry() -> None:
             target_geography_levels=geography,
             target_registry=TargetRegistry((), country="uk"),
         )
-    with pytest.raises(ValueError, match="exactly partition"):
+    with pytest.raises(ValueError, match="does not contain compiled target row"):
         uk_calibration_diagnostics_payload(
             result,
             frame,

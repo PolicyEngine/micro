@@ -38,7 +38,14 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     write_uk_national_frame,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyGeography,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+)
 from microcosm.frame import WeightKind
 
 SIGNING_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
@@ -79,6 +86,30 @@ def _frame():
     )
 
 
+def _uc_hierarchy() -> CalibrationHierarchy:
+    return CalibrationHierarchy(
+        provider=HierarchyNode(
+            id="dwp",
+            label="Department for Work and Pensions",
+        ),
+        category=HierarchyCategory(
+            id="dwp.universal_credit",
+            label="Universal Credit",
+            provider_id="dwp",
+        ),
+        geography=HierarchyGeography(
+            id="K03000001",
+            label="Great Britain",
+            level="country",
+        ),
+        dimensions=(),
+        target=HierarchyNode(
+            id="dwp.uc.households",
+            label="Universal Credit households",
+        ),
+    )
+
+
 def _registry():
     return TargetRegistry(
         [
@@ -90,6 +121,7 @@ def _registry():
                 source="test",
                 family="dwp_universal_credit",
                 metadata={"contract_target_id": "dwp.uc.households"},
+                hierarchy=_uc_hierarchy(),
             )
         ],
         country="uk",
@@ -425,6 +457,7 @@ def test_run_uk_calibration_records_band_edge_register_sha256(
                 source="test",
                 family="dwp_universal_credit",
                 metadata={"contract_target_id": "dwp.uc.households"},
+                hierarchy=_uc_hierarchy(),
             )
         ],
         country="uk",
@@ -624,6 +657,7 @@ def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
                 source="test",
                 family="dwp_universal_credit",
                 metadata={"contract_target_id": "dwp.uc.households"},
+                hierarchy=_uc_hierarchy(),
             )
         ],
         country="uk",

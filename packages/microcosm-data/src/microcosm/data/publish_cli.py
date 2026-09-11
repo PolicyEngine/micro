@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from microcosm.data.release import publish_release
+from microcosm.data.release import prepare_release, publish_release
 
 
 def _staging_undelivered(release_dir: Path) -> bool:
@@ -67,6 +67,23 @@ def main(argv: list[str] | None = None) -> int:
             "Directory holding root artifacts named by release_manifest.json, "
             "for example populace_us_2024.h5."
         ),
+    )
+    parser.add_argument(
+        "--parent-h5",
+        type=Path,
+        help="Exact certified parent H5 required for source-enrichment publication.",
+    )
+    parser.add_argument(
+        "--compatibility-wheel",
+        action="append",
+        type=Path,
+        default=[],
+        help="Exact installed country/Core/wrapper/calculator wheel; repeat for all four packages. Candidate wheels may be tested before publication.",
+    )
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="Run all local publisher guards, including enrichment loader tests, without constructing a Hub client or publishing.",
     )
     parser.add_argument(
         "--create-tag",
@@ -183,17 +200,27 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    pointer = publish_release(
-        Path(args.release_dir),
-        args.repo_id,
+    preparation_options = dict(
         artifact_root=Path(args.artifact_root) if args.artifact_root else None,
+        parent_h5=args.parent_h5,
+        compatibility_wheels=tuple(args.compatibility_wheel),
         create_tag=args.create_tag,
         tag_name=args.tag_name,
         extra_files=tuple(args.extra_file),
-        updated_at=args.updated_at,
         update_latest=not args.no_latest,
         tag_only=args.tag_only,
         evidence=args.evidence,
+    )
+    if args.preflight_only:
+        prepare_release(Path(args.release_dir), **preparation_options)
+        print(json.dumps({"valid": True, "published": False}))
+        return 0
+
+    pointer = publish_release(
+        Path(args.release_dir),
+        args.repo_id,
+        **preparation_options,
+        updated_at=args.updated_at,
     )
     print(json.dumps(pointer, indent=2))
 

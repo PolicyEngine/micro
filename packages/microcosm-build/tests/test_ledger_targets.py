@@ -12,13 +12,20 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     apply_ledger_target_profile,
     compile_ledger_target_references,
+    hierarchy_seed_from_catalog,
     ledger_target_registry_parity_report,
     period_values_semantically_equal,
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
     target_spec_from_ledger_reference,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchySeed,
+    HierarchyCategory,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+)
 
 _FISCAL_MONTHS = [f"2025-{month:02d}" for month in range(4, 13)] + [
     f"2026-{month:02d}" for month in range(1, 4)
@@ -345,6 +352,7 @@ def _consumer_fact_row(**overrides):
     row = {
         "aggregate_fact_key": "ledger.aggregate_fact.v2:abc123",
         "legacy_fact_key": "ledger.fact.v1:abc123",
+        "label": "United States adjusted gross income",
         "lineage": {
             "source_record_id": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
             "source_cell_keys": ["ledger.source_cell.v1:cell"],
@@ -382,11 +390,24 @@ def _consumer_fact_row(**overrides):
             "vintage": "tax_year_2023",
         },
         "dimensions": {"income_range": "all", "filing_status": "all"},
+        "dimension_labels": {
+            "us:statutes/26/62#adjusted_gross_income": ("Adjusted gross income band"),
+            "income_range": "Income range",
+            "filing_status": "Filing status",
+        },
+        "dimension_value_labels": {
+            "us:statutes/26/62#adjusted_gross_income": {
+                "all": "All adjusted gross income returns"
+            },
+            "income_range": {"all": "All income ranges"},
+            "filing_status": {"all": "All filing statuses"},
+        },
         "universe_constraints": {"domain": "all_individual_income_tax_returns"},
         "layout": {
             "record_set_id": "irs_soi.ty2023.table_1_1",
             "groupby_dimension": "us:statutes/26/62#adjusted_gross_income",
             "groupby_value_id": "all",
+            "groupby_value_label": "All adjusted gross income returns",
             "measure_id": "adjusted_gross_income",
         },
     }
@@ -441,6 +462,15 @@ def _exact_agi_reference(**overrides) -> LedgerTargetReference:
         "period": 2023,
         "family": "irs_soi",
         "period_match_policy": "exact",
+        "hierarchy": CalibrationHierarchySeed(
+            provider=HierarchyNode("irs_soi", "IRS Statistics of Income"),
+            category=HierarchyCategory(
+                "irs_soi.adjusted_gross_income",
+                "Adjusted gross income",
+                "irs_soi",
+            ),
+            target_label="Adjusted gross income",
+        ),
     }
     values.update(overrides)
     return LedgerTargetReference(**values)
@@ -670,7 +700,15 @@ def test__given_consumer_contract_row__then_microcosm_target_preserves_lineage()
         == "irs_soi.ty2023.table_1_1.all.adjusted_gross_income"
     )
     assert spec.metadata["ledger_fact_key"] == "ledger.aggregate_fact.v2:abc123"
+    assert spec.metadata["ledger_fact_label"] == ("United States adjusted gross income")
+    assert spec.metadata["diagnostic_target_label"] == (
+        "United States adjusted gross income"
+    )
     assert spec.metadata["ledger_source_concept"] == "irs_soi.adjusted_gross_income"
+    assert (
+        spec.metadata["ledger_layout_groupby_value_label"]
+        == "All adjusted gross income returns"
+    )
 
 
 def test__given_consumer_contract_jsonl__then_microcosm_selects_targets(
@@ -3564,3 +3602,224 @@ def test_monthly_window_requires_actual_publication_identity(summed, field, bad_
     # The same authority must run if a caller bypasses selector resolution.
     with pytest.raises(ValueError, match="requires nonempty source_release_key"):
         target_spec_from_ledger_reference(tuple(rows), reference)
+
+
+def test_single_fact_hierarchy_inherits_groupby_first_and_exact_dimensions() -> None:
+    groupby_id = "us:statutes/26/62#adjusted_gross_income"
+    fact = _consumer_fact_row(
+        dimensions={groupby_id: "all", "filing_status": "single"},
+        dimension_labels={
+            groupby_id: "Adjusted gross income band",
+            "filing_status": "Filing status",
+        },
+        dimension_value_labels={
+            "filing_status": {"single": "Single return"},
+        },
+    )
+
+    (spec,) = compile_ledger_target_references(
+        [fact], [_exact_agi_reference()], country="us"
+    ).specs
+
+    assert spec.hierarchy is not None
+    assert [dimension.id for dimension in spec.hierarchy.dimensions] == [
+        groupby_id,
+        "filing_status",
+    ]
+    assert spec.hierarchy.dimensions[0].label == "Adjusted gross income band"
+    assert spec.hierarchy.dimensions[0].value_label == (
+        "All adjusted gross income returns"
+    )
+    assert spec.hierarchy.dimensions[1].value_label == "Single return"
+    assert spec.hierarchy.target.label == "United States adjusted gross income"
+
+
+def test_multi_fact_hierarchy_keeps_only_constant_dimensions() -> None:
+    first = _consumer_fact_row(
+        value=10.0,
+        dimensions={"band": "low", "sex": "all"},
+        dimension_labels={
+            "band": "Income band",
+            "sex": "Sex",
+            "us:statutes/26/62#adjusted_gross_income": ("Adjusted gross income band"),
+        },
+        dimension_value_labels={
+            "band": {"low": "Low income"},
+            "sex": {"all": "All people"},
+        },
+    )
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:second",
+        legacy_fact_key="ledger.fact.v1:second",
+        semantic_fact_key="ledger.semantic_fact.v2:second",
+        lineage={
+            "source_record_id": (
+                "irs_soi.ty2023.table_1_1.second.adjusted_gross_income"
+            ),
+            "source_cell_keys": ["ledger.source_cell.v1:second"],
+            "source_row_keys": [],
+        },
+        value=20.0,
+        dimensions={"band": "high", "sex": "all"},
+        dimension_labels={
+            "band": "Income band",
+            "sex": "Sex",
+            "us:statutes/26/62#adjusted_gross_income": ("Adjusted gross income band"),
+        },
+        dimension_value_labels={
+            "band": {"high": "High income"},
+            "sex": {"all": "All people"},
+        },
+    )
+    reference = _exact_agi_reference(value_operation="sum")
+
+    (spec,) = compile_ledger_target_references(
+        [first, second], [reference], country="us"
+    ).specs
+
+    assert spec.value == 30.0
+    assert spec.hierarchy is not None
+    assert [dimension.id for dimension in spec.hierarchy.dimensions] == [
+        "us:statutes/26/62#adjusted_gross_income",
+        "sex",
+    ]
+    assert spec.metadata["ledger_aggregation_varying_dimensions"] == '["band"]'
+
+
+def test_direct_hierarchy_requires_chronicle_fact_label() -> None:
+    fact = _consumer_fact_row(label="")
+
+    with pytest.raises(ValueError, match="requires a non-empty label"):
+        compile_ledger_target_references([fact], [_exact_agi_reference()], country="us")
+
+
+def test_hierarchy_requires_chronicle_dimension_label() -> None:
+    fact = _consumer_fact_row(
+        dimensions={"filing_status": "single"},
+        dimension_labels={
+            "us:statutes/26/62#adjusted_gross_income": ("Adjusted gross income band")
+        },
+        dimension_value_labels={"filing_status": {"single": "Single return"}},
+    )
+
+    with pytest.raises(ValueError, match="dimension 'filing_status'.*non-empty label"):
+        compile_ledger_target_references([fact], [_exact_agi_reference()], country="us")
+
+
+def test_hierarchy_requires_chronicle_dimension_value_label() -> None:
+    fact = _consumer_fact_row(
+        dimensions={"filing_status": "single"},
+        dimension_labels={
+            "filing_status": "Filing status",
+            "us:statutes/26/62#adjusted_gross_income": ("Adjusted gross income band"),
+        },
+        dimension_value_labels={},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="dimension 'filing_status' value 'single'.*non-empty label",
+    ):
+        compile_ledger_target_references([fact], [_exact_agi_reference()], country="us")
+
+
+def test_hierarchy_rejects_conflicting_chronicle_dimension_labels() -> None:
+    first = _consumer_fact_row(value=10.0)
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:second-label",
+        legacy_fact_key="ledger.fact.v1:second-label",
+        semantic_fact_key="ledger.semantic_fact.v2:second-label",
+        lineage={"source_record_id": "irs_soi.second-label"},
+        value=20.0,
+        dimension_labels={
+            "us:statutes/26/62#adjusted_gross_income": "AGI interval",
+            "income_range": "Income range",
+            "filing_status": "Filing status",
+        },
+    )
+
+    with pytest.raises(ValueError, match="has conflicting labels"):
+        compile_ledger_target_references(
+            [first, second],
+            [_exact_agi_reference(value_operation="sum")],
+            country="us",
+        )
+
+
+def test_hierarchy_rejects_conflicting_chronicle_dimension_value_labels() -> None:
+    first = _consumer_fact_row(value=10.0)
+    second_labels = dict(first["dimension_value_labels"])
+    second_labels["income_range"] = {"all": "Every income range"}
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:second-value-label",
+        legacy_fact_key="ledger.fact.v1:second-value-label",
+        semantic_fact_key="ledger.semantic_fact.v2:second-value-label",
+        lineage={"source_record_id": "irs_soi.second-value-label"},
+        value=20.0,
+        dimension_value_labels=second_labels,
+    )
+
+    with pytest.raises(ValueError, match="value 'all' has conflicting labels"):
+        compile_ledger_target_references(
+            [first, second],
+            [_exact_agi_reference(value_operation="sum")],
+            country="us",
+        )
+
+
+def test_multi_fact_hierarchy_requires_explicit_microcosm_target_label() -> None:
+    first = _consumer_fact_row(value=10.0)
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:second-target-label",
+        legacy_fact_key="ledger.fact.v1:second-target-label",
+        semantic_fact_key="ledger.semantic_fact.v2:second-target-label",
+        lineage={"source_record_id": "irs_soi.second-target-label"},
+        value=20.0,
+    )
+    seed = _exact_agi_reference().hierarchy
+    assert seed is not None
+    reference = _exact_agi_reference(
+        value_operation="sum",
+        hierarchy=CalibrationHierarchySeed(seed.provider, seed.category),
+    )
+
+    with pytest.raises(ValueError, match="require an explicit Microcosm target label"):
+        compile_ledger_target_references([first, second], [reference], country="us")
+
+
+def test_restamped_hierarchy_requires_explicit_microcosm_target_label() -> None:
+    fact = _consumer_fact_row_for_period(2022, value=100.0)
+    seed = _exact_agi_reference().hierarchy
+    assert seed is not None
+    reference = _exact_agi_reference(
+        period=2023,
+        period_match_policy="latest_not_after",
+        hierarchy=CalibrationHierarchySeed(seed.provider, seed.category),
+    )
+
+    with pytest.raises(ValueError, match="require an explicit Microcosm target label"):
+        compile_ledger_target_references([fact], [reference], country="us")
+
+
+def test_hierarchy_rejects_unlabelled_unknown_geography() -> None:
+    fact = _consumer_fact_row(
+        geography={"level": "country", "id": "unknown-country", "name": ""}
+    )
+
+    with pytest.raises(ValueError, match="authoritative geography catalog"):
+        target_spec_from_ledger_reference(fact, _exact_agi_reference())
+
+
+def test_hierarchy_catalog_rejects_blank_declared_target_label() -> None:
+    hierarchy = {
+        "providers": {"irs": {"label": "Internal Revenue Service"}},
+        "categories": {"irs.income": {"label": "Income", "provider_id": "irs"}},
+        "target_labels": {"irs.agi": ""},
+    }
+
+    with pytest.raises(ValueError, match="has an empty target label"):
+        hierarchy_seed_from_catalog(
+            hierarchy,
+            "irs.income",
+            target_id="irs.agi",
+        )

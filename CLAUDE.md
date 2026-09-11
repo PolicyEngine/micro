@@ -90,6 +90,22 @@ build recorded staging telemetry that never reached its repo
 publishes without the flag. Never publish or promote artifacts as a side
 effect of another task.
 
+The US native-SPM-role source-enrichment lane is a separate release type:
+`tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact
+reviewed BuildP parent, preserving original variables and inherited schema-5
+calibration evidence. It does not run calibration or relax schema 6 for ordinary
+releases. `microcosm.data.source_enrichment` validates candidates and records
+actual native-loader compatibility in a separate bundle. The regular publisher
+requires `--parent-h5` and the four tested country/Core/wrapper/calculator wheels; `--preflight-only`
+runs the same contract and local publisher preparation (file paths, artifact
+hashes, revision/tag pins and latest-pointer eligibility), without constructing
+a Hub client or publishing. Supplying `--parent-h5` or `--compatibility-wheel`
+for a release that is not a source enrichment is an error, including preflight
+and evidence-tier requests. See
+[the source-enrichment runbook](docs/us-native-spm-role-source-enrichment.md).
+Root's canonical-model acceptance and publication authorization remain separate
+from this producer-native-input receipt.
+
 A US release or release-gate preflight that receives a multispine pool through
 `--base-h5` must authenticate its sibling terminal manifest. A current stacked
 pool whose terminal battery is red remains fail-closed unless the operator
@@ -110,6 +126,14 @@ historicize any currency claims in it ("nothing was pushed", "do not merge",
 "in progress") in place with a dated note, so the file cannot mislead later
 readers. Adjudicated verdicts belong in `experiments/` or the tracking issue,
 with the journal pointing to them.
+
+## Shared constants
+
+Before adding a module-local mapping, enumeration, identifier, or display
+label, search for an existing definition and follow
+[`docs/shared-constants.md`](docs/shared-constants.md). Human contributors and
+AI assistants must import shared static data from its domain-specific constants
+module instead of copying it or reconstructing alternate views in consumers.
 
 ## Review this file
 

@@ -1,12 +1,11 @@
 """Standard calibration diagnostics for UK release candidates.
 
 The shared :mod:`microcosm.calibrate.diagnostics` payload is the release
-contract: it carries the target surface, every target row, solver options, and
-the concentration scalars used by US releases.  UK needs a little more release
-evidence without changing that shared schema (and therefore without changing
-US output): the effective-sample-size fraction, shipped-weight concentration,
-zero-weight rows split by their declared support strata, and target fit by UK
-geography level.
+contract: it carries the target surface, every target row, solver options,
+the schema-8 provider/category/geography/dimension/target hierarchy, and the
+concentration scalars used by US releases. UK adds the effective-sample-size
+fraction, shipped-weight concentration, zero-weight rows split by their
+declared support strata, and target fit by UK geography level.
 
 This module wraps the shared payload and places those additions under a
 separately versioned ``uk_diagnostics`` block.  The common top-level
@@ -51,7 +50,7 @@ __all__ = [
 #: UK-only extension version nested inside the shared calibration diagnostics.
 UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 
-#: Stable vocabulary used by the UK target registry and future OA-ladder rows.
+#: Stable vocabulary used by the UK target registry.
 #: ``"la"`` is accepted only as an input adapter and is serialized as
 #: ``"local_authority"``.
 UK_TARGET_GEOGRAPHY_LEVELS: tuple[str, ...] = (
