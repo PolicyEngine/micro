@@ -236,7 +236,9 @@ def test_seed_source_keyed_is_an_additive_declaration() -> None:
 
     keyed = Capabilities(determinism=Determinism.SEEDED, seed_source=SeedSource.KEYED)
     assert keyed.seed_source is SeedSource.KEYED
-    with pytest.raises(TypeError, match="Capabilities.seed_source must be a SeedSource"):
+    with pytest.raises(
+        TypeError, match="Capabilities.seed_source must be a SeedSource"
+    ):
         Capabilities(determinism=Determinism.SEEDED, seed_source="keyed")  # type: ignore[arg-type]
 
 

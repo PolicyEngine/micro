@@ -2,7 +2,7 @@
 
 A ``SeedSource.KEYED`` kernel does not consume an RNG in row order; it asks for
 the uniform belonging to a coordinate. These tests hold ``keyed_uniform`` to the
-three properties that makes worth having — stable coordinates give the same
+three properties that make it worth having — stable coordinates give the same
 draw, different coordinates give a different one, and nothing about packing,
 ordering, or unrelated identities can reach a draw — plus the documented
 ``sha256-u53-v1`` formula, recomputed here from the specification rather than
@@ -84,9 +84,7 @@ def test_a_draw_is_blind_to_order_batching_and_unrelated_identities() -> None:
 
     # Inserting an unrelated identity ahead of a row leaves that row's draw
     # alone — the failure mode a positionally consumed RNG cannot avoid.
-    with_intruder = keyed_uniform(
-        stream=STREAM, keys=[(99, "wages"), *keys]
-    )
+    with_intruder = keyed_uniform(stream=STREAM, keys=[(99, "wages"), *keys])
     assert with_intruder[1:].tobytes() == straight.tobytes()
 
 

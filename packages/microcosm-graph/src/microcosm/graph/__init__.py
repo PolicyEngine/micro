@@ -52,6 +52,7 @@ from .kernel import (
     source_hash,
 )
 from .keys import platform_fingerprint
+from .randomness import keyed_uniform
 
 __all__ = [
     "platform_fingerprint",
@@ -112,6 +113,7 @@ __all__ = [
     "explain_html",
     "graph_from_json",
     "graph_to_json",
+    "keyed_uniform",
     "load_source",
     "run_graph",
     "source_hash",

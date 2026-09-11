@@ -151,6 +151,7 @@ class SeedSource(StrEnum):
 
     EXECUTOR = "executor"  # ``KernelContext.rng``, derived from the node key
     PARAM = "param"  # a literal ``seed`` parameter (legacy parity kernels)
+    KEYED = "keyed"  # normative stream params and stable draw coordinates
     NONE = "none"
 
 
@@ -286,8 +287,9 @@ class KernelContext:
             in the node's inputs or outputs.
         strata: Read-only per-person strata of the population version.
         params: The node's parameters.
-        rng: A generator seeded from the node key. The only randomness a
-            kernel may use.
+        rng: The default generator seeded from the node key. KEYED kernels
+            instead use normative stream params and stable coordinates through
+            keyed_uniform; PARAM kernels use their declared literal seed.
         sources: Source name to a content-verified path, for declared
             sources only.
         tolerances: ``(entity, column)`` of each declared input column to
