@@ -1,5 +1,13 @@
 {
   "schema_version": 2,
   "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
-  "exclusions": {}
+  "exclusions": {
+    "obr.fuel_duties_cars@2025": {
+      "reason": "Household-incidence fuel duty binds for the first time (OBR cars receipts, FY2025 GBP 15.9bn). On the current spine the frame reaches -25.6% after calibration from -46.6% before: the LCFS-imputed petrol and diesel spend loses about a fifth of the donor's mass to the uninformative WAS has-fuel flag and its recipient zeroing, and the donor is not yet uprated to FY2024-25. Both fixes are the spine half of #890 (PR-S: LCFS car count as the predictor, donor litre-proxy uprating). The row stays bound; this defers the release fence only until PR-S lands.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#890 plan of record (repos/uk-890-implementation-plan.md, approved 2026-09-10): dated reviewed exclusions for rows that cannot fit until the value side lands in PR-S; measured on the PR-T baseline run uk-frs-calibration-attempt-20260911T113749Z-0c7e79e2 (spine-p)",
+      "approved_on": "2026-09-11",
+      "expires_on": "2026-10-11"
+    }
+  }
 }
