@@ -243,7 +243,12 @@ def test_artifact_declarations_require_a_real_artifact_type() -> None:
     with pytest.raises(GraphError, match="ArtifactOutput.type"):
         ArtifactOutput("forest", {"name": "qrf.forest", "schema_version": 2})  # type: ignore[arg-type]
     for empty in ("name", "producer", "artifact"):
-        values = {"name": "donor", "producer": "fit", "artifact": "forest", **{empty: ""}}
+        values = {
+            "name": "donor",
+            "producer": "fit",
+            "artifact": "forest",
+            **{empty: ""},
+        }
         with pytest.raises(GraphError, match=f"ArtifactInput.{empty}"):
             ArtifactInput(type=type_, **values)
     with pytest.raises(GraphError, match="ArtifactInput.type"):
@@ -263,9 +268,15 @@ def test_node_artifact_declarations_are_tuples_with_unique_aliases() -> None:
     assert node.artifact_inputs[0].producer == "fit"
     assert node.artifact_outputs[0].name == "diagnostics"
     with pytest.raises(GraphError, match="artifact_inputs must be a tuple"):
-        Node("draw", "fit.draw@1", artifact_inputs=[ArtifactInput("d", "f", "o", type_)])  # type: ignore[arg-type]
+        Node(
+            "draw", "fit.draw@1", artifact_inputs=[ArtifactInput("d", "f", "o", type_)]
+        )  # type: ignore[arg-type]
     with pytest.raises(GraphError, match="artifact_outputs must be a tuple"):
-        Node("draw", "fit.draw@1", artifact_outputs=(ArtifactInput("d", "f", "o", type_),))  # type: ignore[arg-type]
+        Node(
+            "draw",
+            "fit.draw@1",
+            artifact_outputs=(ArtifactInput("d", "f", "o", type_),),
+        )  # type: ignore[arg-type]
     with pytest.raises(GraphError, match="duplicate names in artifact_inputs"):
         Node(
             "draw",

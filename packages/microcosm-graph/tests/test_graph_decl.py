@@ -357,7 +357,9 @@ def test_every_declared_name_channel_refuses_dots() -> None:
 ARTIFACT = ArtifactType("qrf.forest", 1)
 
 
-def _producer(node_id: str = "fit", *, outputs: tuple[ArtifactOutput, ...] = ()) -> Node:
+def _producer(
+    node_id: str = "fit", *, outputs: tuple[ArtifactOutput, ...] = ()
+) -> Node:
     return Node(
         node_id,
         "fit.train@1",
@@ -382,7 +384,11 @@ def test_an_artifact_edge_makes_its_producer_a_predecessor() -> None:
         Graph(
             "toy",
             (SRC,),
-            (_consumer(ArtifactInput("donor", "fit", "forest", ARTIFACT)), _producer(), CREATE),
+            (
+                _consumer(ArtifactInput("donor", "fit", "forest", ARTIFACT)),
+                _producer(),
+                CREATE,
+            ),
         )
     )
     assert "fit" in compiled.predecessors["draw"]
@@ -398,7 +404,10 @@ def test_an_artifact_edge_is_refused_when_it_does_not_resolve() -> None:
             Graph(
                 "toy",
                 (SRC,),
-                (_consumer(ArtifactInput("donor", "absent", "forest", ARTIFACT)), CREATE),
+                (
+                    _consumer(ArtifactInput("donor", "absent", "forest", ARTIFACT)),
+                    CREATE,
+                ),
             )
         )
     with pytest.raises(GraphError, match="no declared artifact"):
@@ -420,7 +429,9 @@ def test_an_artifact_edge_is_refused_when_it_does_not_resolve() -> None:
                 (SRC,),
                 (
                     _consumer(
-                        ArtifactInput("donor", "fit", "forest", ArtifactType("qrf.forest", 2))
+                        ArtifactInput(
+                            "donor", "fit", "forest", ArtifactType("qrf.forest", 2)
+                        )
                     ),
                     _producer(),
                     CREATE,

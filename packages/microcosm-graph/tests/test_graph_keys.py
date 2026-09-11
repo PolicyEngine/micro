@@ -32,9 +32,9 @@ from microcosm.graph.kernel import (
 )
 from microcosm.graph.keys import (
     artifact_key,
-    opaque_artifact_key,
     frame_key,
     node_key,
+    opaque_artifact_key,
     seed,
     source_content_key,
     weights_key,
