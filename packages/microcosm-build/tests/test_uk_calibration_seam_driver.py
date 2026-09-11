@@ -246,13 +246,14 @@ def test_driver_accepts_the_merged_national_feed_without_local_promotion():
 
     driver = _load_driver_module()
     driver._check_committed_ledger_feed_pin(
-        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
-        manifest_sha256="a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        "45bda3ae730d4ae3fa059d9e03304e902f7f6e74c5099355ef937625ca03b72b",
+        manifest_sha256="33a3031523e2cea2f0092a547b97065efbe103cdf85f842142e847b921bcdd9d",
         allow_unpinned_feed=False,
     )
     # The local pin is its own reviewed declaration: microcosm#887 moved it to
-    # the same chronicle ec7169b artifact after a separate local re-pin review,
-    # so the national acceptance above neither reads nor promotes it.
+    # the chronicle ec7169b artifact after a separate local re-pin review, and
+    # the microcosm#890 national re-pin to c6f9361 (chronicle #255 + #258
+    # packages) neither reads nor promotes it.
     assert _LEDGER_FACT_FEED_PIN["facts_sha256"] == (
         "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
     )
@@ -267,7 +268,7 @@ def test_driver_refuses_unpinned_national_manifest(manifest_sha256):
     driver = _load_driver_module()
     with pytest.raises(SystemExit, match="manifest"):
         driver._check_committed_ledger_feed_pin(
-            "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
+            "45bda3ae730d4ae3fa059d9e03304e902f7f6e74c5099355ef937625ca03b72b",
             manifest_sha256=manifest_sha256,
             allow_unpinned_feed=False,
         )
