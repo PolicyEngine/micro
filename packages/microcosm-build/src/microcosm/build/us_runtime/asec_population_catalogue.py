@@ -215,15 +215,26 @@ _LEDGER_LEAVES = operator.attrgetter(
 )
 
 
+def _key_leaves(key):
+    # The encoder writes ``source.value``; an enum member is a mutable object,
+    # so its value object is a leaf in its own right. Classes are leaves too:
+    # ``__class__`` can be reassigned in place, and the encoder refuses
+    # anything but the exact record types on every full pass.
+    source, *rest = _KEY_LEAVES(key)
+    return (type(key), source, source.value, *rest)
+
+
 def _household_leaves(row):
     key, *literals, persons = _HOUSEHOLD_LEAVES(row)
     return (
+        type(row),
         key,
-        *_KEY_LEAVES(key),
+        *_key_leaves(key),
         *literals,
+        type(persons),
         persons,
         *chain.from_iterable(
-            (*_PERSON_LEAVES(person), *_KEY_LEAVES(person.household_key))
+            (type(person), *_PERSON_LEAVES(person), *_key_leaves(person.household_key))
             for person in persons
         ),
     )
@@ -231,13 +242,14 @@ def _household_leaves(row):
 
 def _ledger_leaves(row):
     key, *literals = _LEDGER_LEAVES(row)
-    return (key, *_KEY_LEAVES(key), *literals)
+    return (type(row), key, *_key_leaves(key), *literals)
 
 
 def _eligible_key(key):
     return (
         type(key) is domains.HouseholdKey
         and key.source is domains.Source.ASEC
+        and type(key.source.value) is str
         and type(key.source_year) is int
         and type(key.survey_year) is int
         and type(key.native_id) is str

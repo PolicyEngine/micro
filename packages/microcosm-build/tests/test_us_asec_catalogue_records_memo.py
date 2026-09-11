@@ -238,6 +238,60 @@ def test_wrong_source_member_or_foreign_types_yield_no_memo():
     assert owner._eligible_leaves(ledger[0], "household") is None
 
 
+def test_source_member_value_tampering_misses_and_the_full_path_reflects_it():
+    households, ledger = _records()
+    identity, memo = _issued(households, ledger)
+    member = domains.Source.ASEC
+    original = member._value_
+    object.__setattr__(member, "_value_", "tampered")
+    try:
+        assert member.value == "tampered"
+        result, calls = _memoized(households, ledger, memo, identity)
+        assert calls == 1 and result != identity
+        assert result == owner._records_identity(households, ledger)
+    finally:
+        object.__setattr__(member, "_value_", original)
+    assert member.value == original
+    result, calls = _memoized(households, ledger, memo, identity)
+    assert result == identity and calls == 0
+
+
+@pytest.mark.parametrize("target", ["household", "person", "key", "ledger"])
+def test_class_reassignment_misses_and_the_full_path_refuses(target):
+    class SwappedHousehold(domains.AsecHousehold):
+        __slots__ = ()
+
+    class SwappedPerson(domains.AsecPerson):
+        __slots__ = ()
+
+    class SwappedKey(domains.HouseholdKey):
+        __slots__ = ()
+
+    class SwappedLedger(owner.UnrepresentedAsecHousehold):
+        __slots__ = ()
+
+    households, ledger = _records()
+    identity, memo = _issued(households, ledger)
+    victim, swapped = {
+        "household": (households[0], SwappedHousehold),
+        "person": (households[0].persons[0], SwappedPerson),
+        "key": (households[0].key, SwappedKey),
+        "ledger": (ledger[0], SwappedLedger),
+    }[target]
+    original = type(victim)
+    object.__setattr__(victim, "__class__", swapped)
+    try:
+        assert type(victim) is swapped
+        with pytest.raises(owner.AsecSourceCatalogueError, match="^RECORD_TYPE$"):
+            owner._memoized_records_identity(
+                households, ledger, memo, expected_identity=identity
+            )
+    finally:
+        object.__setattr__(victim, "__class__", original)
+    result, calls = _memoized(households, ledger, memo, identity)
+    assert result == identity and calls == 0
+
+
 @pytest.fixture(scope="module")
 def actual_preparation(tmp_path_factory):
     with pytest.MonkeyPatch.context() as monkeypatch:
