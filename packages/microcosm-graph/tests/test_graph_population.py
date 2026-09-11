@@ -1839,6 +1839,8 @@ def test_string_storage_encoding_stays_byte_identical() -> None:
 
     assert payload.hex() == ("020000000000000061030000000000000062620000000000000000")
     assert bitmap.hex() == "000001"
+
+
 def test_new_dense_column_on_a_filtered_population_keeps_its_dtype() -> None:
     # A filtered population (a sampled spine rung) carries a non-contiguous
     # table index. The zero-filled placeholder for a new dense column is
