@@ -169,6 +169,16 @@ def test_generator_pins_region_only_targets_at_region_level() -> None:
     )
 
 
+def test_english_region_roster_has_catalog_labels() -> None:
+    """Every region a national reference may pin resolves a hierarchy label."""
+
+    from microcosm.build.uk_runtime.ledger_targets import UK_NATIONAL_REGION_ROSTER
+    from microcosm.calibrate.geography_constants import UK_GEOGRAPHY_ID_TO_LABEL
+
+    assert UK_NATIONAL_REGION_ROSTER <= set(UK_GEOGRAPHY_ID_TO_LABEL)
+    assert UK_GEOGRAPHY_ID_TO_LABEL["E12000007"] == "London"
+
+
 def test_compiler_refuses_region_pins_outside_the_english_region_roster() -> None:
     from microcosm.build.ledger_targets import LedgerTargetReference
     from microcosm.build.uk_runtime.ledger_targets import (
@@ -213,6 +223,9 @@ def _fare_fact(
             "name": "institutional_sector",
             "role": "local_bus_service_operators",
         },
+        # Consumer facts carry a display label; the schema-8 hierarchy
+        # completion refuses a fact without one.
+        "label": f"{geography['id']} {period['value']} {concept}",
         "geography": geography,
         "layout": {"groupby_value_id": extra.get("groupby", "england")},
         "lineage": {
@@ -427,6 +440,8 @@ def test_bus0415_alignment_from_the_vendored_series() -> None:
             geography_id=geography_id,
             period_value=2025,
         )
+        # The consumer fact carries no geography name for a region, so the
+        # hierarchy completion labels it from Microcosm's geography catalog.
         fact = _fare_fact(
             "dft.local_bus_passenger_fare_receipts",
             dict(row["geography"]),
@@ -469,6 +484,13 @@ def test_bus0415_alignment_on_the_pinned_feed() -> None:
     )
     compiled = compile_uk_target_registry(artifact.facts, target_period=2025)
     specs = {spec.name: spec for spec in compiled.registry.specs}
+    # Until chronicle#261 ships dimension labels on the consumer artifact,
+    # the schema-8 hierarchy completion refuses every UK reference against
+    # the pinned feed (0 compiled / 424 unsupported, on main as here).
+    assert "dft.bus_fare_receipts.england" in specs, (
+        "runtime compile produced no fare rows: "
+        + "; ".join(row["reason"] for row in compiled.unsupported[:1])
+    )
     england = specs["dft.bus_fare_receipts.england"]
     london = specs["dft.bus_fare_receipts.london"]
     assert float(england.metadata["uprating_factor"]) == pytest.approx(

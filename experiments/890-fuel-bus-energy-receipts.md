@@ -186,4 +186,42 @@ Fit (initial → final relative error), loss 0.01123, 95.45% within 10%, ESS 10,
 The weight-stretch anatomy of Part F is unchanged in kind (the same rows close by stretch, the
 rail row by ×3.6) and is not re-measured here; PR-S is what changes it.
 
+### Part H — rebase onto main `3094bfe8` (2026-09-11, after #903, #894, #855, #902)
+
+Main merged the calibration target hierarchy (schema 8, microcosm#855) between round 2 and this
+rebase. Two consequences for this PR:
+
+- Every contract target now needs a `category_id` from the contract's normalized catalog and a
+  Microcosm-owned `label`. The eight #890 targets declare them (four new providers: ORR, Welsh
+  Government, DfI Northern Ireland, NITHC; six new categories: `orr.rail_industry_finance`,
+  `ons.consumer_trends`, `scotgov.local_bus_finances`, `welshgov.local_bus_finances`,
+  `dfi_ni.local_bus_finances`, `nithc.public_transport_finances`; the cars fuel duty reuses
+  `obr.efo_receipts`). The committed `target_references.json` carries the hierarchy lookups
+  the generator emits for the 196 contract targets with an active reference (providers and
+  categories copied from the contract, `target_categories` and `target_labels` keyed by
+  contract target id), which is contract-derived and does not depend on the facts.
+- The generator and the runtime compile cannot run against any Chronicle artifact until
+  chronicle#261 lands: main's hierarchy completion requires `dimension_labels`,
+  `dimension_value_labels` or `layout.groupby_dimension_label` on every selected fact, and no
+  consumer artifact carries them (checked on both `c6f9361` and `ec7169b`: 0 of 138,847 and 0 of
+  131,450 rows). On this tree `compile_uk_target_registry` returns 0 compiled / 424 unsupported
+  against the pinned artifact, exactly as on main. So the national and local reference
+  surfaces, the membership files and the parity receipts in this PR are the round-2
+  regenerations plus the contract-derived hierarchy lookups; the byte-identical regeneration
+  tests skip in CI (no feed) and are blocked locally by #261 for main as well. María's issue
+  names the interim Microcosm fallback as a separate change; this PR does not add one.
+- The hierarchy completion labels a fact's geography from `geography.name` or, failing that,
+  from Microcosm's authoritative catalog (`microcosm.calibrate.geography_constants.
+  UK_GEOGRAPHY_ID_TO_LABEL`). The consumer artifact carries no name on the London region fact
+  (`E12000007`: id, level, vintage only) and the catalog held only the UK, GB and country codes,
+  so the region leg would be refused at compile once #261 lands; the nine English regions (ONS
+  statistical regions, E12 codes) are added to the catalog, with a test that the national region
+  roster is covered. `test_bus0415_alignment_from_the_vendored_series` exercises that path
+  feed-free (a synthetic fact with a label and no geography name, the London row pinned at
+  region).
+- Conflict resolutions: `test_uk_measure_simulation` counts to the merged truth (47 entries,
+  2026-08-26 tranche 35: #903 retired the three ONS composition entries, #890 the
+  `obr.fuel_duties` entry); the UK spec digest re-pinned at the end; `test_uk_terminal_gates`
+  and the target-fit register are main's (empty register).
+
 ORR FY2024 for the rail ruling: table 7270 total government support GBP 21.62bn (bound); table 7271 all sources GBP 11.86bn, of which Department for Transport GBP 9.47bn.

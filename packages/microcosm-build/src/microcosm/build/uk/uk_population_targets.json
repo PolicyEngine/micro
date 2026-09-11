@@ -12914,7 +12914,9 @@
         }
       },
       "selector_note": "period_value 2024 is the OBR April-start label for FY2024-25, the FRS 2024-25 base year; the fact is the April 2024 vintage's FY2024-25 figure (a source_projection at that vintage, hence allow_source_projection), GBP 14.4bn. The same vintage's all-vehicle total for FY2024-25 is GBP 24.7bn against the March 2026 EFO outturn of GBP 24.359bn (obr.fuel_duties), a 1.4% overshoot, which bounds how far the cars figure is from an outturn the OBR does not publish by vehicle type.",
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "category_id": "obr.efo_receipts",
+      "label": "Fuel duties from cars"
     },
     {
       "target_id": "orr.rail_government_support",
@@ -12958,7 +12960,9 @@
         "source_concept": "orr.rail.total_government_support",
         "entity_name": "government",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "orr.rail_industry_finance",
+      "label": "Total government support (Great Britain)"
     },
     {
       "target_id": "ons.household_energy_expenditure",
@@ -12991,7 +12995,9 @@
           "coicop": "04.5",
           "frequency": "annual"
         }
-      }
+      },
+      "category_id": "ons.consumer_trends",
+      "label": "Electricity, gas and other fuels (COICOP 04.5)"
     },
     {
       "target_id": "scotgov.bus.passenger_revenue",
@@ -13035,7 +13041,9 @@
         "layout_groupby_value_id": "passenger_revenue",
         "entity_name": "institutional_sector",
         "period_type": "fiscal_year"
-      }
+      },
+      "category_id": "scotgov.local_bus_finances",
+      "label": "Passenger revenue"
     },
     {
       "target_id": "scotgov.bus.government_support",
@@ -13081,7 +13089,9 @@
         "dimension_values": {
           "funding_component": "all_government_support"
         }
-      }
+      },
+      "category_id": "scotgov.local_bus_finances",
+      "label": "Government support"
     },
     {
       "target_id": "welshgov.bus.public_support",
@@ -13131,7 +13141,9 @@
             "Support to operators"
           ]
         }
-      }
+      },
+      "category_id": "welshgov.local_bus_finances",
+      "label": "Public support through local authorities"
     },
     {
       "target_id": "dfi_ni.bus.passenger_receipts",
@@ -13180,7 +13192,9 @@
             "metro_glider"
           ]
         }
-      }
+      },
+      "category_id": "dfi_ni.local_bus_finances",
+      "label": "Translink passenger receipts"
     },
     {
       "target_id": "nithc.public_transport_support",
@@ -13230,7 +13244,9 @@
             "Concessionary fare compensation for a range of groups"
           ]
         }
-      }
+      },
+      "category_id": "nithc.public_transport_finances",
+      "label": "Bus and rail support"
     },
     {
       "target_id": "hmrc.self_employment_income.amount",
@@ -14769,6 +14785,18 @@
       },
       "dft": {
         "label": "Department for Transport"
+      },
+      "orr": {
+        "label": "Office of Rail and Road"
+      },
+      "welshgov": {
+        "label": "Welsh Government"
+      },
+      "dfi_ni": {
+        "label": "Department for Infrastructure (Northern Ireland)"
+      },
+      "nithc": {
+        "label": "Northern Ireland Transport Holding Company"
       }
     },
     "categories": {
@@ -14891,6 +14919,30 @@
       "dft.local_bus_finances": {
         "provider_id": "dft",
         "label": "Local bus finances"
+      },
+      "orr.rail_industry_finance": {
+        "provider_id": "orr",
+        "label": "Rail industry finance"
+      },
+      "ons.consumer_trends": {
+        "provider_id": "ons",
+        "label": "Consumer trends household expenditure"
+      },
+      "scotgov.local_bus_finances": {
+        "provider_id": "scotgov",
+        "label": "Local bus finances"
+      },
+      "welshgov.local_bus_finances": {
+        "provider_id": "welshgov",
+        "label": "Local bus finances"
+      },
+      "dfi_ni.local_bus_finances": {
+        "provider_id": "dfi_ni",
+        "label": "Local bus finances"
+      },
+      "nithc.public_transport_finances": {
+        "provider_id": "nithc",
+        "label": "Public transport finances"
       }
     }
   }
