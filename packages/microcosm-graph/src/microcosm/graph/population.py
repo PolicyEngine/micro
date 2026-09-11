@@ -2708,12 +2708,15 @@ def _object_storage_values(values: np.ndarray) -> bytes:
     deliberately does not share it.)  Every body
     carries a tag, so a body is never empty and a zero length stays reserved.
 
-    What it deliberately does not keep distinct is a NumPy scalar from its
-    Python counterpart: the encoder normalizes ``np.int32(1)`` to ``1`` and
-    ``np.float32(1.0)`` to ``1.0`` because the store's decoder hands back the
-    Python form, so a leaf-type-only difference inside an object column is not
-    a storage change.  Refusing it would mean a column could never equal its
-    own persisted-and-reloaded self, which is the defect being fixed.
+    What it deliberately does not keep distinct is a NumPy integer or float
+    scalar from its Python counterpart: the encoder normalizes ``np.int32(1)``
+    to ``1`` and ``np.float32(1.0)`` to ``1.0`` because the store's decoder
+    hands back the Python form, so a leaf-type-only difference inside an
+    object column is not a storage change.  Refusing it would mean a column
+    could never equal its own persisted-and-reloaded self, which is the defect
+    being fixed.  ``np.timedelta64`` and ``np.datetime64`` leaves are refused
+    outright: timedelta64 is a signedinteger subclass at runtime, and encoding
+    it as an integer would drop the unit and collide with a plain int.
     """
 
     payload = bytearray()

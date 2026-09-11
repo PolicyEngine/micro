@@ -1588,6 +1588,9 @@ def test_object_storage_preserves_negative_zero_and_nan_payloads() -> None:
         complex(1, 2),
         np.datetime64("2020-01-01"),
         np.timedelta64(1, "D"),
+        np.timedelta64(1, "ns"),
+        np.timedelta64(1, "M"),
+        np.timedelta64(1, "Y"),
         Decimal("1.5"),
         date(2020, 1, 1),
     ],
@@ -1595,6 +1598,36 @@ def test_object_storage_preserves_negative_zero_and_nan_payloads() -> None:
 def test_object_storage_refuses_unsupported_leaves(leaf: object) -> None:
     series = _object_series([leaf, None, None])
 
+    with pytest.raises(PopulationError, match="storage-object-leaf"):
+        _storage_parts(series, _ALL_ROWS)
+
+
+@pytest.mark.parametrize(
+    "leaf",
+    [
+        np.timedelta64(1, "ns"),
+        np.timedelta64(1, "M"),
+        np.timedelta64(1, "Y"),
+        np.datetime64("2020-01-01"),
+    ],
+)
+def test_object_storage_refuses_numpy_datetimes_by_type_not_by_unit(
+    leaf: object,
+) -> None:
+    """``np.timedelta64`` subclasses ``np.signedinteger`` at runtime.
+
+    A unit ``int()`` converts (ns, M, Y) would otherwise reach the integer
+    branch, drop the unit, and collide with the plain ``1``; the codec must
+    refuse the type before that branch, so the refusal never depends on which
+    unit happens to fail ``int()``.
+    """
+
+    from microcosm.graph.store import _encode_object_scalar
+
+    assert _encode_object_scalar(1) == _encode_object_scalar(np.int64(1))
+    with pytest.raises(TypeError, match="datetime64 or timedelta64"):
+        _encode_object_scalar(leaf)
+    series = _object_series([leaf, None, None])
     with pytest.raises(PopulationError, match="storage-object-leaf"):
         _storage_parts(series, _ALL_ROWS)
 
