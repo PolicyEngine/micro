@@ -1051,8 +1051,11 @@ def storage_equal(
     null mask, where pandas leaves whatever the construction route happened to
     put, so two content-equal ``Int64`` columns built by different routes can
     legitimately differ.  A digest folded from these parts is therefore an
-    in-process seal, not a cross-reconstruction content identity; pin the
-    latter on a content identity of the frame itself.
+    in-process seal — a statement about what the digest can identify, not about
+    where it may be stored.  Build a cross-reconstruction pin from a content
+    identity of the values instead, together with whatever population-level
+    state the pin has to cover; a frame identity alone does not carry the
+    version, owners, weight kinds, mass ledger or design weights.
     """
 
     if left.dtype != right.dtype or len(left) != len(right):
