@@ -1727,6 +1727,17 @@ def test_masked_and_numeric_storage_encodings_stay_byte_identical(
     assert bitmap.hex() == expected_bitmap
 
 
+def test_masked_storage_still_compares_bytes_beneath_the_null_mask() -> None:
+    """Pins the docstring claim that storage_equal stays an in-process seal."""
+
+    direct = pd.Series([1, 2, pd.NA], dtype="Int64")
+    masked = pd.Series([1, 2, 7], dtype="Int64").mask(pd.Series([False, False, True]))
+
+    assert direct.tolist() == masked.tolist()
+    assert direct.isna().tolist() == masked.isna().tolist()
+    assert not storage_equal(direct, masked)
+
+
 def test_string_storage_encoding_stays_byte_identical() -> None:
     series = pd.Series(
         ["a", "bb", "c", None],

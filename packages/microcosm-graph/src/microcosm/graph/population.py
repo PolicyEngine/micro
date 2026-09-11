@@ -1037,7 +1037,17 @@ def storage_equal(
     right: pd.Series,
     positions: np.ndarray | pd.Series | None = None,
 ) -> bool:
-    """Compare physical values and nullable masks exactly, including float bits."""
+    """Compare physical values and nullable masks exactly, including float bits.
+
+    Dense, string and object leaves are compared by content, so a column stays
+    equal to its own persisted-and-reloaded self.  Masked storage is not: the
+    comparison reads ``_data`` under the null mask, where pandas leaves
+    whatever the construction route happened to put, so two content-equal
+    ``Int64`` columns built by different routes can legitimately differ.  A
+    digest folded from these parts is therefore an in-process seal, not a
+    cross-reconstruction content identity; pin the latter on a content
+    identity of the frame itself.
+    """
 
     if left.dtype != right.dtype or len(left) != len(right):
         return False
