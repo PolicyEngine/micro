@@ -90,11 +90,13 @@ def _verified_artifacts(case, manifest):
     return payloads[graph.PROJECTION_NODE, "projection"], matrices
 
 
-def test_actual_twenty_two_node_cold_required_replay_keeps_complete_population(
+def test_actual_twenty_one_node_cold_required_replay_keeps_complete_population(
     recipient_graph,
 ):
     case = recipient_graph
-    assert len(case.compiled.order) == 22
+    # The financial run graph (19 nodes since geography moved after the
+    # initial clone) plus exactly the projection and matrix nodes below.
+    assert len(case.compiled.order) == 19 + 2
     assert case.compiled.graph.sources == case.run.compiled.graph.sources
     assert set(case.run.sources) == {
         graph.source_graph.SOURCE_NAME,
