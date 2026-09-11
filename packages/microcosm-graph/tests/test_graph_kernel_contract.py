@@ -1,8 +1,10 @@
-"""Kernel-protocol contracts of the frozen interface (amendment 13).
+"""Kernel-protocol contracts of the frozen interface (amendments 13 and 20).
 
 A kernel that claims bounded numeric movement declares the bound; a bitwise
 kernel declares none; the context hands readers their inputs' declared
-tolerances; and the two new declaration fields round-trip through JSON.
+tolerances; and the two new declaration fields round-trip through JSON. A
+``KEYED`` kernel declares that its draws come from stable coordinates rather
+than from a position in the executor's generator.
 """
 
 from __future__ import annotations
@@ -24,11 +26,13 @@ from microcosm.graph import (
     Numeric,
     NumericScope,
     Owned,
+    SeedSource,
     SourceRef,
     StructuralDelta,
     Tolerance,
     graph_from_json,
     graph_to_json,
+    keyed_uniform,
 )
 
 
@@ -209,3 +213,83 @@ def test_context_numerics_default_empty_and_carry_scopes() -> None:
     )
     assert context.numerics[("person", "income")] is scope
     assert context.tolerances[("person", "income")] is None
+
+
+def test_seed_source_keyed_is_an_additive_declaration() -> None:
+    """Amendment 20: a third seed source, and the two others are untouched.
+
+    ``KEYED`` says the kernel's draws come from normative stream parameters and
+    stable coordinates rather than from ``KernelContext.rng`` or a literal
+    ``seed`` param. The member is additive: every existing kernel keeps the
+    value it declares, so no existing node key moves (A5/A7).
+    """
+    assert SeedSource.KEYED.value == "keyed"
+    assert SeedSource.EXECUTOR.value == "executor"
+    assert SeedSource.PARAM.value == "param"
+    assert SeedSource.NONE.value == "none"
+    assert set(SeedSource) == {
+        SeedSource.EXECUTOR,
+        SeedSource.PARAM,
+        SeedSource.KEYED,
+        SeedSource.NONE,
+    }
+
+    keyed = Capabilities(determinism=Determinism.SEEDED, seed_source=SeedSource.KEYED)
+    assert keyed.seed_source is SeedSource.KEYED
+    with pytest.raises(TypeError, match="Capabilities.seed_source must be a SeedSource"):
+        Capabilities(determinism=Determinism.SEEDED, seed_source="keyed")  # type: ignore[arg-type]
+
+
+def test_keyed_is_part_of_a_node_identity_and_survives_the_manifest() -> None:
+    """The declaration is contract, so it keys the node and round-trips.
+
+    A kernel that reads the same inputs through a keyed stream is not the
+    kernel that reads them through the executor's generator; the capability
+    projection separates them, and a receipt spells the member back.
+    """
+    from microcosm.graph.keys import _capabilities_projection
+    from microcosm.graph.manifest import _capability_contract_fields
+
+    base = Capabilities(determinism=Determinism.SEEDED, seed_source=SeedSource.EXECUTOR)
+    keyed = dataclasses.replace(base, seed_source=SeedSource.KEYED)
+    projection = _capabilities_projection(keyed)
+    assert projection["seed_source"] == "keyed"
+    assert projection != _capabilities_projection(base)
+    assert _capability_contract_fields(projection)[2] is SeedSource.KEYED
+
+
+def test_a_keyed_kernel_draws_from_coordinates_not_from_the_context_rng() -> None:
+    """The context still offers ``rng``; a keyed kernel simply does not spend it.
+
+    This is the behaviour the member names, exercised end to end at the kernel
+    protocol level: two contexts whose generators are at different positions
+    hand the same coordinates the same draws.
+    """
+    node = Node("impute", "toy.keyed@1", params={"experiment": "amendment-20"})
+
+    def draw(context: KernelContext) -> np.ndarray:
+        return keyed_uniform(
+            stream=(
+                "sha256-u53-v1",
+                str(context.params["experiment"]),
+                0,
+                0,
+            ),
+            keys=[(person, "wages") for person in (11, 12, 13)],
+        )
+
+    def context_at(position: int) -> KernelContext:
+        rng = np.random.default_rng(7)
+        rng.random(position)
+        return KernelContext(
+            node=node,
+            tables={},
+            weights={},
+            strata=pd.Series(dtype="int64"),
+            params=node.params,
+            rng=rng,
+        )
+
+    early, late = context_at(0), context_at(512)
+    assert early.rng.bit_generator.state != late.rng.bit_generator.state
+    assert draw(early).tobytes() == draw(late).tobytes()
