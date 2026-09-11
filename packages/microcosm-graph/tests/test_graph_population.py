@@ -1727,6 +1727,44 @@ def test_masked_and_numeric_storage_encodings_stay_byte_identical(
     assert bitmap.hex() == expected_bitmap
 
 
+@pytest.mark.parametrize(
+    ("label", "values"),
+    [
+        ("datetimetz", pd.to_datetime(["2020-01-01"] * 3, utc=True)),
+        ("period", pd.period_range("2020-01", "2020-03", freq="M")),
+        ("interval", pd.interval_range(0, 3)),
+    ],
+)
+def test_object_backed_extension_dtypes_now_fail_closed(
+    label: str, values: object
+) -> None:
+    """These materialize as object arrays, so they were pointer-hashed too.
+
+    ``ContentStore`` already refuses to persist them (store.py rejects
+    CategoricalDtype, DatetimeTZDtype and every other extension dtype), and
+    ``token_for_dtype`` refuses to declare them, so an explicit refusal is the
+    consistent outcome — silently comparing their addresses was not.
+    """
+
+    series = pd.Series(values)
+
+    assert series.to_numpy(copy=False).dtype == object
+    with pytest.raises(PopulationError, match="storage-object-leaf"):
+        _storage_parts(series, _ALL_ROWS)
+
+
+def test_categorical_storage_compares_category_values_not_addresses() -> None:
+    left = pd.Series(pd.Categorical([_fresh_str("a"), _fresh_str("b"), None]))
+    right = pd.Series(pd.Categorical([_fresh_str("a"), _fresh_str("b"), None]))
+
+    assert left.dtype == right.dtype
+    assert left.to_numpy(copy=False).dtype == object
+    assert storage_equal(left, right)
+    assert not storage_equal(
+        left, pd.Series(pd.Categorical([_fresh_str("a"), _fresh_str("b"), "c"]))
+    )
+
+
 def test_masked_storage_still_compares_bytes_beneath_the_null_mask() -> None:
     """Pins the docstring claim that storage_equal stays an in-process seal."""
 
