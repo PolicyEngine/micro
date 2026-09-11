@@ -29,11 +29,14 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
-from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
+from microcosm.build.uk_runtime.geography_ladder import (
+    UK_ENGLAND_WALES_REGION_CODES,
+    UK_REGION_TIER,
+    UK_REGION_TIER_ENUM,
+)
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
     AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
-    area_groups_from_codes,
     load_uk_local_geography_contract,
     metric_names,
 )
@@ -62,20 +65,84 @@ _UK_LOCAL_FIXTURE_METRIC_ALIASES = {
 UK_CENSUS_HOUSEHOLDS_TARGET_ID = "ons.census.households"
 
 
+#: Every region-tier code is a leg of its own; the national parents cover the
+#: tier members they contain (microcosm#905).
+UK_REGION_TIER_CODES: tuple[str, ...] = tuple(code for _, code in UK_REGION_TIER)
+_UK_ENGLISH_REGION_CODES: tuple[str, ...] = tuple(
+    code for level, code in UK_REGION_TIER if level == "region"
+)
+_UK_NATION_LEG_BY_PREFIX = {
+    "W": "W92000004",
+    "S": "S92000003",
+    "N": "N92000002",
+}
+_UK_CROSSWALK_REGION_BY_AREA: dict[str, str] | None = None
+
+
+def _uk_crosswalk_region_by_area() -> dict[str, str]:
+    """Area id -> region-tier code from the committed local-area crosswalk."""
+
+    global _UK_CROSSWALK_REGION_BY_AREA
+    if _UK_CROSSWALK_REGION_BY_AREA is None:
+        mapping: dict[str, str] = {}
+        levels = load_uk_local_area_crosswalk().get("levels") or {}
+        for level, payload in levels.items():
+            by_area = payload.get("region_code_by_area") if payload else None
+            if not isinstance(by_area, Mapping) or not by_area:
+                raise ValueError(
+                    f"UK local area crosswalk level {level!r} carries no "
+                    "region_code_by_area; regenerate it from the ladder "
+                    "(tools/generate_uk_local_area_crosswalk.py)."
+                )
+            for area_id, region in by_area.items():
+                previous = mapping.setdefault(str(area_id), str(region))
+                if previous != str(region):
+                    raise ValueError(
+                        f"UK local area crosswalk maps {area_id!r} to both "
+                        f"{previous!r} and {region!r}."
+                    )
+        _UK_CROSSWALK_REGION_BY_AREA = mapping
+    return _UK_CROSSWALK_REGION_BY_AREA
+
+
 def _uk_cross_grain_leg_of_area(area_code: str) -> str:
-    # area_groups_from_codes maps code -> country group, so the single value is
-    # this code's leg. It refuses an unknown prefix itself; the explicit miss
-    # below keeps the refusal fail-closed rather than a bare StopIteration if
-    # that mapping ever returns nothing for a code.
-    leg = next(iter(area_groups_from_codes((area_code,)).values()), "")
-    if not leg:
+    """The region-tier leg an area belongs to (microcosm#905).
+
+    A region-tier code is its own leg. A Welsh, Scottish or Northern Irish
+    area maps to its nation by GSS prefix: the tier does not subdivide the
+    nations. An English constituency or authority resolves through the
+    crosswalk's ladder-derived region membership, and an English code the
+    crosswalk does not carry refuses rather than falling back to an
+    ``England`` leg that no control covers.
+    """
+
+    code = str(area_code).strip()
+    if not code:
+        raise ValueError("UK cross-grain area code must not be blank.")
+    if code in UK_REGION_TIER_CODES:
+        return code
+    prefix = code[0].upper()
+    nation = _UK_NATION_LEG_BY_PREFIX.get(prefix)
+    if nation is not None:
+        return nation
+    if prefix != "E":
+        raise ValueError(f"Unknown UK area code prefix {prefix!r} for code {code!r}.")
+    region = _uk_crosswalk_region_by_area().get(code)
+    if region is None:
         raise ValueError(
-            f"UK cross-grain area code {area_code!r} maps to no country leg."
+            f"UK cross-grain area code {code!r} is not in the local-area "
+            "crosswalk, so it has no region-tier leg."
         )
-    return leg
+    return region
 
 
-UK_CROSS_GRAIN_GRAIN_PRECEDENCE = ("country", "constituency", "la")
+UK_CROSS_GRAIN_GRAIN_PRECEDENCE = ("country", "region", "constituency", "la")
+UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS: dict[str, tuple[str, ...]] = {
+    **{code: (code,) for code in UK_REGION_TIER_CODES},
+    "K02000001": UK_REGION_TIER_CODES,
+    "K03000001": (*_UK_ENGLISH_REGION_CODES, "W92000004", "S92000003"),
+    "E92000001": _UK_ENGLISH_REGION_CODES,
+}
 UK_CROSS_GRAIN_BRIDGES = (
     CrossGrainBridge(
         bridge_id="national_household_composition_partition_vs_census_households",
@@ -100,11 +167,11 @@ UK_CROSS_GRAIN_BRIDGES = (
         higher_target_ids=("dwp.uc.households",),
         lower_side="contract:dwp.uc.households_by_area",
     ),
-    # The national ONS controls use inclusive integer-age bands (0--9), while
-    # local targets use equivalent half-open encodings (0--10), so their
-    # signatures cannot match directly. These bridges let the K02000001 UK
-    # control rescale both constituency and local-authority bands over its
-    # England/Wales/Scotland/Northern Ireland legs.
+    # The ONS controls use inclusive integer-age bands (0--9), while local
+    # targets use equivalent half-open encodings (0--10), so their signatures
+    # cannot match directly. These bridges let the region-tier controls (one
+    # row per English region and per nation, microcosm#905) rescale both
+    # constituency and local-authority bands over their twelve legs.
     CrossGrainBridge(
         bridge_id="national_age_0_9_vs_local_age_0_10",
         concept="uk.person.count",
@@ -161,15 +228,83 @@ UK_CROSS_GRAIN_RULE = CrossGrainRule(
     signature_fields=("concept", "entity", "map_to", "filters"),
     bridges=UK_CROSS_GRAIN_BRIDGES,
     leg_of_area=_uk_cross_grain_leg_of_area,
-    parent_geography_legs={
-        "K02000001": ("England", "Wales", "Scotland", "Northern Ireland"),
-        "K03000001": ("England", "Wales", "Scotland"),
-        "E92000001": ("England",),
-        "W92000004": ("Wales",),
-        "S92000003": ("Scotland",),
-        "N92000002": ("Northern Ireland",),
-    },
+    parent_geography_legs=UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS,
 )
+
+
+#: The incumbent's regional row spellings: ``ons/<slug>_age_<lo>_<hi>`` uses
+#: these slugs, ``voa/council_tax/<REGION>/<band>`` the spine's enum names.
+_UK_INCUMBENT_REGION_SLUG_CODES: dict[str, str] = {
+    "north_east": "E12000001",
+    "north_west": "E12000002",
+    "yorkshire_and_the_humber": "E12000003",
+    "east_midlands": "E12000004",
+    "west_midlands": "E12000005",
+    "east": "E12000006",
+    "london": "E12000007",
+    "south_east": "E12000008",
+    "south_west": "E12000009",
+    "wales": "W92000004",
+    "scotland": "S92000003",
+    "northern_ireland": "N92000002",
+}
+_UK_INCUMBENT_REGION_ENUM_CODES: dict[str, str] = {
+    enum: code for code, enum in UK_REGION_TIER_ENUM.items()
+}
+
+
+def align_uk_national_registry_parity_fixture(
+    fixture: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Align the incumbent's regional rows to the region-tier reference names.
+
+    The incumbent measures ``ons/london_age_0_9`` and
+    ``voa/council_tax/LONDON/A``; the region tier names the same cells
+    ``ons.population.age_0_9_by_region@E12000007`` and
+    ``voa.council_tax_stock.band_a@E12000007`` (microcosm#905). Renaming the
+    fixture rows lets the compile-parity receipt compare values instead of
+    recording 189 ``fixture_only`` rows against 189 ``ledger_only`` rows.
+    Rows that are not regional cells pass through untouched.
+    """
+
+    rows: list[dict[str, Any]] = []
+    for row in fixture.get("rows", ()):
+        if not isinstance(row, Mapping):
+            rows.append(row)
+            continue
+        updated = dict(row)
+        aligned = _uk_region_tier_fixture_name(str(updated.get("name") or ""))
+        if aligned is not None:
+            updated["name"] = aligned
+            updated["measure"] = aligned
+            updated["contract_target_id"] = aligned.split("@", 1)[0]
+        rows.append(updated)
+    result = dict(fixture)
+    result["rows"] = rows
+    return result
+
+
+def _uk_region_tier_fixture_name(name: str) -> str | None:
+    if name.startswith("ons/") and "_age_" in name:
+        slug, _, band = name.removeprefix("ons/").partition("_age_")
+        code = _UK_INCUMBENT_REGION_SLUG_CODES.get(slug)
+        lower, _, upper = band.partition("_")
+        if code is None or not (lower.isdigit() and upper.isdigit()):
+            return None
+        return f"ons.population.age_{lower}_{upper}_by_region@{code}"
+    if name.startswith("voa/council_tax/"):
+        parts = name.removeprefix("voa/council_tax/").split("/")
+        if len(parts) != 2:
+            return None
+        region, band = parts
+        code = _UK_INCUMBENT_REGION_ENUM_CODES.get(region)
+        if code is None or not code.startswith("E12"):
+            return None
+        if band == "total":
+            return f"voa.council_tax_stock.total@{code}"
+        if band in tuple("ABCDEFGH"):
+            return f"voa.council_tax_stock.band_{band.lower()}@{code}"
+    return None
 
 
 def align_uk_local_registry_parity_fixture(
@@ -1626,9 +1761,22 @@ def uk_local_target_surface(
                     f"UK national target cell {spec.name!r} has non-finite "
                     f"value {value!r}."
                 )
+            # A region-tier row declares the grain the cross-grain operator
+            # places it at (``cross_grain_grain``): Chronicle stamps the
+            # Welsh, Scottish and Northern Irish population at ``country``,
+            # but on the surface those rows are the same ITL1 tier as the
+            # nine English regions and must not outrank them (microcosm#905).
+            # The selector and ledger metadata keep Chronicle's level.
+            grain = str(spec.metadata.get("cross_grain_grain") or geography_level)
+            if grain not in UK_CROSS_GRAIN_GRAIN_PRECEDENCE:
+                raise ValueError(
+                    f"UK national target cell {spec.name!r} declares "
+                    f"cross_grain_grain {grain!r}, which is not one of "
+                    f"{UK_CROSS_GRAIN_GRAIN_PRECEDENCE}."
+                )
             national_control_groups.setdefault(
                 (contract_target_id, geography_id), []
-            ).append((spec.name, geography_level, value))
+            ).append((spec.name, grain, value))
         else:
             raise ValueError(
                 f"UK target {spec.name!r} names unsupported geography_level "

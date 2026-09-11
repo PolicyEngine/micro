@@ -392,15 +392,10 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
     },
     {
         "concern_id": "cross_grain_council_tax_stock_england_region",
-        "status": "routed",
-        "classification": "cross_grain_grain_gap",
-        "reason": "The incumbent English VOA controls are region-grain, while the #802 rule declares only country > constituency > LA and cannot accept region rows.",
-        "evidence": "Microcosm voa.council_tax_stock.band_* geography_levels include region; CrossGrainRule.grain_precedence is country,constituency,la.",
-        "fence": _fence(
-            "The national contract materializes English VOA stock by region and Wales by country.",
-            "Prevent the LA solve from implicitly choosing between conflicting regional and local stock totals.",
-            "Use exact-signature country reconciliation where a country leg exists; record the England regional leg here until #802 machinery gains an adjudicated region bridge.",
-        ),
+        "status": "ported_national",
+        "classification": "cross_grain_rule",
+        "reason": "The English VOA stock rows fan out over the nine English regions and sit at the region grain of the cross-grain rule (country > region > constituency > la); each region is its own leg, so the LA solve reconciles to its region's published stock rather than to a single England row (microcosm#905).",
+        "evidence": "voa.council_tax_stock.band_* references voa.council_tax_stock.band_*@E12000001..E12000009; UK_CROSS_GRAIN_RULE.grain_precedence includes region and parent_geography_legs maps every E12 code to itself; the local crosswalk carries region_code_by_area from the ladder.",
     },
     {
         "concern_id": "local_council_tax_band_d_rate",

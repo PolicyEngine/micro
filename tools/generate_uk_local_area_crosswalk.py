@@ -11,6 +11,11 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.build.uk_runtime.geography_ladder import (
+    UK_LADDER_NATION_REGION_CODES,
+    UK_REGION_TIER,
+)
+
 DEFAULT_LADDER_ARTIFACT = Path("build/uk/uk_oa_ladder_2021.npz")
 DEFAULT_LADDER_SUMMARY = Path("build/uk/ladder_summary.json")
 DEFAULT_OUTPUT = Path(
@@ -131,13 +136,19 @@ def _level_payload(
 ) -> dict[str, Any]:
     if code_column not in payload.files:
         raise ValueError(f"UK OA ladder artifact is missing {code_column!r}.")
-    area_ids = sorted({str(value) for value in np.asarray(payload[code_column])})
+    if "region_code" not in payload.files:
+        raise ValueError("UK OA ladder artifact is missing 'region_code'.")
+    codes = np.asarray(payload[code_column]).astype(str)
+    area_ids = sorted(set(codes))
     expected = EXPECTED_COUNTS[level]
     if len(area_ids) != expected:
         raise ValueError(
             f"UK OA ladder {level} roster has {len(area_ids)} area id(s), "
             f"expected {expected}."
         )
+    region_code_by_area = _region_tier_by_area(
+        codes, np.asarray(payload["region_code"]).astype(str), level=level
+    )
     layers = metadata.get("layers") or {}
     layer = layers.get(ladder_layer) or {}
     ladder_vintage = str(layer.get("vintage") or "")
@@ -172,7 +183,40 @@ def _level_payload(
         "expected_vintage": EXPECTED_FACT_VINTAGE[level],
         "area_count": len(area_ids),
         "area_ids": area_ids,
+        "region_code_by_area": region_code_by_area,
     }
+
+
+def _region_tier_by_area(
+    codes: np.ndarray,
+    regions: np.ndarray,
+    *,
+    level: str,
+) -> dict[str, str]:
+    """Map every area id to the one region-tier code its output areas carry.
+
+    The ladder stamps each OA with a region code (``E12`` for England, the
+    nation pseudo-codes elsewhere). The region tier nests constituencies and
+    authorities exactly, so an area whose OAs disagree is a ladder defect and
+    refuses here rather than becoming a leg that belongs to two controls.
+    """
+
+    tier_codes = {code for _, code in UK_REGION_TIER}
+    region_by_area: dict[str, str] = {}
+    for area_id, region in zip(codes.tolist(), regions.tolist(), strict=True):
+        tier = UK_LADDER_NATION_REGION_CODES.get(region, region)
+        if tier not in tier_codes:
+            raise ValueError(
+                f"UK OA ladder {level} area {area_id!r} carries region code "
+                f"{region!r}, which is outside the region tier."
+            )
+        previous = region_by_area.setdefault(area_id, tier)
+        if previous != tier:
+            raise ValueError(
+                f"UK OA ladder {level} area {area_id!r} spans region-tier codes "
+                f"{previous!r} and {tier!r}; the region tier must nest."
+            )
+    return dict(sorted(region_by_area.items()))
 
 
 def _sha256(path: Path) -> str:
