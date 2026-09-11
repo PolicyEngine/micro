@@ -118,23 +118,58 @@ def test_restored_raw_observations_carry_to_input_leaves_without_engine() -> Non
     )
 
 
+@pytest.mark.parametrize(
+    "with_mass_history,forward_metadata",
+    [(False, False), (True, False), (True, True)],
+    ids=["empty_log", "declared_mass_change", "metadata_forwarding"],
+)
 def test_v4_restoration_producer_authenticates_source_and_writes_new_bundle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    with_mass_history: bool,
+    forward_metadata: bool,
 ) -> None:
     import hashlib
     from dataclasses import replace
 
+    from microcosm.build.us_runtime import asec_raw_stage_v4 as restoration
     from microcosm.build.us_runtime import reported_coverage_source
     from microcosm.build.us_runtime.asec_raw_stage_v4 import restore_asec_raw_stage_v4
+    from microcosm.frame import MassChange
 
     legacy = _raw_us_frame()
+    if with_mass_history:
+        original = legacy
+        weights = original.weights_for("household")
+        legacy = original.with_weights(
+            "household",
+            Weights(weights.values * 2.0, weights.kind),
+            mass=MassChange(
+                factor=2.0, reason="Invented raw-source design-weight rescaling"
+            ),
+        )
+        assert original.mass_log == ()
+        assert len(legacy.mass_log) == 1
+        record = legacy.mass_log[0]
+        assert record.entity == "household"
+        assert record.old_total == float(weights.values.sum())
+        assert record.new_total == 2.0 * record.old_total
+        assert record.declared_factor == 2.0
+        assert record.reason == "Invented raw-source design-weight rescaling"
+    expected_mass_log = legacy.mass_log
+    assert bool(expected_mass_log) is with_mass_history
     binding = _raw_binding(legacy)
     binding["source_receipt"]["sources"].append(
         dict(binding["source_receipt"]["sources"][0], year=2023)
     )
     input_path = tmp_path / "v3.h5"
     _write_checkpoint(input_path, legacy, metadata=binding)
+    loaded_input, _ = checkpoint_module.load_asec_raw_stage_checkpoint(input_path)
+    assert loaded_input.mass_log == expected_mass_log
+    np.testing.assert_array_equal(
+        loaded_input.weights_for("household").values,
+        legacy.weights_for("household").values,
+    )
     input_sha = hashlib.sha256(input_path.read_bytes()).hexdigest()
     pins = {}
     paths = {}
@@ -169,6 +204,49 @@ def test_v4_restoration_producer_authenticates_source_and_writes_new_bundle(
     monkeypatch.setattr(
         reported_coverage_source, "ASEC_EDUCATION_ASSISTANCE_ARCHIVES", pins
     )
+    forwarded = []
+    if forward_metadata:
+        # The checkpoint codec does not persist Frame.metadata. Supply a
+        # descriptive value only after the real v3 loader has validated its
+        # input, then observe the actual converter at the real writer boundary.
+        supplied_metadata = {"forwarding_probe": {"purpose": "invented observation"}}
+        real_load = checkpoint_module.load_asec_raw_stage_checkpoint
+        real_write = restoration.write_frame_checkpoint
+
+        def load_with_descriptive_metadata(path):
+            loaded, binding = real_load(path)
+            assert not loaded.metadata
+            return (
+                Frame(
+                    {entity: loaded.table(entity) for entity in loaded.entities},
+                    loaded.schema,
+                    {
+                        entity: loaded.weights_for(entity)
+                        for entity in loaded.weighted_entities
+                    },
+                    loaded.strata,
+                    mass_log=loaded.mass_log,
+                    metadata=supplied_metadata,
+                ),
+                binding,
+            )
+
+        def observe_real_write(path, frame, **kwargs):
+            assert set(frame.metadata) == {"forwarding_probe"}
+            assert (
+                dict(frame.metadata["forwarding_probe"])
+                == supplied_metadata["forwarding_probe"]
+            )
+            assert frame.mass_log == expected_mass_log
+            forwarded.append(True)
+            return real_write(path, frame, **kwargs)
+
+        monkeypatch.setattr(
+            checkpoint_module,
+            "load_asec_raw_stage_checkpoint",
+            load_with_descriptive_metadata,
+        )
+        monkeypatch.setattr(restoration, "write_frame_checkpoint", observe_real_write)
     output_dir = tmp_path / "restored"
     receipt = restore_asec_raw_stage_v4(
         input_path,
@@ -176,11 +254,20 @@ def test_v4_restoration_producer_authenticates_source_and_writes_new_bundle(
         coverage_paths=paths,
         output_dir=output_dir,
     )
+    assert forwarded == ([True] if forward_metadata else [])
     assert receipt["input_sha256"] == input_sha
     output = output_dir / "asec_raw_stage.checkpoint.h5"
     assert receipt["output_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
     assert hashlib.sha256(input_path.read_bytes()).hexdigest() == input_sha
     restored, metadata = checkpoint_module.load_asec_raw_stage_checkpoint_v4(output)
+    assert restored.mass_log == expected_mass_log
+    # The codec does not reconstruct the separately supplied Frame metadata.
+    assert not restored.metadata
+    assert restored.weights_for("household").kind is WeightKind.DESIGN
+    np.testing.assert_array_equal(
+        restored.weights_for("household").values,
+        loaded_input.weights_for("household").values,
+    )
     assert restored.table("person")["NOW_MCAID"].tolist() == [1, 2]
     assert metadata["source_receipt"] == binding["source_receipt"]
     assert json.loads((output_dir / "restoration.receipt.json").read_text()) == receipt
