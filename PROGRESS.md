@@ -1,3 +1,61 @@
+# Amendment 19 — typed opaque artifacts on the graph interface
+
+Lane: `amend-typed-artifacts`, off `origin/main` at `3094bfe84`. Started
+2026-09-11. Everything below the `---` rule at the end of this section is
+prior-lane history; see "Root journals are history, not state" in
+`CLAUDE.md`.
+
+## State
+
+In progress. Extracting the typed-artifact interface change that landed on
+`origin/microcosm-us-launch-integration-20260909` without an amendment, and
+re-landing it the charter's way as Amendment 19.
+
+## Scope (what is in, and what is deliberately out)
+
+In, from `git diff origin/main origin/microcosm-us-launch-integration-20260909
+-- packages/microcosm-graph/src`:
+
+- `decl.py`: `ArtifactType`, `ArtifactOutput`, `ArtifactInput`,
+  `Node.artifact_inputs` / `Node.artifact_outputs`, their validation, their
+  elision from the canonical projection when empty, and the artifact-edge
+  arm of `compile_graph`.
+- `kernel.py`: `ArtifactValue` and `KernelContext.artifacts`.
+- `artifact_edges.py` (new): numeric scope payloads, scope compatibility,
+  typed descriptors, `typed_contracts`, `value_from_descriptor`.
+- `keys.py`: `opaque_artifact_key` and the `typed_artifacts` term in
+  `node_key`.
+- `serialize.py`, `view.py`, `manifest.py`, `executor.py`: the minimal
+  support for the executor to honour declared artifact inputs/outputs.
+
+Out, because it is not needed for artifacts (each is its own lane):
+
+- `SeedSource.KEYED` and `randomness.py` (`keyed_uniform`).
+- `availability.py` / execution state / `unreached` / `blocked_by` /
+  `gate_exception` propagation, and manifest schema 4.
+- `attachments.py`, `_PopulationRetention`, lazy populations,
+  `_population_observer`.
+- `store.py` Frame-metadata storage (`microcosm-graph-frame-v2`) and the
+  non-finite JSON decode hooks.
+- `keys.py` `_stream_file` chunked source hashing.
+- `codecs.py` `SourceBytesCodec` / `load_source_bytes`; `schema.py`.
+- The `_write_node` per-coordinate memory refactor.
+
+## Done
+
+- Read `CLAUDE.md`, `docs/graph-acceptance.md`, `DESIGN.md`, and the
+  amendment-17 precedent (`cdbf71888`, `80b63ba14`, `ed36f6cb3`).
+- Measured the branch diff per file and fixed the in/out boundary above.
+- `uv sync --all-packages --locked --extra us --extra uk` → exit 0.
+
+## Next
+
+- Red-first contract tests, then the interface change, then the executor
+  support, then the charter amendment + relock, then the acceptance-suite
+  commit of its own.
+
+---
+
 # F1 portable worker identity — CI crawl fix
 
 ## State
