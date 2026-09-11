@@ -338,8 +338,19 @@ def test_actual_seven_node_terminal_manifest_mutation_refuses(
                 assert getattr(row, field) == value
             changed.append(True)
 
+    class _LateBudgets:
+        """The budgets module seals its own functions in its producer check, so
+        the late seam is injected through the stage's alias, never by editing
+        the sealed module."""
+
+        verify_survey_weight_only_successor = staticmethod(late)
+
+        def __getattr__(self, name):
+            return getattr(actual_budgets, name)
+
+    actual_budgets = stage.budgets
     monkeypatch.setattr(stage, "run_graph", capture)
-    monkeypatch.setattr(stage.budgets, "verify_survey_weight_only_successor", late)
+    monkeypatch.setattr(stage, "budgets", _LateBudgets())
     arguments = authenticated_arguments(tmp_path, monkeypatch)
     arguments["seed_value"] = arguments.pop("seed")
     try:
