@@ -2114,6 +2114,24 @@ def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool
     return True
 
 
+def fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool:
+    """Public name for :func:`_fact_matches_selector` (used by fact vendoring)."""
+
+    return _fact_matches_selector(fact, selector)
+
+
+def selector_field_is_supported(key: str) -> bool:
+    """Whether ``key`` is in the closed selector vocabulary."""
+
+    if key in {"dimensions", "dimension_values"}:
+        return True
+    try:
+        _selector_candidates({}, key)
+    except ValueError:
+        return False
+    return True
+
+
 def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
     if key == "aggregate_fact_key":
         return (_str_at(fact, "aggregate_fact_key"),)

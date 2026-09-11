@@ -961,6 +961,16 @@ class TestUKCountryPackage:
             "target_reference_membership.json",
             "local_target_references.json",
             "local_target_reference_membership.json",
+            "ledger_fact_vendor_selections.json",
+            "dft_bus_value_anchors.json",
+            "road_fuel_anchors.json",
+            "licensed_cars_fuel_type.json",
+            "need_energy_facts.json",
+            "ofgem_price_cap_facts.json",
+            "nts_bus_use_frequency.json",
+            "devolved_bus_finance.json",
+            "orr_rail_facts.json",
+            "ons_household_expenditure_facts.json",
         )
 
     def test_uk_source_manifest_loads_thirty_stages(self) -> None:
@@ -1055,6 +1065,16 @@ class TestExistingPackagesGeneralize:
             "target_reference_membership.json",
             "local_target_references.json",
             "local_target_reference_membership.json",
+            "ledger_fact_vendor_selections.json",
+            "dft_bus_value_anchors.json",
+            "road_fuel_anchors.json",
+            "licensed_cars_fuel_type.json",
+            "need_energy_facts.json",
+            "ofgem_price_cap_facts.json",
+            "nts_bus_use_frequency.json",
+            "devolved_bus_finance.json",
+            "orr_rail_facts.json",
+            "ons_household_expenditure_facts.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:
