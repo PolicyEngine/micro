@@ -1,3 +1,33 @@
+# Issue #907 — population `_storage_parts` hashes object dtype by pointer
+
+Lane: `fix-907-population-stamp-object-storage`, branched from
+`origin/main` at `295130c9f901e08db11457f16dbdee4e2349c5ba` on 2026-09-11.
+Report: `/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/lanes/out-907-build-r1.md`.
+
+## State
+
+In progress. Environment synced (`uv sync --all-packages --locked --extra us
+--extra uk`, exit 0). Defect reproduced directly against the checked-out
+`microcosm.graph.population._storage_parts`.
+
+## Done
+
+- Read `CLAUDE.md`; confirmed the lane rules (no push, no new branch, no
+  stash, no spec-pin/evidence/uv.lock edits, `decl.py`/`kernel.py`/
+  `docs/graph-interface.lock`/`test_acceptance_*` untouched).
+- Reproduced #907: two independently constructed object-dtype Series with
+  equal content produce different `_storage_parts` value bytes (PyObject
+  pointers), so `storage_equal` returns `False` for equal content.
+
+## Next
+
+- Land the red regression in `packages/microcosm-graph/tests/`.
+- Fix the object-dtype branch with a length-prefixed content encoding and a
+  fail-closed refusal for unsupported leaf types.
+- Audit `_storage_parts` reachability and pinned-digest drift; report.
+
+---
+
 # F1 portable worker identity — CI crawl fix
 
 ## State
