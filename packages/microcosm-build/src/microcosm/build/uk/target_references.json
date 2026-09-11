@@ -11650,6 +11650,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "fiscal_year_flow"
       },
+      "uprating_index": "dft.local_bus_fares_index",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -11696,6 +11697,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "fiscal_year_flow"
       },
+      "uprating_index": "dft.local_bus_fares_index",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -11729,6 +11731,7 @@
         "source_concept": "obr.fuel_duty.receipts",
         "entity_name": "government",
         "period_type": "fiscal_year",
+        "period_value": 2024,
         "dimension_values": {
           "vehicle_category": "cars"
         },
@@ -11743,7 +11746,9 @@
         "contract_target_id": "obr.fuel_duties_cars",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     },
     {
       "name": "orr.rail_government_support",

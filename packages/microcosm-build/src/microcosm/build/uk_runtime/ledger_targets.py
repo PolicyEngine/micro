@@ -29,7 +29,13 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
+from microcosm.build.uk_runtime.ledger_fact_vendoring import (
+    feed_identity,
+    load_vendored_resource,
+    rows_matching,
+)
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
     AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
@@ -255,6 +261,15 @@ def compile_uk_target_registry(
             **{**reference.__dict__, "period": target_period}
         )
         candidate_facts = _candidate_facts_for_reference(fact_rows, restamped)
+        if restamped.uprating_index is not None and (
+            str(restamped.uprating_index) not in UK_UPRATING_APPLIERS
+        ):
+            # A declared index the runtime cannot apply is a contract error,
+            # not a fact gap: refuse the whole compile rather than report it
+            # as an unsupported row.
+            apply_declared_uk_uprating(
+                restamped, registry=TargetRegistry((), country="uk")
+            )
         try:
             _assert_national_region_pin(restamped)
             registry = compile_ledger_target_references(
@@ -263,9 +278,7 @@ def compile_uk_target_registry(
                 country="uk",
             )
             registry = _assert_region_facts_resolved_at_region(restamped, registry)
-            registry = align_dft_bus_fare_receipts_to_period(
-                restamped, registry, fact_rows, target_period=target_period
-            )
+            registry = apply_declared_uk_uprating(restamped, registry)
             registry = validate_uc_source_month_coverage(
                 restamped, registry, candidate_facts
             )
@@ -296,9 +309,14 @@ def compile_uk_target_registry(
 
 #: DfT BUS05ai fare receipts are aligned from the publisher's year-ending-March
 #: period to the calibration year with the BUS0415 local bus fares index (a
-#: ruling of 2026-09-10: calendar-year basis). Net support is never aligned.
+#: ruling of 2026-09-10: calendar-year basis). The contract declares the index
+#: on the fare-receipt rows (``uprating_index``); net support declares none and
+#: is never aligned. The index series is read from the vendored resource
+#: ``dft_bus_value_anchors.json`` (hash-pinned to the same Chronicle feed as
+#: the references), so the factor is reproducible without the licensed feed.
 UK_DFT_BUS_FARE_RECEIPTS_CONCEPT = "dft.local_bus_passenger_fare_receipts"
 UK_DFT_BUS_FARES_INDEX_CONCEPT = "dft.local_bus_fares_index"
+UK_DFT_BUS_FARES_INDEX_RESOURCE = "dft_bus_value_anchors.json"
 UK_DFT_BUS_FARE_INDEX_BASIS = (
     "mean of the quarter-end BUS0415 index (March, June, September, December) "
     "inside the calibration calendar year over the mean of the four quarter-ends "
@@ -306,37 +324,42 @@ UK_DFT_BUS_FARE_INDEX_BASIS = (
 )
 
 
+def _vendored_fares_index_rows() -> list[Mapping[str, Any]]:
+    """BUS0415 rows from the vendored resource, refused if it lags the feed pin."""
+
+    payload = load_vendored_resource(UK_DFT_BUS_FARES_INDEX_RESOURCE)
+    expected = feed_identity(load_uk_chronicle_feed())
+    if payload.get("source_fact_feed") != expected:
+        raise ValueError(
+            f"{UK_DFT_BUS_FARES_INDEX_RESOURCE} was vendored from a different "
+            "Chronicle feed than uk/chronicle_feed.json declares; regenerate it "
+            "with tools/vendor_uk_ledger_facts.py before compiling."
+        )
+    return rows_matching(
+        payload, concept=UK_DFT_BUS_FARES_INDEX_CONCEPT, period_type="month"
+    )
+
+
 def _fares_index_series(
-    facts: Iterable[Mapping[str, Any]], geography_id: str
+    rows: Iterable[Mapping[str, Any]], geography_id: str
 ) -> dict[str, tuple[float, str]]:
-    """Month -> (index value, source record id) for one BUS0415 series."""
+    """Month -> (index value, source record id) for one vendored BUS0415 series."""
 
     series: dict[str, tuple[float, str]] = {}
-    for fact in facts:
-        observed = fact.get("observed_measure")
-        concept = (
-            observed.get("source_concept") if isinstance(observed, Mapping) else None
-        )
-        if concept != UK_DFT_BUS_FARES_INDEX_CONCEPT:
-            alignment = fact.get("concept_alignment")
-            if not isinstance(alignment, Mapping) or (
-                alignment.get("canonical_concept") != UK_DFT_BUS_FARES_INDEX_CONCEPT
-            ):
-                continue
-        geography = fact.get("geography")
+    for row in rows:
+        if row.get("concept") != UK_DFT_BUS_FARES_INDEX_CONCEPT:
+            continue
+        geography = row.get("geography")
         if not isinstance(geography, Mapping) or geography.get("id") != geography_id:
             continue
-        period = fact.get("period")
+        period = row.get("period")
         if not isinstance(period, Mapping) or period.get("type") != "month":
             continue
         month = str(period.get("value"))
-        value = fact.get("value")
+        value = row.get("value")
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             continue
-        lineage = fact.get("lineage")
-        record_id = (
-            str(lineage.get("source_record_id")) if isinstance(lineage, Mapping) else ""
-        )
+        record_id = str(row.get("source_record_id") or "")
         if month in series and series[month][0] != float(value):
             raise ValueError(
                 f"BUS0415 series {geography_id!r} carries two values for {month!r}."
@@ -365,29 +388,37 @@ def _quarter_end_months(start_year: int, start_month: int) -> tuple[str, ...]:
 def align_dft_bus_fare_receipts_to_period(
     reference: LedgerTargetReference,
     registry: TargetRegistry,
-    facts: Iterable[Mapping[str, Any]],
     *,
-    target_period: int,
+    index_rows: Iterable[Mapping[str, Any]] | None = None,
 ) -> TargetRegistry:
-    """Transport BUS05ai fare receipts to the calibration year with BUS0415.
+    """Transport BUS05ai fare receipts to the reference period with BUS0415.
 
-    Applies only to ``dft_local_bus`` fare-receipt references that carry the
-    generator's uprating hold (fact period earlier than the target period).
-    Net support rows pass through untouched. The factor is declared on the
-    spec's metadata with the index concept, the series geography, the months
-    used, their source record ids and the pre-alignment value, so the run
-    manifest and receipts show the publisher facts the transport stands on.
+    Applies to references that declare ``uprating_index`` equal to the BUS0415
+    concept; any other reference passes through untouched. The generator and
+    the runtime both call this on the compiled registry, so the committed
+    membership, the parity receipts and the run manifest carry one value. The
+    factor is declared on the spec's metadata with the index concept, the
+    series geography, the months used, their source record ids and the
+    pre-alignment value.
     """
 
-    if reference.family != "dft_local_bus":
+    if reference.uprating_index != UK_DFT_BUS_FARES_INDEX_CONCEPT:
         return registry
     if str(reference.ledger_selector.get("source_concept") or "") != (
         UK_DFT_BUS_FARE_RECEIPTS_CONCEPT
     ):
-        return registry
-    if reference.uprating_from_period is None or reference.uprating_to_period is None:
-        return registry
-    fact_list = list(facts)
+        raise ValueError(
+            f"UK reference {reference.name!r} declares the BUS0415 fares index on "
+            f"concept {reference.ledger_selector.get('source_concept')!r}; the "
+            f"index transports {UK_DFT_BUS_FARE_RECEIPTS_CONCEPT!r} only."
+        )
+    if reference.period is None or not str(reference.period).isdigit():
+        raise ValueError(
+            f"UK reference {reference.name!r}: BUS0415 alignment needs a "
+            "calendar-year reference period."
+        )
+    target_period = int(str(reference.period))
+    rows = list(index_rows) if index_rows is not None else _vendored_fares_index_rows()
     aligned = []
     for spec in registry.specs:
         geography_id = str(spec.metadata.get("ledger_geography_id") or "")
@@ -399,8 +430,8 @@ def align_dft_bus_fare_receipts_to_period(
             )
         start_year = int(fact_period)
         from_months = _quarter_end_months(start_year, 4)
-        to_months = _quarter_end_months(int(target_period), 1)
-        series = _fares_index_series(fact_list, geography_id)
+        to_months = _quarter_end_months(target_period, 1)
+        series = _fares_index_series(rows, geography_id)
         missing = [m for m in (*from_months, *to_months) if m not in series]
         if missing:
             raise ValueError(
@@ -419,6 +450,7 @@ def align_dft_bus_fare_receipts_to_period(
             **spec.metadata,
             "uprating_index": UK_DFT_BUS_FARES_INDEX_CONCEPT,
             "uprating_index_basis": UK_DFT_BUS_FARE_INDEX_BASIS,
+            "uprating_index_resource": UK_DFT_BUS_FARES_INDEX_RESOURCE,
             "uprating_index_series_geography_id": geography_id,
             "uprating_index_from_months": ",".join(from_months),
             "uprating_index_to_months": ",".join(to_months),
@@ -431,6 +463,31 @@ def align_dft_bus_fare_receipts_to_period(
         }
         aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
     return TargetRegistry(aligned, country="uk")
+
+
+#: Every ``uprating_index`` a UK reference may declare, with the applier the
+#: generator and the runtime share. A declared index outside this table is a
+#: contract error, refused before compilation.
+UK_UPRATING_APPLIERS: Mapping[str, Any] = {
+    UK_DFT_BUS_FARES_INDEX_CONCEPT: align_dft_bus_fare_receipts_to_period,
+}
+
+
+def apply_declared_uk_uprating(
+    reference: LedgerTargetReference, registry: TargetRegistry
+) -> TargetRegistry:
+    """Apply the reference's declared ``uprating_index`` (identity when none)."""
+
+    if reference.uprating_index is None:
+        return registry
+    applier = UK_UPRATING_APPLIERS.get(str(reference.uprating_index))
+    if applier is None:
+        raise ValueError(
+            f"UK reference {reference.name!r} declares uprating_index "
+            f"{reference.uprating_index!r}, which no UK applier implements "
+            f"(known: {sorted(UK_UPRATING_APPLIERS)})."
+        )
+    return applier(reference, registry)
 
 
 #: National references may pin a region only from the published English

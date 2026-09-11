@@ -389,15 +389,7 @@ def test_target_fit_out_of_force_exclusion_fails_even_without_a_breach() -> None
 def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     register = uk_default_target_fit_reviewed_exclusions()
 
-    # microcosm#890 PR-T: the household-incidence fuel duty row binds before the
-    # spine half lands; the entry is dated to the PR-S window and names the
-    # baseline run it was measured on.
-    assert set(register) == {"obr.fuel_duties_cars@2025"}
-    entry = register["obr.fuel_duties_cars@2025"]
-    assert str(entry.approved_on) == "2026-09-11"
-    assert str(entry.expires_on) == "2026-10-11"
-    assert "PR-S" in entry.reason
-    assert "20260911T113749Z-0c7e79e2" in entry.adjudication
+    assert register == {}
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
@@ -422,13 +414,13 @@ def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
             **empty_tail,
         },
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 9, 15),
+        now=date(2026, 9, 9),
     )
 
     assert not fit.passed
     assert fit.details["stale_exclusions"] == []
     assert fit.details["failing_targets"] == empty_tail
-    assert set(fit.details["reviewed_exclusions"]) <= {"obr.fuel_duties_cars@2025"}
+    assert fit.details["reviewed_exclusions"] == {}
 
 
 @pytest.mark.parametrize("name", sorted(_RESTORED_TARGET_FIT_ERRORS))
@@ -444,16 +436,11 @@ def test_restored_fit_checks_apply_if_a_later_run_breaches_again(
     fit = uk_target_fit_gate(
         {name: relative_error},
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 9, 15),
+        now=date(2026, 9, 9),
     )
 
     assert fit.passed is passes
-    # The one live entry (obr.fuel_duties_cars, #890) never covers these rows:
-    # it is recorded as reviewed or dormant, and the breach stays a failure.
-    recorded = set(fit.details["reviewed_exclusions"]) | set(
-        fit.details.get("dormant_exclusions", ())
-    )
-    assert recorded <= {"obr.fuel_duties_cars@2025"}
+    assert fit.details["reviewed_exclusions"] == {}
     assert fit.details["failing_targets"] == ({} if passes else {name: relative_error})
 
 

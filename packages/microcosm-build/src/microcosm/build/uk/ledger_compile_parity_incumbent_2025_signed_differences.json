@@ -2102,7 +2102,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 15900000000.0,
+   "ledger_value": 14400000000.0,
    "name": "obr.fuel_duties_cars",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."

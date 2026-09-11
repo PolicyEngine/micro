@@ -8,12 +8,12 @@ import pytest
 
 
 def test_national_feed_records_the_complete_merged_source_artifact():
-    from microcosm.build.uk_runtime.national_chronicle_feed import (
-        load_uk_national_chronicle_feed,
+    from microcosm.build.uk_runtime.chronicle_feed import (
+        load_uk_chronicle_feed,
     )
 
-    pin = load_uk_national_chronicle_feed()
-    resource = files("microcosm.build.uk").joinpath("national_chronicle_feed.json")
+    pin = load_uk_chronicle_feed()
+    resource = files("microcosm.build.uk").joinpath("chronicle_feed.json")
     raw = resource.read_bytes()
     assert pin.source_commit == "c6f9361492056b9fab7b8535a2be77eb2b6c93bb"
     assert pin.source_repo == "PolicyEngine/chronicle"
@@ -47,13 +47,13 @@ def test_national_feed_records_the_complete_merged_source_artifact():
 def test_national_feed_rejects_malformed_identity(
     monkeypatch, tmp_path, field, bad_value
 ):
-    from microcosm.build.uk_runtime import national_chronicle_feed
+    from microcosm.build.uk_runtime import chronicle_feed
 
-    raw = json.loads(national_chronicle_feed._feed_path().read_text())
+    raw = json.loads(chronicle_feed._feed_path().read_text())
     raw[field] = bad_value
     path = tmp_path / "pin.json"
     path.write_text(json.dumps(raw))
-    monkeypatch.setattr(national_chronicle_feed, "_feed_path", lambda: path)
+    monkeypatch.setattr(chronicle_feed, "_feed_path", lambda: path)
 
     with pytest.raises(ValueError, match=field):
-        national_chronicle_feed.load_uk_national_chronicle_feed()
+        chronicle_feed.load_uk_chronicle_feed()

@@ -43,8 +43,8 @@
     },
     {
       "target_id": "dft.bus_net_support.uk",
-      "reason_id": "covered_by_country_legs",
-      "rationale": "BUS05i publishes no UK total; net support is now bound as four country legs (DfT England, Scottish Transport Statistics, StatsWales outturn, NITHC accounts), so a UK row would double-bind them and no England-to-UK uplift is declared.",
+      "reason_id": "replaced_by_heterogeneous_country_legs",
+      "rationale": "BUS05i publishes no UK total and no England-to-UK uplift is declared. Net support binds instead as four country legs whose scopes differ: DfT BUS05bi net support (England, operators' view), Scottish Transport Statistics all government support (Scotland), StatsWales revenue outturn gross expenditure on concessionary fares and support to operators through local authorities only (Wales: no operator-side series and no Welsh Government grants outside the outturn), and the NITHC accounts' Public Service Obligation plus concessionary compensation as one bus-plus-rail cell excluding GBP 53.2m of other revenue funding (Northern Ireland). The legs are bound on their own terms; they are not a UK total under another name.",
       "tracking": "microcosm#890",
       "approved_by": "juaristi22",
       "approved_on": "2026-09-11"

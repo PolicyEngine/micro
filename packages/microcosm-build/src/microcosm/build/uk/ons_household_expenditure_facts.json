@@ -4,8 +4,8 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "ons_household_expenditure_facts.json",
   "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual, for COICOP 04.5 electricity, gas and other fuels, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, 2020 to 2025. Consumed by the domestic energy spend target and the motor-fuel spend diagnostic.",
-  "consumers": [
-    "uk_runtime.ledger_targets",
+  "consumers": [],
+  "planned_consumers": [
     "uk_aggregate_admin"
   ],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",

@@ -4,7 +4,8 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "ofgem_price_cap_facts.json",
   "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. Consumed by the LCFS energy pricing (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge; VAT added from the engine parameter).",
-  "consumers": [
+  "consumers": [],
+  "planned_consumers": [
     "lcfs_consumption",
     "uk_aggregate_admin"
   ],

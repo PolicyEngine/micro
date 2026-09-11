@@ -34,10 +34,10 @@ from microcosm.build.target_reference_authoring import (
     TargetReferenceAuthoringConfig,
     author_target_references,
 )
-from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
-from microcosm.build.uk_runtime.national_chronicle_feed import (
-    load_uk_national_chronicle_feed,
+from microcosm.build.uk_runtime.chronicle_feed import (
+    load_uk_chronicle_feed,
 )
+from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from tools.build_uk_ledger_compile_parity_signed_differences import (
@@ -84,7 +84,6 @@ FIXTURE_FEED_ROWS = (
 )
 
 STABLE_UK_FACT_FEED_NAME = ".codex-work/consumer_facts_uk.jsonl"
-STABLE_UK_LOCAL_FACT_FEED_NAME = ".codex-work/consumer_facts_uk_local.jsonl"
 
 
 def _load_uk_resource(name: str) -> dict:
@@ -102,51 +101,35 @@ def test_committed_surfaces_regenerate_from_pinned_feed(
     tmp_path: Path, surface: str
 ) -> None:
     root = Path(__file__).resolve().parents[3]
-    # Local references keep their independently reviewed historical input.
-    # Never fall back to the configured national feed for the local surface:
-    # the two surfaces carry independently reviewed pins, so each has its own
-    # default file under .codex-work.
-    environment_key = (
-        "CHRONICLE_UK_FACTS" if surface == "national" else "CHRONICLE_UK_LOCAL_FACTS"
-    )
-    configured = os.environ.get(environment_key)
-    stable_name = (
-        STABLE_UK_FACT_FEED_NAME
-        if surface == "national"
-        else STABLE_UK_LOCAL_FACT_FEED_NAME
-    )
-    feed = Path(configured) if configured else root / stable_name
+    # Both surfaces regenerate from the one reviewed pin (uk/chronicle_feed.json);
+    # the artifact location is the same untracked default or CHRONICLE_UK_FACTS.
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
+    feed = Path(configured) if configured else root / STABLE_UK_FACT_FEED_NAME
     if not feed.exists():
-        pytest.skip(f"pinned UK Chronicle {surface} consumer feed is not present")
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
 
     if feed.is_dir():
         artifact_path = feed
     else:
-        default_manifest = root / (
-            ".codex-work/consumer_facts_uk_manifest.json"
-            if surface == "national"
-            else ".codex-work/consumer_facts_uk_local_manifest.json"
-        )
+        default_manifest = root / ".codex-work/consumer_facts_uk_manifest.json"
         manifest = (
             default_manifest if not configured else feed.with_name("manifest.json")
         )
         if not manifest.is_file():
-            pytest.skip(
-                f"pinned UK Chronicle {surface} consumer manifest is not present"
-            )
+            pytest.skip("pinned UK Chronicle consumer manifest is not present")
         artifact_path = tmp_path / "consumer-artifact"
         artifact_path.mkdir()
         (artifact_path / "consumer_facts.jsonl").symlink_to(feed.resolve())
         (artifact_path / "manifest.json").symlink_to(manifest.resolve())
 
-    if surface == "national":
-        pin = load_uk_national_chronicle_feed()
-        facts_sha256, manifest_sha256 = pin.facts_sha256, pin.manifest_sha256
-        expected_rows = pin.fact_row_count
-    else:
-        facts_sha256 = _LEDGER_FACT_FEED_PIN["facts_sha256"]
-        manifest_sha256 = _LEDGER_FACT_FEED_PIN["manifest_sha256"]
-        expected_rows = int(_LEDGER_FACT_FEED_PIN["fact_row_count"])
+    pin = load_uk_chronicle_feed()
+    facts_sha256, manifest_sha256 = pin.facts_sha256, pin.manifest_sha256
+    expected_rows = pin.fact_row_count
+    if surface == "local":
+        # The local census restates the same pin; regeneration must agree.
+        assert _LEDGER_FACT_FEED_PIN["facts_sha256"] == facts_sha256
+        assert _LEDGER_FACT_FEED_PIN["manifest_sha256"] == manifest_sha256
+        assert int(_LEDGER_FACT_FEED_PIN["fact_row_count"]) == expected_rows
     artifact = load_ledger_consumer_artifact(
         artifact_path,
         expected_facts_sha256=facts_sha256,
@@ -167,7 +150,7 @@ def test_committed_surfaces_regenerate_from_pinned_feed(
     membership_name = f"{prefix}target_reference_membership.json"
     generator = f"generate_uk_{prefix}target_references.py"
     # This stable provenance label is independent of the artifact location;
-    # the facts and manifest above must still match the surface-specific pin.
+    # the facts and manifest above must still match the shared pin.
     source_fact_feed = _load_uk_resource(membership_name)["source_fact_feed"]
     arguments = [
         sys.executable,
@@ -342,15 +325,35 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         }:
             facts.append(fact)
 
-    registry = compile_ledger_target_references(facts, references, country="uk")
-    specs = {spec.name: spec for spec in registry.specs}
+    from microcosm.build.uk_runtime.ledger_targets import apply_declared_uk_uprating
+
+    # Compile through the UK path: the generic compiler resolves the facts and
+    # records each reference's declared uprating_index; the UK applier then
+    # transports the two fare-receipt rows with BUS0415, so the values below
+    # are the ones the membership, the parity receipts and the runtime carry.
+    specs = {}
+    for reference in references:
+        registry = compile_ledger_target_references(facts, [reference], country="uk")
+        (spec,) = apply_declared_uk_uprating(reference, registry).specs
+        specs[spec.name] = spec
+    membership = _load_uk_resource("target_reference_membership.json")
+    for name in ("dft.bus_fare_receipts.england", "dft.bus_fare_receipts.london"):
+        assert specs[name].metadata["uprating_index"] == "dft.local_bus_fares_index"
+        (candidate,) = membership["targets"][name]["candidates"]
+        assert specs[name].value == pytest.approx(candidate["resolved_value"])
+    assert (
+        specs["dft.bus_fare_receipts.england"].metadata["ledger_value_before_alignment"]
+        == "3417388656.43538"
+    )
     assert {name: spec.value for name, spec in specs.items()} == {
         "hmrc.tfc.government_top_up": 599_800_000.0,
         "hmrc.tfc.children_with_used_accounts": 1_151_515.0,
         "dfe.funded_childcare.working_parent_children_2_to_4": 621_482.0,
         "dfe.funded_childcare.early_learning_2_year_olds": 95_031.0,
         "dfe.funded_childcare.universal_only_children": 396_965.0,
-        "dft.bus_fare_receipts.england": 3_417_388_656.43538,
+        "dft.bus_fare_receipts.england": pytest.approx(
+            3_417_388_656.43538 * 204.125 / 193.125
+        ),
         "dft.bus_net_support.england": 3_024_904_320.8399997,
         "dft.bus_fare_receipts.london": 1_347_434_943.01459,
         "dft.bus_net_support.london": 1_130_214_000.0,
@@ -1159,7 +1162,7 @@ def test_current_national_compile_parity_regenerates_and_passes_with_pinned_feed
     path = Path(configured)
     if path.is_file():
         path = path.parent
-    pin = load_uk_national_chronicle_feed()
+    pin = load_uk_chronicle_feed()
     artifact = load_ledger_consumer_artifact(
         path,
         expected_facts_sha256=pin.facts_sha256,

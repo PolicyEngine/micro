@@ -13,7 +13,7 @@ import math
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from microcosm.build.ledger_targets import (  # pyright: ignore[reportPrivateUsage]
     LedgerHierarchyMetadataError,
@@ -26,7 +26,18 @@ from microcosm.build.ledger_targets import (  # pyright: ignore[reportPrivateUsa
     compile_ledger_target_references,
 )
 
+if TYPE_CHECKING:
+    from microcosm.calibrate import TargetRegistry
+
 FanoutName = Callable[[Mapping[str, Any], Mapping[str, Any]], str | None]
+#: Country-supplied application of a declared ``uprating_index``: takes the
+#: compiled reference and its registry, returns the registry with the value
+#: transported to the reference period and the factor declared on the spec
+#: metadata. The authoring records the applied value in the membership so the
+#: committed surface, the parity receipts and the runtime carry one value.
+UpratingApplier = Callable[
+    ["LedgerTargetReference", "TargetRegistry"], "TargetRegistry"
+]
 GeographyPin = Mapping[str, str]
 
 
@@ -62,6 +73,7 @@ class TargetReferenceAuthoringConfig:
     signed_exclusions_by_target_id: Mapping[str, str] = field(default_factory=dict)
     binding_vocabulary: frozenset[str] = frozenset()
     source_fact_feed: str = ""
+    uprating_appliers: Mapping[str, UpratingApplier] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -247,12 +259,23 @@ def author_target_references(
                 spec = registry.specs[0]
                 resolved_period = spec.metadata.get("ledger_fact_period", "")
                 _apply_uprating_hold(row, resolved_period, config.target_period)
+                uprating: dict[str, str] = {}
+                if row.get("uprating_index") is not None:
+                    registry = _apply_declared_uprating(row, registry, config)
+                    applied = registry.specs[0]
+                    uprating = {
+                        "index": str(row["uprating_index"]),
+                        "factor": str(applied.metadata["uprating_factor"]),
+                        "value_before_uprating": str(spec.value),
+                    }
+                    spec = applied
                 if "uprating_from_period" in row:
                     uprating_holds.append(
                         {
                             "name": row["name"],
                             "from": str(row["uprating_from_period"]),
                             "to": str(row["uprating_to_period"]),
+                            **uprating,
                         }
                     )
                 if row.get("value_operation") == "sum":
@@ -269,6 +292,8 @@ def author_target_references(
                         ),
                     }
                 )
+                if uprating:
+                    entry["uprating"] = uprating
             candidate_entries.append(entry)
         target_entries[target_id] = {
             "status": _target_status(candidate_entries),
@@ -953,6 +978,9 @@ def _reference_row(
     period_match_policy = target.get("period_match_policy")
     if period_match_policy is not None:
         row["period_match_policy"] = period_match_policy
+    uprating_index = target.get("uprating_index")
+    if uprating_index is not None:
+        row["uprating_index"] = str(uprating_index)
     value_operation = config.value_operation_by_target_id.get(target_id)
     if value_operation is None and target_id in config.sum_target_ids:
         value_operation = "sum"
@@ -1041,6 +1069,35 @@ def _target_status(candidate_entries: list[dict[str, Any]]) -> str:
         return "partially_active"
     statuses = sorted({entry["status"] for entry in candidate_entries})
     return statuses[0] if len(statuses) == 1 else "multiple_deferrals"
+
+
+def _apply_declared_uprating(
+    row: Mapping[str, Any],
+    registry: TargetRegistry,
+    config: TargetReferenceAuthoringConfig,
+) -> TargetRegistry:
+    """Apply the country's applier for the reference's declared ``uprating_index``.
+
+    A declared index without an applier fails closed: the surface would
+    otherwise record a value the runtime cannot reproduce.
+    """
+
+    index = str(row["uprating_index"])
+    applier = config.uprating_appliers.get(index)
+    if applier is None:
+        raise ValueError(
+            f"Reference {row['name']!r} declares uprating_index {index!r}, but the "
+            "country supplies no applier for it."
+        )
+    applied = applier(LedgerTargetReference(**row), registry)
+    if len(applied.specs) != len(registry.specs) or any(
+        "uprating_factor" not in spec.metadata for spec in applied.specs
+    ):
+        raise ValueError(
+            f"Uprating applier for {index!r} must return the same specs with "
+            "uprating_factor declared on each."
+        )
+    return applied
 
 
 def _apply_uprating_hold(

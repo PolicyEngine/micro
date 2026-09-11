@@ -4,7 +4,8 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "road_fuel_anchors.json",
   "purpose": "HMRC Hydrocarbon Oils Bulletin petrol and diesel quantities released for consumption by fiscal year; DESNZ annual average ULSP and ULSD pump prices; OBR fuel duty receipts by vehicle category; ONS mid-year UK population totals. Consumed by the LCFS donor litre-proxy uprating and the household-incidence fuel diagnostics.",
-  "consumers": [
+  "consumers": [],
+  "planned_consumers": [
     "lcfs_consumption",
     "uk_aggregate_admin"
   ],

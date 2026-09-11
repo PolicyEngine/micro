@@ -12592,6 +12592,7 @@
           "value_rule": "uk.transport.bus_fare.amount"
         }
       },
+      "uprating_index": "dft.local_bus_fares_index",
       "ledger_selector": {
         "source_name": "dft",
         "source_concept": "dft.local_bus_passenger_fare_receipts",
@@ -12676,6 +12677,7 @@
           "value_rule": "uk.transport.bus_fare.amount"
         }
       },
+      "uprating_index": "dft.local_bus_fares_index",
       "ledger_selector": {
         "source_name": "dft",
         "source_concept": "dft.local_bus_passenger_fare_receipts",
@@ -12759,6 +12761,7 @@
           "value_rule": "uk.transport.bus_fare.amount"
         }
       },
+      "uprating_index": "dft.local_bus_fares_index",
       "ledger_selector": {
         "source_name": "dft",
         "source_concept": "dft.local_bus_passenger_fare_receipts",
@@ -12835,6 +12838,7 @@
           "value_rule": "uk.transport.bus_fare.amount"
         }
       },
+      "uprating_index": "dft.local_bus_fares_index",
       "ledger_selector": {
         "source_name": "dft",
         "source_concept": "dft.local_bus_passenger_fare_receipts",
@@ -12891,7 +12895,7 @@
         "policyengine": {
           "metric_name": "obr/fuel_duties_cars",
           "value_variable": "fuel_duty",
-          "notes": "OBR fuel duty receipts from cars (supplementary release by vehicle type), the household-incidence scope of the all-road-users obr.fuel_duties fact that stays signed out; the engine's fuel_duty is cars only (#890 E1, ruling 2026-09-10)."
+          "notes": "OBR fuel duty receipts from cars (supplementary release by vehicle type), the household-incidence scope of the all-road-users obr.fuel_duties fact that stays signed out; the engine's fuel_duty is cars only (#890 E1, ruling 2026-09-10). Bound at FY2024-25 (OBR label 2024), the base data's fiscal year, held to the calibration period like the HMRC CGT rows: the vehicle-type release is a single April 2024 vintage and its FY2025-26 figure is a projection the pipeline does not adopt (ruling 2026-09-11: fiscal-year sources bind FY2024-25 or CY2025, never a later fiscal year)."
         },
         "axiom": {
           "metric_name": "obr/fuel_duties_cars",
@@ -12904,10 +12908,12 @@
         "source_concept": "obr.fuel_duty.receipts",
         "entity_name": "government",
         "period_type": "fiscal_year",
+        "period_value": 2024,
         "dimension_values": {
           "vehicle_category": "cars"
         }
       },
+      "selector_note": "period_value 2024 is the OBR April-start label for FY2024-25, the FRS 2024-25 base year; the fact is the April 2024 vintage's FY2024-25 figure (a source_projection at that vintage, hence allow_source_projection), GBP 14.4bn. The same vintage's all-vehicle total for FY2024-25 is GBP 24.7bn against the March 2026 EFO outturn of GBP 24.359bn (obr.fuel_duties), a 1.4% overshoot, which bounds how far the cars figure is from an outturn the OBR does not publish by vehicle type.",
       "assertion_policy": "allow_source_projection"
     },
     {

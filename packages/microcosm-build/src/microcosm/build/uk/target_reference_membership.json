@@ -2712,7 +2712,10 @@
     {
       "name": "dft.bus_fare_receipts.england",
       "from": "2024",
-      "to": "2025"
+      "to": "2025",
+      "index": "dft.local_bus_fares_index",
+      "factor": "1.05695792880259",
+      "value_before_uprating": "3417388656.43538"
     },
     {
       "name": "dft.bus_net_support.england",
@@ -2722,10 +2725,18 @@
     {
       "name": "dft.bus_fare_receipts.london",
       "from": "2024",
-      "to": "2025"
+      "to": "2025",
+      "index": "dft.local_bus_fares_index",
+      "factor": "1",
+      "value_before_uprating": "1347434943.01459"
     },
     {
       "name": "dft.bus_net_support.london",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "obr.fuel_duties_cars",
       "from": "2024",
       "to": "2025"
     },
@@ -7940,9 +7951,14 @@
           "matched_fact_count_overall": 3,
           "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 3417388656.43538,
+          "resolved_value": 3612036036.2194014,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2ece7c3d283b6de43b30389f"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2ece7c3d283b6de43b30389f",
+          "uprating": {
+            "index": "dft.local_bus_fares_index",
+            "factor": "1.05695792880259",
+            "value_before_uprating": "3417388656.43538"
+          }
         }
       ]
     },
@@ -7972,7 +7988,12 @@
           "resolved_period": 2025,
           "resolved_value": 1347434943.01459,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_33611c64d2048fe660501802"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_33611c64d2048fe660501802",
+          "uprating": {
+            "index": "dft.local_bus_fares_index",
+            "factor": "1",
+            "value_before_uprating": "1347434943.01459"
+          }
         }
       ]
     },
@@ -8035,7 +8056,7 @@
           "status": "signed_excluded",
           "matched_fact_count_overall": 0,
           "matched_fact_count_at_or_before_period": 0,
-          "signed_rationale": "BUS05i publishes no UK total; net support is now bound as four country legs (DfT England, Scottish Transport Statistics, StatsWales outturn, NITHC accounts), so a UK row would double-bind them and no England-to-UK uplift is declared."
+          "signed_rationale": "BUS05i publishes no UK total and no England-to-UK uplift is declared. Net support binds instead as four country legs whose scopes differ: DfT BUS05bi net support (England, operators' view), Scottish Transport Statistics all government support (Scotland), StatsWales revenue outturn gross expenditure on concessionary fares and support to operators through local authorities only (Wales: no operator-side series and no Welsh Government grants outside the outturn), and the NITHC accounts' Public Service Obligation plus concessionary compensation as one bus-plus-rail cell excluding GBP 53.2m of other revenue funding (Northern Ireland). The legs are bound on their own terms; they are not a UK total under another name."
         }
       ]
     },
@@ -8045,12 +8066,12 @@
         {
           "name": "obr.fuel_duties_cars",
           "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 15900000000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e67ab63ef45a3912ba9524e2"
+          "resolved_value": 14400000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_de6554fe8ab7b481035a432a"
         }
       ]
     },

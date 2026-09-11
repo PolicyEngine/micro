@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "uk",
-  "scope": "national_calibration",
+  "scope": "uk_calibration",
   "source_repo": "PolicyEngine/chronicle",
   "source_commit": "c6f9361492056b9fab7b8535a2be77eb2b6c93bb",
   "build": "build-bundle --suite uk -> build-consumer-artifact",

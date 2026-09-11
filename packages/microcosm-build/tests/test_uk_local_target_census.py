@@ -15,6 +15,7 @@ import json
 import pytest
 
 from microcosm.build.uk_runtime import metric_names
+from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
 from microcosm.build.uk_runtime.hmrc_income import HMRC_SPI_TARGET_RECORD_COUNT
 from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
 from microcosm.build.uk_runtime.local_target_census import (
@@ -100,11 +101,14 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
             SOURCE_STATUS_SIGNED_DEFERRED,
         }
         if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:
+            # One UK Chronicle pin governs both grains (uk/chronicle_feed.json);
+            # the census restates it rather than carrying its own digest.
             pin = source["ledger_fact_pin"]
-            assert pin["facts_sha256"] == (
-                "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
-            )
-            assert pin["source_commit"] == "ec7169b"
+            shared = load_uk_chronicle_feed()
+            assert pin["facts_sha256"] == shared.facts_sha256
+            assert pin["manifest_sha256"] == shared.manifest_sha256
+            assert pin["fact_row_count"] == shared.fact_row_count
+            assert pin["source_commit"] == shared.source_commit
             assert pin["source_repo"] == "PolicyEngine/chronicle"
         if source["status"] == SOURCE_STATUS_SIGNED_DEFERRED:
             assert source["signed_reason_id"], source["source_id"]

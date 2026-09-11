@@ -1,11 +1,11 @@
 {
- "compiled_count": 239,
+ "compiled_count": 238,
  "counts_by_kind": {
   "calibration_drift": 12,
   "fixture_only": 125,
-  "ledger_only": 215
+  "ledger_only": 214
  },
- "difference_count": 352,
+ "difference_count": 351,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -2013,13 +2013,6 @@
    "kind": "ledger_only",
    "ledger_value": 99200000.0,
    "name": "nithc.public_transport_support",
-   "period": 2023,
-   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 14200000000.0,
-   "name": "obr.fuel_duties_cars",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

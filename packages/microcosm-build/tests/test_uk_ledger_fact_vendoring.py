@@ -13,6 +13,9 @@ from pathlib import Path
 import pytest
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.uk_runtime.chronicle_feed import (
+    load_uk_chronicle_feed,
+)
 from microcosm.build.uk_runtime.ledger_fact_vendoring import (
     VENDOR_SELECTIONS_RESOURCE,
     VENDORED_RESOURCE_KIND,
@@ -23,9 +26,6 @@ from microcosm.build.uk_runtime.ledger_fact_vendoring import (
     validate_vendor_selections,
     vendor_resource,
     vendor_row,
-)
-from microcosm.build.uk_runtime.national_chronicle_feed import (
-    load_uk_national_chronicle_feed,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -66,7 +66,7 @@ def _pinned_feed(tmp_path: Path):
         artifact_path.mkdir()
         (artifact_path / "consumer_facts.jsonl").symlink_to(feed.resolve())
         (artifact_path / "manifest.json").symlink_to(manifest.resolve())
-    pin = load_uk_national_chronicle_feed()
+    pin = load_uk_chronicle_feed()
     return artifact_path, load_ledger_consumer_artifact(
         artifact_path,
         expected_facts_sha256=pin.facts_sha256,
@@ -98,6 +98,31 @@ def test_selection_register_refuses_bad_shapes(mutation) -> None:
         validate_vendor_selections(register)
 
 
+def test_register_consumers_are_modules_that_read_the_resource_today() -> None:
+    """`consumers` is a statement of fact, `planned_consumers` a statement of intent.
+
+    Every present consumer must be an importable microcosm.build module whose
+    source names the resource file; every resource without a present reader
+    must name at least one planned reader (the #890 spine half).
+    """
+
+    import importlib
+    import inspect
+
+    register = load_vendor_selections()
+    present = 0
+    for entry in register["resources"]:
+        assert entry["consumers"] or entry["planned_consumers"], entry["resource"]
+        for consumer in entry["consumers"]:
+            module = importlib.import_module(f"microcosm.build.{consumer}")
+            assert entry["resource"] in inspect.getsource(module), (
+                entry["resource"],
+                consumer,
+            )
+            present += 1
+    assert present >= 1
+
+
 def test_selection_register_refuses_unknown_selector_fields() -> None:
     register = json.loads(json.dumps(load_vendor_selections()))
     register["resources"][0]["selections"][0]["selector"]["not_a_field"] = "x"
@@ -109,11 +134,13 @@ def test_committed_vendored_resources_carry_the_national_pin_and_declared_counts
     None
 ):
     register = load_vendor_selections()
-    pin = load_uk_national_chronicle_feed()
+    pin = load_uk_chronicle_feed()
     for entry in register["resources"]:
         payload = load_vendored_resource(entry["resource"])
         assert payload["kind"] == VENDORED_RESOURCE_KIND
         assert payload["source_fact_feed"] == feed_identity(pin)
+        assert payload["consumers"] == entry["consumers"]
+        assert payload["planned_consumers"] == entry["planned_consumers"]
         by_label = {row["label"]: row for row in payload["selections"]}
         assert set(by_label) == {row["label"] for row in entry["selections"]}
         for selection in entry["selections"]:
@@ -189,7 +216,8 @@ def test_vendor_resource_refuses_count_drift() -> None:
     entry = {
         "resource": "probe.json",
         "purpose": "p",
-        "consumers": ["c"],
+        "consumers": [],
+        "planned_consumers": ["c"],
         "selections": [
             {
                 "label": "s",
@@ -198,7 +226,7 @@ def test_vendor_resource_refuses_count_drift() -> None:
             }
         ],
     }
-    pin = load_uk_national_chronicle_feed()
+    pin = load_uk_chronicle_feed()
     with pytest.raises(ValueError, match="matched 1 facts, expected 2"):
         vendor_resource(entry, [fact], pin=pin)
     relaxed = vendor_resource(entry, [fact], pin=pin, strict_counts=False)

@@ -65,12 +65,40 @@ the mean of the four inside the receipts' April-to-March fiscal year, per series
   → 3,612,036,036.22.
 - London `E12000007`: 196.1 flat in both windows; factor 1.0.
 - Net support rows are never aligned (#789 scope item 5).
+- Round 2 (Vahid's review of PR #904, should-fix 1 and 2): the alignment is a declaration on the
+  reference, not a runtime post-pass keyed on a family and concept string. The four
+  `dft.bus_fare_receipts.*` contract rows declare `uprating_index: dft.local_bus_fares_index`;
+  the generator carries it onto the reference, applies the UK applier while authoring, and the
+  membership records the applied value with `index`, `factor` and `value_before_uprating` on
+  the hold (England 3,417,388,656.44 → 3,612,036,036.22; London ×1). The runtime applies the
+  same applier keyed on the declaration, so membership, compile-parity receipts and the run
+  manifest carry one value; an index no UK applier implements refuses the compile. The BUS0415
+  series is read from the vendored `dft_bus_value_anchors.json` (refused if its feed identity
+  differs from `uk/chronicle_feed.json`), so the production factors reproduce in CI without the
+  licensed feed (`test_bus0415_alignment_from_the_vendored_series`), and the vendor register's
+  `consumers` field is now a statement of fact (that resource has one present reader; every
+  other resource lists its readers under `planned_consumers` until PR-S).
+- Production-2023 parity receipt: the same alignment at target period 2023 moves England fares
+  3,278,976,692 → 3,258,254,371 (factor 0.99368) and gives the new London row 0.99769 of the
+  FY2023-24 fact; both factors are below one because the fare cap held index growth inside
+  calendar 2023 under the fiscal-year mean.
 
 ### Part E — new national targets (pinned facts, registry scope, unmapped declarations)
 
-- `obr.fuel_duties_cars`: OBR receipts by vehicle category, cars, FY2025 (projection, obr
-  family policy) GBP 15,900,000,000 on `fuel_duty`. `obr.fuel_duties` (all road users) signed
-  out; its #757 measure exclusion retired (register 51 → 50 entries).
+- `obr.fuel_duties_cars`: OBR receipts by vehicle category, cars, on `fuel_duty`. Round 1 bound
+  the FY2025-26 figure (GBP 15,900,000,000, label 2025); María's ruling of 2026-09-11 is that a
+  fiscal-year source binds FY2024-25 (the FRS 2024-25 base year) or CY2025, never a later
+  fiscal year, so round 2 pins `period_value: 2024` and binds GBP 14,400,000,000 held to 2025
+  (the same hold shape as the HMRC CGT rows). Every row of the vehicle-type release is the
+  April 2024 vintage (`april_2024`), so the FY2024-25 figure is that vintage's projection for
+  the base year; the OBR publishes no outturn by vehicle type. Bound on the vintage: its
+  all-vehicle FY2024-25 total is GBP 24.7bn against the March 2026 EFO outturn of GBP 24.359bn
+  (`obr.fuel_duties`, observation), a 1.4% overshoot. Note for the ruling: the rest of the
+  `obr` family (income tax, NI, VAT, benefits) still binds the FY2025-26 projection of the
+  latest EFO at period 2025 by the family's `allow_source_projection` policy inherited from
+  uk-data; that convention is untouched here and is flagged in the PR body for María.
+  `obr.fuel_duties` (all road users) signed out; its #757 measure exclusion retired (register
+  51 → 50 entries).
 - `orr.rail_government_support`: ORR 7270, FY2024 GBP 21,621,100,549 held to 2025, Great
   Britain (`region != NORTHERN_IRELAND`), on `rail_subsidy_spending`.
 - `ons.household_energy_expenditure`: ONS COICOP 04.5 CY2025 GBP 43,427,000,000 on
@@ -87,9 +115,7 @@ the mean of the four inside the receipts' April-to-March fiscal year, per series
 Surface after Part E: 244 contract targets (registry scope 210, profile scope 34), 424 active
 references, 7 deferred, 7 signed out; national runtime compile 424 / 0 unsupported.
 
-### Part F — baseline national calibration on the current spine
-
-(filled from `data/ukds/acceptance/890-fuel-bus/pr-t-baseline-spine-p/` once the run completes)
+### Part F — baseline national calibration on the current spine (round 1, FY2025-26 fuel)
 
 Runs on the newest gated national spine (`spine-p`, `data/ukds/acceptance/spine-p-355/spine-p.h5`,
 sha `ae83e307…`, FRS 2024-25, stamped 2024), 1,500 epochs, `family_equal`, code `3a135c5f`:
@@ -127,5 +153,37 @@ weights against GBP 112m published), because the ETB donor is a GB survey. Domes
 already sits on ONS 04.5 at design weights (GBP 43.5bn against 43.4bn), so that row costs
 nothing; PR-S repricing to FY2024-25 cap rates with standing charges will move the frame off it
 and is the point at which the NEED-versus-ONS level question is decided.
+
+### Part G — round-2 baseline on the same spine (FY2024-25 fuel, declared alignment)
+
+Same spine-p, epochs and weight rule as Part F; the surface differs only by the round-2 changes
+(cars fuel duty at FY2024-25 GBP 14.4bn instead of the FY2025-26 GBP 15.9bn projection; the
+BUS0415 alignment declared on the references, same values). Runs under
+`data/ukds/acceptance/890-fuel-bus/`:
+
+- `pr-t-round2-spine-p/` (`uk-frs-calibration-attempt-20260911T140557Z-abb86ff5`): the solve
+  reaches every new row inside the 25% bound, and the terminal battery then blocked on the
+  register itself: "stale reviewed target-fit exclusions are back inside the bound:
+  `obr.fuel_duties_cars@2025`". The dated exclusion of Part F was therefore retired in this PR
+  (register back to empty, as on main) rather than carried to PR-S.
+- `pr-t-round2b-spine-p/` (`uk-frs-calibration-attempt-20260911T141216Z-504ea8bc`): identical solve with the register empty;
+  battery passes with no failed gate (staging H5 written; not a release candidate, as in Part F).
+
+Fit (initial → final relative error), loss 0.01123, 95.45% within 10%, ESS 10,528 (Part F:
+0.01154, 96.0%, 10,461), 374 targets solved, 0 rows outside 25%:
+
+- bus fares England −46.3% → +0.2%; London −72.4% → +0.2%; support England −28.8% → −0.0%,
+  London −72.5% → +0.1%
+- `obr.fuel_duties_cars` −41.0% → −16.7% (Part F against 15.9bn: −46.6% → −25.6%); the
+  frame's calibrated cars fuel duty is GBP 12.0bn either way (12,002m here, 11,830m in Part F),
+  so the change is the target, not the frame; the remaining −16.7% is the diary under-capture
+  and has-fuel zeroing PR-S removes (A, U)
+- `orr.rail_government_support` −71.8% → +0.0%
+- `ons.household_energy_expenditure` +0.2% → +0.0%
+- Scotland fares −63.0% → −0.2%; Scotland support −54.5% → −0.0%; Wales support −9.9% →
+  +0.4%; NI fares −65.3% → +0.1%; NI public transport support +65.3% → +0.0%
+
+The weight-stretch anatomy of Part F is unchanged in kind (the same rows close by stretch, the
+rail row by ×3.6) and is not re-measured here; PR-S is what changes it.
 
 ORR FY2024 for the rail ruling: table 7270 total government support GBP 21.62bn (bound); table 7271 all sources GBP 11.86bn, of which Department for Transport GBP 9.47bn.

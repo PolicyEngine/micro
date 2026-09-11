@@ -28,8 +28,8 @@ from microcosm.build.ledger_targets import (
     selector_field_is_supported,
 )
 from microcosm.build.target_reference_authoring import _json_safe_ledger_id
-from microcosm.build.uk_runtime.national_chronicle_feed import (
-    UKNationalChronicleFeed,
+from microcosm.build.uk_runtime.chronicle_feed import (
+    UKChronicleFeed,
 )
 
 VENDOR_SELECTIONS_RESOURCE = "ledger_fact_vendor_selections.json"
@@ -38,7 +38,9 @@ VENDORED_RESOURCE_KIND = "uk_vendored_ledger_facts"
 VENDOR_TOOL = "tools/vendor_uk_ledger_facts.py"
 VENDOR_TOOL_VERSION = 1
 _SELECTION_KEYS = frozenset({"label", "selector", "expected_row_count"})
-_RESOURCE_KEYS = frozenset({"resource", "purpose", "consumers", "selections"})
+_RESOURCE_KEYS = frozenset(
+    {"resource", "purpose", "consumers", "planned_consumers", "selections"}
+)
 _ROW_ORDER_KEYS = (
     "concept",
     "geography_id",
@@ -114,13 +116,14 @@ def validate_vendor_selections(register: Mapping[str, Any]) -> None:
         seen.add(name)
         if not isinstance(entry["purpose"], str) or not entry["purpose"].strip():
             raise ValueError(f"Vendored resource {name!r} needs a non-blank purpose.")
-        consumers = entry["consumers"]
-        if not isinstance(consumers, list) or not all(
-            isinstance(item, str) and item for item in consumers
-        ):
-            raise ValueError(
-                f"Vendored resource {name!r} consumers must be a list of names."
-            )
+        for key in ("consumers", "planned_consumers"):
+            consumers = entry.get(key, [])
+            if not isinstance(consumers, list) or not all(
+                isinstance(item, str) and item for item in consumers
+            ):
+                raise ValueError(
+                    f"Vendored resource {name!r} {key} must be a list of names."
+                )
         selections = entry["selections"]
         if not isinstance(selections, list) or not selections:
             raise ValueError(
@@ -158,7 +161,7 @@ def validate_vendor_selections(register: Mapping[str, Any]) -> None:
                 )
 
 
-def feed_identity(pin: UKNationalChronicleFeed) -> dict[str, Any]:
+def feed_identity(pin: UKChronicleFeed) -> dict[str, Any]:
     """The pinned feed identity every vendored resource records."""
 
     return {
@@ -243,7 +246,7 @@ def vendor_resource(
     entry: Mapping[str, Any],
     facts: Iterable[Mapping[str, Any]],
     *,
-    pin: UKNationalChronicleFeed,
+    pin: UKChronicleFeed,
     strict_counts: bool = True,
 ) -> VendoredResource:
     """Select and copy the facts one register entry names."""
@@ -286,6 +289,7 @@ def vendor_resource(
         "resource": entry["resource"],
         "purpose": entry["purpose"],
         "consumers": list(entry["consumers"]),
+        "planned_consumers": list(entry.get("planned_consumers", [])),
         "policy": (
             "Rows are copied verbatim from the pinned Chronicle consumer feed named "
             "in source_fact_feed; every value is a publisher-stated fact. Consumers "
@@ -305,7 +309,7 @@ def vendor_all(
     register: Mapping[str, Any],
     facts: Sequence[Mapping[str, Any]],
     *,
-    pin: UKNationalChronicleFeed,
+    pin: UKChronicleFeed,
     only: Iterable[str] | None = None,
     strict_counts: bool = True,
 ) -> list[VendoredResource]:

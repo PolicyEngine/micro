@@ -21,6 +21,7 @@ from microcosm.build.target_reference_authoring import (
     author_target_references,
     target_references_resource,
 )
+from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
 from microcosm.build.uk_runtime.uc_source_periods import uc_source_month_metadata
 
 UK_GEOGRAPHY_IDS = {
@@ -118,6 +119,7 @@ def main() -> None:
         reference_metadata_by_target_id=_reference_metadata(contract),
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
         source_fact_feed=args.source_fact_feed or str(args.ledger_facts),
+        uprating_appliers=UK_UPRATING_APPLIERS,
     )
     authored = author_target_references(contract, facts, config)
     _add_uk_membership_accounting(authored.membership_report, authored.references)

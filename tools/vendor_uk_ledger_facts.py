@@ -21,12 +21,12 @@ from microcosm.build.ledger_artifact import (
     add_ledger_artifact_args,
     resolve_ledger_artifact,
 )
+from microcosm.build.uk_runtime.chronicle_feed import (
+    load_uk_chronicle_feed,
+)
 from microcosm.build.uk_runtime.ledger_fact_vendoring import (
     load_vendor_selections,
     vendor_all,
-)
-from microcosm.build.uk_runtime.national_chronicle_feed import (
-    load_uk_national_chronicle_feed,
 )
 
 
@@ -68,7 +68,7 @@ def main() -> int:
     artifact = resolve_ledger_artifact(args)
     if artifact is None:
         raise SystemExit("error: --ledger-facts is required.")
-    pin = load_uk_national_chronicle_feed()
+    pin = load_uk_chronicle_feed()
     if artifact.facts_sha256 != pin.facts_sha256 or (
         artifact.manifest_sha256 is not None
         and artifact.manifest_sha256 != pin.manifest_sha256

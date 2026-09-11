@@ -70,11 +70,34 @@ def test_bus_targets_are_active_or_signed_excluded_as_declared() -> None:
     assert {exclusions[target_id]["reason_id"] for target_id in excluded} == {
         "derived_partition_member",
         "no_publisher_uk_total",
-        "covered_by_country_legs",
+        "replaced_by_heterogeneous_country_legs",
     }
     assert all(
         membership["targets"][target_id]["status"] == "signed_excluded"
         for target_id in excluded
+    )
+    # The BUS0415 alignment is a declaration on the fare-receipt references
+    # (contract uprating_index), applied by the generator so the committed
+    # membership records the aligned value with its factor; net support
+    # declares no index and holds unchanged.
+    holds = {row["name"]: row for row in membership["uprating_holds"]}
+    for target_id in ("dft.bus_fare_receipts.england", "dft.bus_fare_receipts.london"):
+        assert references[target_id]["uprating_index"] == "dft.local_bus_fares_index"
+        assert holds[target_id]["index"] == "dft.local_bus_fares_index"
+        (candidate,) = membership["targets"][target_id]["candidates"]
+        uprating = candidate["uprating"]
+        assert uprating["index"] == "dft.local_bus_fares_index"
+        assert candidate["resolved_value"] == pytest.approx(
+            float(uprating["value_before_uprating"]) * float(uprating["factor"])
+        )
+    for target_id in ("dft.bus_net_support.england", "dft.bus_net_support.london"):
+        assert "uprating_index" not in references[target_id]
+        assert set(holds[target_id]) == {"name", "from", "to"}
+        (candidate,) = membership["targets"][target_id]["candidates"]
+        assert "uprating" not in candidate
+    assert float(holds["dft.bus_fare_receipts.london"]["factor"]) == pytest.approx(1.0)
+    assert float(holds["dft.bus_fare_receipts.england"]["factor"]) == pytest.approx(
+        204.125 / 193.125
     )
     # The London rows pin the publisher's region-stamped fact, not a country
     # row, and the England rows keep the country pin.
@@ -228,6 +251,23 @@ def test_quarter_end_months_follow_the_fiscal_and_calendar_windows() -> None:
     assert _quarter_end_months(2025, 1) == ("2025-03", "2025-06", "2025-09", "2025-12")
 
 
+def _vendored_index_rows(geography: dict, values: dict[str, float]) -> list[dict]:
+    """Rows in the vendored-resource shape ``tools/vendor_uk_ledger_facts.py`` writes."""
+
+    return [
+        {
+            "concept": "dft.local_bus_fares_index",
+            "geography": geography,
+            "period": {"type": "month", "value": month},
+            "value": value,
+            "source_record_id": (
+                f"probe.dft.local_bus_fares_index.{geography['id']}.{month}"
+            ),
+        }
+        for month, value in values.items()
+    ]
+
+
 def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> None:
     from microcosm.build.ledger_targets import (
         LedgerTargetReference,
@@ -235,6 +275,7 @@ def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> N
     )
     from microcosm.build.uk_runtime.ledger_targets import (
         align_dft_bus_fare_receipts_to_period,
+        apply_declared_uk_uprating,
     )
 
     england = {"id": "E92000001", "level": "country", "vintage": "current"}
@@ -253,7 +294,7 @@ def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> N
         500.0,
         coverage=coverage,
     )
-    index = _index_facts(
+    index = _vendored_index_rows(
         england,
         {
             "2024-03": 100.0,
@@ -267,7 +308,7 @@ def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> N
         },
     )
 
-    def reference(name: str, concept: str) -> LedgerTargetReference:
+    def reference(name: str, concept: str, **extra: object) -> LedgerTargetReference:
         return LedgerTargetReference(
             name=name,
             ledger_selector={
@@ -283,22 +324,31 @@ def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> N
             period=2025,
             uprating_from_period="2024",
             uprating_to_period=2025,
+            **extra,
         )
 
-    fare_reference = reference("fares", "dft.local_bus_passenger_fare_receipts")
+    fare_reference = reference(
+        "fares",
+        "dft.local_bus_passenger_fare_receipts",
+        uprating_index="dft.local_bus_fares_index",
+    )
     support_reference = reference(
         "support", "dft.local_bus_total_estimated_net_support"
     )
-    facts = [fare, support, *index]
 
     fares = compile_ledger_target_references([fare], [fare_reference], country="uk")
+    # The generic compiler records the declaration and leaves the value alone;
+    # the UK applier transports it and declares the factor.
+    assert fares.specs[0].metadata["uprating_index"] == "dft.local_bus_fares_index"
+    assert fares.specs[0].value == 1_000.0
     aligned = align_dft_bus_fare_receipts_to_period(
-        fare_reference, fares, facts, target_period=2025
+        fare_reference, fares, index_rows=index
     )
     (spec,) = aligned.specs
     # from-window mean = (100+100+100+120)/4 = 105; to-window mean = 120
     assert spec.value == pytest.approx(1_000.0 * 120.0 / 105.0)
     assert spec.metadata["uprating_index"] == "dft.local_bus_fares_index"
+    assert spec.metadata["uprating_index_resource"] == "dft_bus_value_anchors.json"
     assert (
         spec.metadata["uprating_index_from_months"] == "2024-06,2024-09,2024-12,2025-03"
     )
@@ -315,16 +365,89 @@ def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> N
     supports = compile_ledger_target_references(
         [support], [support_reference], country="uk"
     )
+    assert "uprating_index" not in supports.specs[0].metadata
     untouched = align_dft_bus_fare_receipts_to_period(
-        support_reference, supports, facts, target_period=2025
+        support_reference, supports, index_rows=index
     )
     assert untouched.specs[0].value == 500.0
     assert "uprating_factor" not in untouched.specs[0].metadata
+    assert apply_declared_uk_uprating(support_reference, supports) is supports
 
     with pytest.raises(ValueError, match="lacks quarter-end month"):
         align_dft_bus_fare_receipts_to_period(
-            fare_reference, fares, [fare, *index[:-1]], target_period=2025
+            fare_reference, fares, index_rows=index[:-1]
         )
+    # The index transports fare receipts only; declaring it on another
+    # concept is a contract error, as is an index no UK applier implements.
+    misdeclared = reference(
+        "support",
+        "dft.local_bus_total_estimated_net_support",
+        uprating_index="dft.local_bus_fares_index",
+    )
+    with pytest.raises(ValueError, match="transports"):
+        align_dft_bus_fare_receipts_to_period(misdeclared, supports, index_rows=index)
+    unknown = reference(
+        "fares", "dft.local_bus_passenger_fare_receipts", uprating_index="cpi"
+    )
+    with pytest.raises(ValueError, match="no UK applier"):
+        apply_declared_uk_uprating(unknown, fares)
+
+
+def test_bus0415_alignment_from_the_vendored_series() -> None:
+    """The production factors reproduce without the licensed feed.
+
+    Both sides come from the vendored resource: the BUS05ai receipts rows and
+    the BUS0415 index series, hash-pinned to the same Chronicle feed as the
+    references, so this check runs in CI.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.ledger_targets import compile_ledger_target_references
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import (
+        load_vendored_resource,
+        rows_matching,
+    )
+    from microcosm.build.uk_runtime.ledger_targets import apply_declared_uk_uprating
+
+    payload = load_vendored_resource("dft_bus_value_anchors.json")
+    references = {
+        reference.name: reference
+        for reference in load_country_spec("uk").target_references
+        if reference.family == "dft_local_bus"
+    }
+    membership = _resource("target_reference_membership.json")
+    expected_factor = {"E92000001": 204.125 / 193.125, "E12000007": 1.0}
+    for name, geography_id, groupby in (
+        ("dft.bus_fare_receipts.england", "E92000001", "england"),
+        ("dft.bus_fare_receipts.london", "E12000007", "london"),
+    ):
+        (row,) = rows_matching(
+            payload,
+            concept="dft.local_bus_passenger_fare_receipts",
+            geography_id=geography_id,
+            period_value=2025,
+        )
+        fact = _fare_fact(
+            "dft.local_bus_passenger_fare_receipts",
+            dict(row["geography"]),
+            dict(row["period"]),
+            row["value"],
+            coverage=dict(row["period_coverage"]),
+            groupby=groupby,
+        )
+        reference = references[name]
+        registry = compile_ledger_target_references([fact], [reference], country="uk")
+        aligned = apply_declared_uk_uprating(reference, registry)
+        (spec,) = aligned.specs
+        assert float(spec.metadata["uprating_factor"]) == pytest.approx(
+            expected_factor[geography_id]
+        )
+        assert spec.value == pytest.approx(row["value"] * expected_factor[geography_id])
+        # One value on the surface: the committed membership records the same.
+        (candidate,) = membership["targets"][name]["candidates"]
+        assert candidate["resolved_value"] == pytest.approx(spec.value)
+    for name in ("dft.bus_net_support.england", "dft.bus_net_support.london"):
+        assert references[name].uprating_index is None
 
 
 def test_bus0415_alignment_on_the_pinned_feed() -> None:
@@ -333,12 +456,12 @@ def test_bus0415_alignment_on_the_pinned_feed() -> None:
     if not feed.is_dir():
         pytest.skip("pinned UK Chronicle national artifact directory is not present")
     from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
-    from microcosm.build.uk_runtime.ledger_targets import compile_uk_target_registry
-    from microcosm.build.uk_runtime.national_chronicle_feed import (
-        load_uk_national_chronicle_feed,
+    from microcosm.build.uk_runtime.chronicle_feed import (
+        load_uk_chronicle_feed,
     )
+    from microcosm.build.uk_runtime.ledger_targets import compile_uk_target_registry
 
-    pin = load_uk_national_chronicle_feed()
+    pin = load_uk_chronicle_feed()
     artifact = load_ledger_consumer_artifact(
         feed,
         expected_facts_sha256=pin.facts_sha256,
