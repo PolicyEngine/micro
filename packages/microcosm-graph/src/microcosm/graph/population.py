@@ -1819,7 +1819,12 @@ def _patch_columns(
                 owners[(owned.entity, owned.column)] = node.id
                 continue
         else:
+            # The placeholder is built positionally; bind it to the table's own
+            # index before insertion. A filtered population (a sampled rung)
+            # carries a non-contiguous index, and a label-aligned insert would
+            # NaN-fill the gaps and silently widen an int64 or bool column.
             incumbent = _empty_column(len(table), owned.dtype, owned_mask)
+            incumbent.index = table.index
             table[owned.column] = incumbent
 
         positions = pd.Series(

@@ -611,8 +611,13 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "country wins. The census cells count the occupied-household "
             "universe and pair only through the household-composition bridge, "
             "never with dwelling stock; that cross-grain rescale applies once "
-            "the bridge is bound. Today it is reviewed-unbound, so the cells "
-            "bind as published after A15 uprating."
+            "the bridge is bound. Bound from microcosm#791 (2026-09-11): the "
+            "three ONS household-composition cells that held the bridge "
+            "reviewed-unbound now bind on the frs_relationships household "
+            "type, so the cross-grain rescale runs on the A15-uprated cells; "
+            "the ten-cell partition and the A15 control are both "
+            "ons.households_total, so the declared factor is 1 by closure and "
+            "the receipt records the bridge as bound."
         ),
         "authority": (
             "ONS/NRS/NISRA statistical disclosure control documentation; "

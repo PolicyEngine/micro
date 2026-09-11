@@ -246,6 +246,7 @@ def compile_uk_target_registry(
 
     fact_rows = tuple(facts)
     spec = load_country_spec("uk")
+    _assert_household_type_bindings_declared(_uk_contract_targets())
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.target_references:
@@ -637,6 +638,54 @@ def _local_crosswalk_rosters(
             "expected_vintage": payload.get("expected_vintage", ""),
         }
     return rosters
+
+
+def _assert_household_type_bindings_declared(
+    contract: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Every ``ons_household_type`` condition names a declared frame value.
+
+    The ten ONS household-composition rows bind on the frs_relationships
+    stage's household column (microcosm#791), whose domain is Chronicle's
+    ``ons.household_type`` value ids. A condition value outside that domain
+    would match no household and surface only as a zero-support refusal deep
+    in the solve; refusing at compile time names the row instead. The ten
+    rows must also cover the domain exactly once, or the partition the
+    census bridge reconciles against is no longer a partition.
+    """
+
+    from microcosm.build.uk_runtime.frs_relationships import (
+        CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS,
+    )
+
+    domain = set(CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS)
+    covered: dict[str, str] = {}
+    for target_id, target in contract.items():
+        binding = target.get("bindings", {}).get("policyengine", {})
+        for field in ("filters", "household_conditions"):
+            for predicate in binding.get(field, ()):
+                if predicate.get("variable") != "ons_household_type":
+                    continue
+                value = predicate.get("value")
+                if predicate.get("operator", "==") != "==" or value not in domain:
+                    raise ValueError(
+                        f"UK target {target_id!r} conditions on ons_household_type "
+                        f"with {predicate!r}; the declared values are "
+                        f"{sorted(domain)} under '=='."
+                    )
+                if target.get("family") == "ons_household_composition":
+                    if value in covered:
+                        raise ValueError(
+                            f"UK targets {covered[value]!r} and {target_id!r} both "
+                            f"bind ons_household_type == {value!r}."
+                        )
+                    covered[value] = target_id
+    missing = domain - set(covered)
+    if covered and missing:
+        raise ValueError(
+            "UK ons_household_composition rows leave declared household-type "
+            f"value(s) unbound: {sorted(missing)}."
+        )
 
 
 def _assert_local_reference_in_crosswalk(

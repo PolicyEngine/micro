@@ -64,6 +64,7 @@ __all__ = [
 
 _STAGE_MODULES = {
     "frs_spine": "frs_spine",
+    "frs_relationships": "frs_relationships",
     "frs_employment": "frs_employment",
     "frs_council_tax": "frs_council_tax",
     "frs_disability": "frs_disability",
@@ -319,7 +320,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 28-stage spine "
+            "UK parity fixture must describe the current 29-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -347,6 +348,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_household_draws import UKFRSHouseholdDrawsStageTransform
     from .frs_legacy_proxies import UKFRSLegacyProxiesStageTransform
     from .frs_person_draws import UKFRSPersonDrawsStageTransform
+    from .frs_relationships import UKFRSRelationshipsStageTransform
     from .frs_take_up import UKFRSTakeUpStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
@@ -401,6 +403,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     calibration_year = int(config["student_loans_calibration_year"])
     return MappingProxyType(
         {
+            "frs_relationships": UKFRSRelationshipsStageTransform(
+                raw_dir, stage=stages["frs_relationships"]
+            ),
             "frs_employment": UKFRSEmploymentStageTransform(
                 raw_dir, stage=stages["frs_employment"]
             ),

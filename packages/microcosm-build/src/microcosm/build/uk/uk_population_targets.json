@@ -9833,36 +9833,13 @@
           "reduce": "any",
           "household_conditions": [
             {
-              "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "ons_household_type",
               "operator": "==",
-              "value": "SINGLE"
-            },
-            {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": "==",
-              "value": 0
-            },
-            {
-              "variable": "age",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": "<",
-              "value": 65
-            },
-            {
-              "variable": "age",
-              "entity": "person",
-              "reduce": "count",
-              "operator": "==",
-              "value": 1
+              "value": "lone_households_under_65"
             }
           ],
           "value_variable": "household_count",
-          "notes": "ONS 'one person household': person count == 1 makes the category exact, and the age-sum reduction becomes the person's own age, so the head-age proxy note no longer applies. Without the restriction every all-adult SINGLE-benunit sharer household was also counted here (microcosm#757 audit partition, 2026-08-26)."
+          "notes": "Bound on the frame column household.ons_household_type == 'lone_households_under_65', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). One-person household, aged under 65 on the frame's final (age_tail) age."
         },
         "axiom": {
           "metric_name": "ons/lone_households_under_65",
@@ -9897,36 +9874,13 @@
           "reduce": "any",
           "household_conditions": [
             {
-              "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "ons_household_type",
               "operator": "==",
-              "value": "SINGLE"
-            },
-            {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": "==",
-              "value": 0
-            },
-            {
-              "variable": "age",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": ">=",
-              "value": 65
-            },
-            {
-              "variable": "age",
-              "entity": "person",
-              "reduce": "count",
-              "operator": "==",
-              "value": 1
+              "value": "lone_households_over_65"
             }
           ],
           "value_variable": "household_count",
-          "notes": "ONS 'one person household': person count == 1 makes the category exact, and the age-sum reduction becomes the person's own age, so the head-age proxy note no longer applies. Without the restriction every all-adult SINGLE-benunit sharer household was also counted here (microcosm#757 audit partition, 2026-08-26)."
+          "notes": "Bound on the frame column household.ons_household_type == 'lone_households_over_65', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). One-person household, aged 65 or over on the frame's final (age_tail) age."
         },
         "axiom": {
           "metric_name": "ons/lone_households_over_65",
@@ -9961,28 +9915,13 @@
           "reduce": "any",
           "household_conditions": [
             {
-              "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "ons_household_type",
               "operator": "==",
-              "value": "SINGLE"
-            },
-            {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": "==",
-              "value": 0
-            },
-            {
-              "variable": "age",
-              "entity": "person",
-              "reduce": "count",
-              "operator": ">",
-              "value": 1
+              "value": "unrelated_adult_households"
             }
           ],
-          "value_variable": "household_count"
+          "value_variable": "household_count",
+          "notes": "Bound on the frame column household.ons_household_type == 'unrelated_adult_households', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). ONS 'two or more unrelated adults' is any household of two or more people with no family present (no couple, no parent-child link), so related non-family households - two siblings, an adult with a foster child, a grandparent with a grandchild whose parent is absent - count here, as ONS counts them (ONS, Families and households statistics explained, 2021: \"a household with two or more people, none of whom are living as part of a family (that is, they do not contain either a couple or a parent with their child)\", https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/families/articles/familiesandhouseholdsstatisticsexplained/2021-03-02). Skip-generation households switch cell with the child's age by FRS coding: a grandparent raising a grandchild under 16 with no parent present is two unrelated adults here (codes 15/16 never form a family), while a 16-19 grandchild in full-time education is coded as the grandparents' legal dependent (7/3), so the same household becomes a lone-parent or couple family with a dependent child. The #757 SINGLE-benunit proxy, which could not tell this cell from the lone-parent-with-non-dependent-children cell, is retired."
         },
         "axiom": {
           "metric_name": "ons/unrelated_adult_households",
@@ -10017,22 +9956,13 @@
           "reduce": "any",
           "household_conditions": [
             {
-              "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "ons_household_type",
               "operator": "==",
-              "value": "COUPLE_NO_CHILDREN"
-            },
-            {
-              "variable": "age",
-              "entity": "person",
-              "reduce": "count",
-              "operator": "==",
-              "value": 2
+              "value": "couple_no_children_households"
             }
           ],
           "value_variable": "household_count",
-          "notes": "ONS Table 7 'one family only: couple, no children' is the household being exactly one childless couple and nobody else; with the childless-couple benunit present, person count == 2 is equivalent to the one-family restriction. Without it the binding counted every household *containing* such a couple — a 1.84m overlap with the couple-non-dependent-children and multi-family categories (microcosm#757 audit partition, 2026-08-26)."
+          "notes": "Bound on the frame column household.ons_household_type == 'couple_no_children_households', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). Exactly one family and it is a couple with no children in the household, whatever other individuals live there: a couple plus a lodger, or a couple plus an elderly parent, is this cell, as ONS classifies one-family households by the family. The #757 person-count == 2 restriction, which pushed those households into the multi-family and unrelated-adult proxies, is retired."
         },
         "axiom": {
           "metric_name": "ons/couple_no_children_households",
@@ -10067,28 +9997,13 @@
           "reduce": "any",
           "household_conditions": [
             {
-              "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "ons_household_type",
               "operator": "==",
-              "value": "COUPLE_WITH_CHILDREN"
-            },
-            {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": ">=",
-              "value": 1
-            },
-            {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": "<=",
-              "value": 2
+              "value": "couple_under_3_children_households"
             }
           ],
-          "value_variable": "household_count"
+          "value_variable": "household_count",
+          "notes": "Bound on the frame column household.ons_household_type == 'couple_under_3_children_households', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). Exactly one family, a couple with one or two dependent children (non-dependent children may also be present), whatever other individuals live there."
         },
         "axiom": {
           "metric_name": "ons/couple_under_3_children_households",
@@ -10123,21 +10038,13 @@
           "reduce": "any",
           "household_conditions": [
             {
-              "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "ons_household_type",
               "operator": "==",
-              "value": "COUPLE_WITH_CHILDREN"
-            },
-            {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": ">=",
-              "value": 3
+              "value": "couple_3_plus_children_households"
             }
           ],
-          "value_variable": "household_count"
+          "value_variable": "household_count",
+          "notes": "Bound on the frame column household.ons_household_type == 'couple_3_plus_children_households', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). Exactly one family, a couple with three or more dependent children, whatever other individuals live there."
         },
         "axiom": {
           "metric_name": "ons/couple_3_plus_children_households",
@@ -10172,22 +10079,13 @@
           "reduce": "any",
           "household_conditions": [
             {
-              "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "ons_household_type",
               "operator": "==",
-              "value": "COUPLE_NO_CHILDREN"
-            },
-            {
-              "variable": "age",
-              "entity": "person",
-              "reduce": "count",
-              "operator": ">",
-              "value": 2
+              "value": "couple_non_dependent_children_only_households"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Proxied: couple benunit with additional non-dependent people (compute/households.py:40-42)."
+          "notes": "Bound on the frame column household.ons_household_type == 'couple_non_dependent_children_only_households', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). Exactly one family, a couple whose children in the household are all non-dependent (19 and over, or 16-18 not in full-time education, with no partner or own child in the household), whatever other individuals live there. The uk-data compute/households.py proxy is retired."
         },
         "axiom": {
           "metric_name": "ons/couple_non_dependent_children_only_households",
@@ -10222,21 +10120,13 @@
           "reduce": "any",
           "household_conditions": [
             {
-              "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "ons_household_type",
               "operator": "==",
-              "value": "LONE_PARENT"
-            },
-            {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": ">",
-              "value": 0
+              "value": "lone_parent_dependent_children_households"
             }
           ],
-          "value_variable": "household_count"
+          "value_variable": "household_count",
+          "notes": "Bound on the frame column household.ons_household_type == 'lone_parent_dependent_children_households', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). Exactly one family, a lone parent with at least one dependent child, whatever other individuals live there (a grandparent living with a lone-parent daughter and grandchild is this cell; the grandparent is an individual because the daughter has her own child). A 16-19 grandchild in full-time education living with grandparents and no parent lands here (or in the couple cell) because the FRS codes the grandparents as legal guardian (7/3); under 16 the same household is two unrelated adults."
         },
         "axiom": {
           "metric_name": "ons/lone_parent_dependent_children_households",
@@ -10271,36 +10161,13 @@
           "reduce": "any",
           "household_conditions": [
             {
-              "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
+              "variable": "ons_household_type",
               "operator": "==",
-              "value": "SINGLE"
-            },
-            {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": "==",
-              "value": 0
-            },
-            {
-              "variable": "age",
-              "entity": "person",
-              "reduce": "count",
-              "operator": ">",
-              "value": 1
-            },
-            {
-              "variable": "age",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": ">=",
-              "value": 40
+              "value": "lone_parent_non_dependent_children_households"
             }
           ],
           "value_variable": "household_count",
-          "notes": "Proxied: single benunit, no dependent children, more than one person, head aged 40+ (compute/households.py:45-52). uk-data reads ctx.pe('age') - person ages summed to household - as the head's age; exact only for single-person households (compute/households.py:12)."
+          "notes": "Bound on the frame column household.ons_household_type == 'lone_parent_non_dependent_children_households', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). Exactly one family, a lone parent whose children in the household are all non-dependent. The summed-age head-age proxy inherited from uk-data compute/households.py:45-52 is retired; the relationship grid makes the cell exact."
         },
         "axiom": {
           "metric_name": "ons/lone_parent_non_dependent_children_households",
@@ -10335,12 +10202,13 @@
           "reduce": "any",
           "household_conditions": [
             {
-              "variable": "household_num_benunits",
-              "operator": ">",
-              "value": 1
+              "variable": "ons_household_type",
+              "operator": "==",
+              "value": "multi_family_households"
             }
           ],
-          "value_variable": "household_count"
+          "value_variable": "household_count",
+          "notes": "Bound on the frame column household.ons_household_type == 'multi_family_households', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). Two or more ONS families in the household, where a family is a couple with or without children or a lone parent with at least one child, and a child (of any age) with no partner and no own child belongs to the parent's family. The household_num_benunits > 1 proxy is retired: a non-dependent child is a separate benefit unit but the same ONS family, which is why the proxy read +1618% on the #757 rebind packet."
         },
         "axiom": {
           "metric_name": "ons/multi_family_households",

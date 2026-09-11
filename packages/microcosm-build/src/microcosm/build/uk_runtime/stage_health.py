@@ -54,6 +54,8 @@ def uk_stage_health_gate(
         return _cgt_imputation_summary_gate(stage, evidence, parameters)
     if check == "latent_attribute_realization":
         return _latent_attribute_realization_gate(stage, evidence)
+    if check == "household_composition":
+        return _household_composition_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -539,3 +541,88 @@ def latent_attribute_tolerance(*, target: float, rows: int) -> float:
 
 def _binomial_tolerance(*, target: float, rows: int) -> float:
     return latent_attribute_tolerance(target=target, rows=rows)
+
+
+def _household_composition_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The #791 relationship derivation left no tape defect unrefused.
+
+    The stage refuses head, index, partner and domain defects itself; this
+    gate re-reads the receipt so the battery, not only the transform, holds
+    the invariants, and it pins the reviewed reciprocity tolerance and the
+    partition closure (every household typed exactly once).
+    """
+
+    check = "household_composition"
+    failures: list[str] = []
+    zero_keys = (
+        "head_invariant_violations",
+        "hrpnum_mismatches",
+        "person_index_gaps",
+        "multi_partner_persons",
+        "family_index_violations",
+        "domain_violations",
+    )
+    details: dict[str, object] = {}
+    for key in zero_keys:
+        value = evidence.get(key)
+        if not isinstance(value, int | float):
+            failures.append(f"{stage}: receipt is missing {key}.")
+            continue
+        details[key] = int(value)
+        if int(value) != 0:
+            failures.append(f"{stage}: {key} is {int(value)}, expected 0.")
+    tolerance = int(
+        _finite_number(
+            parameters["max_grid_reciprocity_mismatches"],
+            label=f"{stage}.max_grid_reciprocity_mismatches",
+        )
+    )
+    mismatches = evidence.get("grid_reciprocity_mismatches")
+    if not isinstance(mismatches, int | float):
+        failures.append(f"{stage}: receipt is missing grid_reciprocity_mismatches.")
+    else:
+        details["grid_reciprocity_mismatches"] = int(mismatches)
+        details["max_grid_reciprocity_mismatches"] = tolerance
+        if int(mismatches) > tolerance:
+            failures.append(
+                f"{stage}: grid_reciprocity_mismatches {int(mismatches)} exceeds "
+                f"the reviewed tolerance {tolerance}."
+            )
+    unmapped = evidence.get("relhrp_unmapped_codes")
+    if not isinstance(unmapped, Mapping):
+        failures.append(f"{stage}: receipt is missing relhrp_unmapped_codes.")
+    elif unmapped:
+        failures.append(f"{stage}: unmapped relhrp codes {dict(unmapped)!r}.")
+    details["relhrp_unmapped_codes"] = (
+        dict(unmapped) if isinstance(unmapped, Mapping) else None
+    )
+    if bool(parameters.get("require_partition_closure", True)):
+        counts = evidence.get("household_type_counts")
+        households = evidence.get("households")
+        if not isinstance(counts, Mapping) or not isinstance(households, int | float):
+            failures.append(
+                f"{stage}: receipt is missing household_type_counts or households."
+            )
+        else:
+            total = int(sum(int(value) for value in counts.values()))
+            details["household_type_counts"] = {
+                str(key): int(value) for key, value in counts.items()
+            }
+            details["households"] = int(households)
+            if total != int(households) or evidence.get("partition_closes") is not True:
+                failures.append(
+                    f"{stage}: household-type partition covers {total} of "
+                    f"{int(households)} households."
+                )
+    weighted = evidence.get("household_type_weighted")
+    if isinstance(weighted, Mapping):
+        details["household_type_weighted"] = {
+            str(key): float(value) for key, value in weighted.items()
+        }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)

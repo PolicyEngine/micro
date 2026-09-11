@@ -884,3 +884,37 @@ def _valid_dimension_values(value: object) -> bool:
 
 def _is_dimension_scalar(value: object) -> bool:
     return isinstance(value, str | int | float | bool)
+
+
+def test_household_composition_rows_bind_on_the_frs_relationships_column() -> None:
+    # microcosm#791: the ten ONS Table 7 cells bind on one frame column whose
+    # values are Chronicle's ons.household_type value ids, so each row's
+    # condition value is its own selector dimension value and the ten cover
+    # the declared domain exactly once.
+    from microcosm.build.uk_runtime.frs_relationships import (
+        CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS,
+    )
+
+    resource = _load()
+    rows = [
+        target
+        for target in resource["targets"]
+        if target["family"] == "ons_household_composition"
+    ]
+    assert len(rows) == 10
+    seen = []
+    for target in rows:
+        binding = target["bindings"]["policyengine"]
+        conditions = binding["household_conditions"]
+        assert len(conditions) == 1, target["target_id"]
+        (condition,) = conditions
+        assert condition == {
+            "variable": "ons_household_type",
+            "operator": "==",
+            "value": target["ledger_selector"]["dimension_values"]["household_type"],
+        }, target["target_id"]
+        assert "reduce" not in condition and "entity" not in condition
+        assert binding["value_variable"] == "household_count"
+        assert "microcosm#791" in binding["notes"], target["target_id"]
+        seen.append(condition["value"])
+    assert seen == list(CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS)

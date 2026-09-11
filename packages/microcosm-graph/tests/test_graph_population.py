@@ -1839,3 +1839,44 @@ def test_string_storage_encoding_stays_byte_identical() -> None:
 
     assert payload.hex() == ("020000000000000061030000000000000062620000000000000000")
     assert bitmap.hex() == "000001"
+def test_new_dense_column_on_a_filtered_population_keeps_its_dtype() -> None:
+    # A filtered population (a sampled spine rung) carries a non-contiguous
+    # table index. The zero-filled placeholder for a new dense column is
+    # built positionally; inserting it label-aligned NaN-filled the gaps and
+    # silently widened person.int64 to float64 (found by the microcosm#791
+    # sampled build). The placeholder must bind to the table's own index.
+    frame = _frame()
+    person = frame.table("person").copy()
+    person.index = pd.Index([243, 244, 1099, 1250])
+    strata = frame.strata.copy()
+    strata.index = person.index
+    population = Population.from_frame(
+        _replace_person_table(frame, person, strata), "source"
+    )
+    node = Node(
+        "new_dense_all_rows",
+        "test@1",
+        inputs=(Slice("person", ("amount",)),),
+        outputs=(
+            Owned("person", "count", "int64"),
+            Owned("person", "flag", "bool"),
+        ),
+    )
+    result = KernelResult(
+        columns={
+            ("person", "count"): pd.Series(
+                [3, 1, 2, 4], index=[1, 2, 3, 4], dtype="int64"
+            ),
+            ("person", "flag"): pd.Series(
+                [True, False, True, False], index=[1, 2, 3, 4], dtype=bool
+            ),
+        }
+    )
+
+    updated = patch(population, node, result)
+
+    table = updated.frame.table("person")
+    assert table["count"].dtype == np.dtype("int64")
+    assert table["count"].tolist() == [3, 1, 2, 4]
+    assert table["flag"].dtype == np.dtype("bool")
+    assert table["flag"].tolist() == [True, False, True, False]
