@@ -119,6 +119,31 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "us_late_overlap_ownership.py",
         "us_late_producer_registry.py",
         "warm_start_selection.py",  # Provenance reporting and recovery.
+        # US launch integration (PR #893), reviewed 2026-09-11. The composed
+        # two-survey population is source-qualified by charter: ACS and ASEC
+        # rows are composed, cloned and bound to their original records, and
+        # the PUF55 routes condition on source-owned Social Security totals
+        # (known for ASEC reporters, unknown otherwise; nine versus eight
+        # predictors). These modules read support_channel/spine_source_id to
+        # select or validate origin rows and to bind original identities;
+        # none routes a PUF-detail imputation by spine.
+        "current_asec_demographics.py",  # ASEC rows -> sex/household state.
+        "current_social_security_source.py",  # Source-owned SS totals per row.
+        "current_survey_geography.py",  # Origin roster and draw keys.
+        "current_survey_predictors.py",  # Source-qualified predictor prep.
+        "graph_combined_clone.py",  # Clone EXPAND keeps the channel labels.
+        "graph_composed_asec_binding.py",  # Binds prepared ASEC to its rows.
+        "graph_composed_population.py",  # Composes ACS + ASEC populations.
+        "graph_current_survey_predictors.py",  # Trains/draws per source.
+        "graph_sources.py",  # Declares the channel slices it loads.
+        "graph_survey_population.py",  # Declares/validates origin columns.
+        "native_household_origin.py",  # Original household lineage.
+        "population_input_coverage.py",  # Reports coverage by source group.
+        "puf55_survey_recipients.py",  # ASEC reporter ids for SS routes.
+        "puf55_survey_ss_measurement.py",  # Reported SS sums by reporter.
+        "puf_detail_transfer.py",  # Validates channels at placement.
+        "puf_diagnostic_consumer.py",  # Development diagnostic by origin.
+        "survey_population_preparation.py",  # Stacks original anchors.
     }
 )
 
@@ -3365,6 +3390,46 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
     )
 
 
+# US launch integration (PR #893), reviewed 2026-09-11. The fail-closed
+# scanner records every dynamic subscript, getattr or .get() on a value it
+# cannot resolve. In these modules every such site was read: they index
+# tuples and state records (entry[2], state[0]), node/kernel maps keyed by
+# node id, byte payloads in codecs (payload[offset:...]), PUF donor tables
+# by profile-declared predictor/target names, or numpy masks. None selects a
+# provenance column. The scanner keeps running on them: accessor calls and
+# contraband source columns still fail; only the dynamic-selector class is
+# accepted, and only for the listed modules.
+_REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
+    {
+        "acs_native_coverage_binding.py",
+        "acs_person_coverage_columns.py",
+        "acs_population_catalogue.py",
+        "asec_2024_native_population.py",
+        "atomic_block_api_sources.py",
+        "atomic_block_sources.py",
+        "full_puf_enrichment.py",
+        "graph_atomic_survey_financial.py",
+        "graph_atomic_survey_population.py",
+        "graph_current_survey_puf_transfer.py",
+        "graph_full_puf_enrichment.py",
+        "graph_puf55_canonical_donor.py",
+        "graph_puf_detail_transfer.py",
+        "puf55_route_finalization.py",
+        "puf59_canonical_artifact.py",
+        "puf_full_source.py",
+        "puf_price_baseline.py",
+        "puf_qbi_model.py",
+        "puf_target2024_growth.py",
+        "survey_atomic_geography.py",
+        "survey_social_security.py",
+    }
+)
+_DYNAMIC_SELECTOR_FINDING_MARKERS = (
+    "unresolvable dynamic",
+    "hidden or expanded arguments",
+)
+
+
 def _non_owner_source_spine_accesses(
     module_name: str,
     source: str,
@@ -3373,7 +3438,52 @@ def _non_owner_source_spine_accesses(
 
     if module_name in _SOURCE_SPINE_PROVENANCE_OWNERS:
         return ()
-    return _source_spine_accesses(source)
+    accesses = _source_spine_accesses(source)
+    if module_name in _REVIEWED_DYNAMIC_SELECTOR_MODULES:
+        accesses = tuple(
+            access
+            for access in accesses
+            if not any(marker in access for marker in _DYNAMIC_SELECTOR_FINDING_MARKERS)
+        )
+    return accesses
+
+
+def test_reviewed_dynamic_selector_modules_still_fail_on_provenance_reads() -> None:
+    """The dynamic-selector acceptance never hides an accessor or a column."""
+
+    reviewed = next(iter(sorted(_REVIEWED_DYNAMIC_SELECTOR_MODULES)))
+    dynamic_only = """
+def pick(table, name):
+    return table[name]
+"""
+    assert _non_owner_source_spine_accesses("unlisted_module.py", dynamic_only)
+    assert _non_owner_source_spine_accesses(reviewed, dynamic_only) == ()
+    with_accessor = """
+from microcosm.build.us_runtime.support_provenance import support_channel_column
+
+def pick(table, name):
+    channel = table[support_channel_column("person")]
+    return table[name], channel
+"""
+    remaining = _non_owner_source_spine_accesses(reviewed, with_accessor)
+    assert remaining and all(
+        "support_channel_column" in access for access in remaining
+    ), remaining
+    with_column = """
+def pick(table):
+    return table["person_spine_source_id"]
+"""
+    assert _non_owner_source_spine_accesses(reviewed, with_column)
+    overlap = sorted(
+        _REVIEWED_DYNAMIC_SELECTOR_MODULES.intersection(_SOURCE_SPINE_PROVENANCE_OWNERS)
+    )
+    assert not overlap, overlap
+    missing = sorted(
+        name
+        for name in _REVIEWED_DYNAMIC_SELECTOR_MODULES
+        if not (_US_RUNTIME / name).is_file()
+    )
+    assert not missing, missing
 
 
 def _called_function_names(source: str) -> set[str]:
