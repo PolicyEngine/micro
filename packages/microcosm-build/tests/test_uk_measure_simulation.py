@@ -575,7 +575,11 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "slc.": 5,
     "dwp/uc_payment_dist/": 18,
     "obr.universal_credit_": 2,
-    "obr.fuel_duties": 1,
+    # microcosm#890 E1 (2026-09-11): the all-road-users obr.fuel_duties row
+    # is signed out of the reference surface (target_reference_signed_
+    # exclusions.json) and obr.fuel_duties_cars binds the cars receipts, so
+    # the #757 measure exclusion for it retires here rather than lapsing.
+    # The three ons.household_composition entries retired with microcosm#791.
     # microcosm#762 A16 (2026-09-03): the rows the spine cannot reach by
     # reweighting — savings interest, housing benefit, the two plan-2
     # borrower stocks and JSA claimants — windowed to one month. The two
@@ -599,7 +603,7 @@ _A16_UNREACHABLE_ROWS = (
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 48
+    assert len(names) == len(set(names)) == 47
 
     for marker, expected in _PACKAGED_EXCLUSION_CENSUS.items():
         matched = [name for name in names if marker in name]
@@ -623,9 +627,11 @@ def test_packaged_exclusions_load():
     # household-composition cells were retired by microcosm#791 (the
     # relationship-to-head successor): the ten cells now bind on the
     # frs_relationships stage's household type column, so no composition
-    # entry may remain on the register.
+    # entry may remain on the register. 35 since microcosm#890 also retired
+    # the obr.fuel_duties entry (2026-09-11): the all-road-users row is
+    # signed out of the reference surface and the cars receipts bind instead.
     tranche = [e for e in exclusions if e["approved_on"] == "2026-08-26"]
-    assert len(tranche) == 36
+    assert len(tranche) == 35
     for entry in tranche:
         assert "5427936411" in entry["adjudication"], entry["name"]
         assert entry["expires_on"] == "2026-11-26", entry["name"]

@@ -70,6 +70,7 @@ def test_bus_targets_are_active_or_signed_excluded_as_declared() -> None:
     assert {exclusions[target_id]["reason_id"] for target_id in excluded} == {
         "derived_partition_member",
         "no_publisher_uk_total",
+        "covered_by_country_legs",
     }
     assert all(
         membership["targets"][target_id]["status"] == "signed_excluded"

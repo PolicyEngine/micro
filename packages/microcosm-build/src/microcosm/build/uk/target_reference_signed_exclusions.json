@@ -43,11 +43,19 @@
     },
     {
       "target_id": "dft.bus_net_support.uk",
-      "reason_id": "no_publisher_uk_total",
-      "rationale": "BUS05i publishes no UK total and Microcosm declares no method to construct one.",
-      "tracking": "microcosm#789",
+      "reason_id": "covered_by_country_legs",
+      "rationale": "BUS05i publishes no UK total; net support is now bound as four country legs (DfT England, Scottish Transport Statistics, StatsWales outturn, NITHC accounts), so a UK row would double-bind them and no England-to-UK uplift is declared.",
+      "tracking": "microcosm#890",
       "approved_by": "juaristi22",
-      "approved_on": "2026-09-05"
+      "approved_on": "2026-09-11"
+    },
+    {
+      "target_id": "obr.fuel_duties",
+      "reason_id": "universe_scope_all_road_users",
+      "rationale": "The OBR fuel duties fact is all-road-users receipts (freight, vans, business mileage) against a household frame; obr.fuel_duties_cars binds the cars receipts from the OBR vehicle-type release instead (ruling 2026-09-10). The all-road-users row is retained in the contract for registry parity and signed out here rather than carried as a calibration measure exclusion.",
+      "tracking": "microcosm#890",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-11"
     }
   ]
 }

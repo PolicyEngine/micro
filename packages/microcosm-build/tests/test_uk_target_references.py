@@ -56,7 +56,7 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 417
+ACTIVE_REFERENCE_COUNT = 424
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
 
@@ -331,7 +331,15 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         source_name = fact.get("source", {}).get("source_name") or fact.get(
             "observed_measure", {}
         ).get("source_name")
-        if source_name in {"hmrc", "dfe", "dft"}:
+        if source_name in {
+            "hmrc",
+            "dfe",
+            "dft",
+            "scotgov",
+            "welshgov",
+            "dfi_ni",
+            "nithc",
+        }:
             facts.append(fact)
 
     registry = compile_ledger_target_references(facts, references, country="uk")
@@ -346,6 +354,11 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dft.bus_net_support.england": 3_024_904_320.8399997,
         "dft.bus_fare_receipts.london": 1_347_434_943.01459,
         "dft.bus_net_support.london": 1_130_214_000.0,
+        "scotgov.bus.passenger_revenue": 391_000_000.0,
+        "scotgov.bus.government_support": 499_000_000.0,
+        "welshgov.bus.public_support": 131_489_970.0,
+        "dfi_ni.bus.passenger_receipts": 150_082_817.48999995,
+        "nithc.public_transport_support": 111_700_000.0,
     }
     assert {
         name: spec.metadata["ledger_entity_name"] for name, spec in specs.items()
@@ -359,6 +372,11 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dft.bus_net_support.england": "institutional_sector",
         "dft.bus_fare_receipts.london": "institutional_sector",
         "dft.bus_net_support.london": "institutional_sector",
+        "scotgov.bus.passenger_revenue": "institutional_sector",
+        "scotgov.bus.government_support": "government",
+        "welshgov.bus.public_support": "government",
+        "dfi_ni.bus.passenger_receipts": "institutional_sector",
+        "nithc.public_transport_support": "government",
     }
     assert {
         name: (
@@ -372,6 +390,20 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dft.bus_net_support.england": ("country", "E92000001"),
         "dft.bus_fare_receipts.london": ("region", "E12000007"),
         "dft.bus_net_support.london": ("region", "E12000007"),
+    }
+    assert {
+        name: (
+            spec.metadata["ledger_geography_level"],
+            spec.metadata["ledger_geography_id"],
+        )
+        for name, spec in specs.items()
+        if name.split(".", 1)[0] in {"scotgov", "welshgov", "dfi_ni", "nithc"}
+    } == {
+        "scotgov.bus.passenger_revenue": ("country", "S92000003"),
+        "scotgov.bus.government_support": ("country", "S92000003"),
+        "welshgov.bus.public_support": ("country", "W92000004"),
+        "dfi_ni.bus.passenger_receipts": ("country", "N92000002"),
+        "nithc.public_transport_support": ("country", "N92000002"),
     }
     assert (
         specs["dfe.funded_childcare.universal_only_children"].metadata[
@@ -523,6 +555,8 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     } | {
         "scotgov.council_tax_stock.total",
         "scotgov.scottish_child_payment_spending",
+        "scotgov.bus.passenger_revenue",
+        "scotgov.bus.government_support",
     }
     assert {pins[target_id]["geography_id"] for target_id in scotgov_ids} == {
         "S92000003"
@@ -592,9 +626,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 417,
+        "active": 424,
         "no_fact_at_or_before_period": 7,
-        "signed_excluded": 6,
+        "signed_excluded": 7,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
