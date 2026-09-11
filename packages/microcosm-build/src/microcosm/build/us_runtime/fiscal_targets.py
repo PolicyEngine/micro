@@ -2553,6 +2553,9 @@ def _state_income_tax_reference_from_fact(
             "target_period": str(target_period),
             "state_fips": state_fips,
             "target_role": "state_income_tax",
+            "materializer": "policyengine_variable",
+            "measure_mode": "sum",
+            "base_variable": "state_income_tax",
         },
     )
 
