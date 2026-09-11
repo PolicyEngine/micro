@@ -228,7 +228,14 @@ def _copy_population(population):
 
 
 def _population_stamp(population):
-    """Pure in-process seal, including storage beneath nullable masks."""
+    """Pure in-process seal, including storage beneath nullable masks.
+
+    Never persist it or compare it across reconstructions: it folds physical
+    storage parts (masked ``_data`` under nulls, and before microcosm#907
+    object-dtype pointer bytes), so equal content rebuilt elsewhere need not
+    match. A cross-call pin carries ``source._frame_identity`` plus the
+    version, owners, weight kinds, mass ledger and design weights instead.
+    """
     _require(type(population) is Population, "POPULATION_TYPE")
     digest = hashlib.sha256()
     frame = population.frame
