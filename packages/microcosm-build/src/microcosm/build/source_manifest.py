@@ -86,6 +86,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_snap_take_up",
         "derive_puf_policyengine_variables",
         "derive_mortgage_balance_hints",
+        "derive_ons_household_composition",
         "derive_pregnancy",
         "derive_relationship_inputs",
         "derive_retirement_distributions",

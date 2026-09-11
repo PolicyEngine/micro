@@ -1323,7 +1323,10 @@ def test_real_uk_bridges_resolve_contract_lower_sides():
     assert reconciled.loc[1:, "value"].tolist() == [60.0, 30.0]
 
 
-def test_reviewed_household_composition_gap_leaves_census_contract_unbound():
+def test_partially_bound_household_composition_bridge_stays_unbound_with_reviewed_records():
+    # Synthetic partial bridge: the production register no longer carries these
+    # three exclusions (microcosm#791), so this exercises the reviewed-record
+    # path on a hand-built surface only.
     household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
     missing = {
         "ons.household_composition.unrelated_adult_households",
@@ -1386,6 +1389,59 @@ def test_reviewed_household_composition_gap_leaves_census_contract_unbound():
             },
         }
     ]
+
+
+def test_fully_bound_household_composition_bridge_reconciles_census_cells():
+    # microcosm#791: with the three composition exclusions retired, the ten-cell
+    # partition binds and the census household cells rescale to its total.
+    household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
+    surface = pd.DataFrame(
+        [
+            *[
+                {
+                    "grain": "country",
+                    "geography_id": "K02000001",
+                    "target_id": target_id,
+                    "value": 10.0,
+                }
+                for target_id in household_bridge.higher_target_ids
+            ],
+            {
+                "grain": "constituency",
+                "geography_id": "E14000001",
+                "target_id": "ons.census.households",
+                "value": 40.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "S14000001",
+                "target_id": "ons.census.households",
+                "value": 10.0,
+            },
+        ]
+    )
+
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        surface,
+        household_bridge.higher_target_ids,
+        reviewed_unbound_higher_targets={},
+    )
+
+    assert receipt["unbound_bridges"] == []
+    groups = [
+        group
+        for group in receipt["groups"]
+        if group["bridge_id"] == household_bridge.bridge_id
+    ]
+    assert len(groups) == 1
+    assert groups[0]["winning_grain"] == "country"
+    legs = groups[0]["legs"]
+    assert len(legs) == 1
+    assert legs[0]["parent_geography_id"] == "K02000001"
+    assert legs[0]["declared_factor"] == pytest.approx(2.0)
+    assert legs[0]["new_total"] == pytest.approx(100.0)
+    census = reconciled.loc[reconciled["target_id"] == "ons.census.households", "value"]
+    assert census.tolist() == pytest.approx([80.0, 20.0])
 
 
 def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():

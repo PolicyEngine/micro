@@ -137,13 +137,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "8deb610d25fced25e27be58989311efa217f49e6d644f37268cf0f7efd122193"
+    "38a8a01467e372c87d845e3aacef67c5cc67d90dbc86fa5325408296be00afab"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "cd90537532e1800a76d4414a7d7454f5dedb4dfd574aca2dfca4ec1e1fe6cff3"
+    "49e86be979d5a266c88ea3091b295f8efe2fa96c85fddeb153c6d6083be6c72b"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "8b28c7d23b9e8ebc9e7436abd7309e59f0ef14fb582506f874147a5c1c4f44ef"
+    "25049e61956b1f4145c1915f0e9a0b9523ec86da428f2a378c6ed8dce5cd2793"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -219,6 +219,7 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_age_tail_targets": ("stage_health", "assembled", None),
+    "uk_stage_frs_relationships_composition": ("stage_health", "assembled", None),
     "uk_ledger_compile_parity_local_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -258,6 +259,7 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
+    "uk_ons_household_type_enum_domain": ("enum_domain", "assembled", "enum_domain"),
     "uk_uc_deduction_combination_enum_domain": (
         "enum_domain",
         "terminal",
@@ -1190,6 +1192,7 @@ def _gate_battery_payload(
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
         "uk_stage_age_tail_targets": "age_tail",
+        "uk_stage_frs_relationships_composition": "frs_relationships",
     }
     gates: dict[str, dict] = {}
     for entry_id, (gate, phase, detail_name) in UK_GATE_BATTERY_ENTRIES.items():

@@ -1399,6 +1399,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_signal_rows",
                 "structural_zero_columns",
                 "maximum_relative_deviation",
+                # #791 household_composition stage-health check.
+                "max_grid_reciprocity_mismatches",
+                "require_partition_closure",
                 "support_bounds_resource",
                 "minimum_band_rows",
             }

@@ -405,6 +405,20 @@
       "notes": "Stage-time achieved-versus-target gate over the age-tail disaggregation receipt. At its post-frs_spine position, achieved_weighted measures raw FRS-grossed 80+ mass before clone or zero-weight support channels exist."
     },
     {
+      "id": "uk_stage_frs_relationships_composition",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "frs_relationships",
+        "check": "household_composition",
+        "max_grid_reciprocity_mismatches": 3,
+        "require_partition_closure": true
+      },
+      "notes": "Stage-time invariants over the #791 relationship receipt: exactly one HEAD per household agreeing with hrpid and hrpnum, contiguous person numbers, no person with two partners, no unmapped relhrp code, family index and enum domains consistent, and the ten-cell household-type partition covering every household exactly once. The grid reciprocity tolerance is the reviewed 2024-25 tape count; a re-issued tape with a different count refuses for review."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",
@@ -597,6 +611,7 @@
           "household.msoa_code",
           "household.num_vehicles",
           "household.oa_code",
+          "household.ons_household_type",
           "household.private_pension_wealth",
           "household.property_purchased",
           "household.rail_usage",
@@ -620,11 +635,14 @@
           "person.is_parent",
           "person.is_uc_claimant",
           "person.legacy_jobseeker_proxy",
+          "person.ons_family_index",
+          "person.ons_family_role",
           "person.outpatient_visits",
           "person.pension_contributions_via_salary_sacrifice",
           "person.pip_dl_category",
           "person.pip_m_category",
           "person.receives_benefits_in_own_right",
+          "person.relationship_to_head",
           "person.salary_sacrifice_asked",
           "person.salary_sacrifice_reported",
           "person.sic_industry_division",
@@ -661,6 +679,18 @@
         ]
       },
       "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain. Evaluated at the assembled boundary, right after frs_brma writes the column: enum membership is a property of the values themselves, so checking it there is identical to checking it at the end and refuses fourteen stages earlier. Take-up signal stays terminal by contrast, because its weighted shares are not the same statistic before and after calibration."
+    },
+    {
+      "id": "uk_ons_household_type_enum_domain",
+      "gate": "enum_domain",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "ons_household_type"
+        ]
+      },
+      "notes": "The household ONS household-type value must be one of the ten Chronicle ons.household_type value ids the frs_relationships stage declares (the build supplies the declared domain as evidence; the column is a frame input, not a PolicyEngine-UK enum). Evaluated at the assembled boundary like the BRMA enum: membership is a property of the values themselves."
     },
     {
       "id": "uk_uc_deduction_combination_enum_domain",

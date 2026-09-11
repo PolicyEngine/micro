@@ -575,7 +575,6 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "slc.": 5,
     "dwp/uc_payment_dist/": 18,
     "obr.universal_credit_": 2,
-    "ons.household_composition.": 3,
     "obr.fuel_duties": 1,
     # microcosm#762 A16 (2026-09-03): the rows the spine cannot reach by
     # reweighting — savings interest, housing benefit, the two plan-2
@@ -600,7 +599,7 @@ _A16_UNREACHABLE_ROWS = (
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 51
+    assert len(names) == len(set(names)) == 48
 
     for marker, expected in _PACKAGED_EXCLUSION_CENSUS.items():
         matched = [name for name in names if marker in name]
@@ -620,16 +619,17 @@ def test_packaged_exclusions_load():
     ], sparse
 
     # The 2026-08-26 tranche carries the uk_target_fit disposition
-    # adjudication and a uniform three-month window; the ONS composition
-    # cells track the relationship-to-head successor issue.
+    # adjudication and a uniform three-month window. Its three ONS
+    # household-composition cells were retired by microcosm#791 (the
+    # relationship-to-head successor): the ten cells now bind on the
+    # frs_relationships stage's household type column, so no composition
+    # entry may remain on the register.
     tranche = [e for e in exclusions if e["approved_on"] == "2026-08-26"]
-    assert len(tranche) == 39
+    assert len(tranche) == 36
     for entry in tranche:
         assert "5427936411" in entry["adjudication"], entry["name"]
         assert entry["expires_on"] == "2026-11-26", entry["name"]
-    for entry in exclusions:
-        if entry["name"].startswith("ons.household_composition."):
-            assert entry["tracking"] == "microcosm#791", entry["name"]
+    assert not [n for n in names if n.startswith("ons.household_composition.")]
 
     # The 2026-09-03 tranche is #762's A16: five unreachable national rows,
     # a one-month window, each row tracked on its spine-defect issue.
@@ -662,6 +662,9 @@ def test_packaged_exclusions_load():
         "dwp.uc.households_single_no_children",
         "dwp.uc.two_child_limit.children_disabled_child_element",
         "ons.household_composition.couple_no_children_households",
+        "ons.household_composition.multi_family_households",
+        "ons.household_composition.unrelated_adult_households",
+        "ons.household_composition.lone_parent_non_dependent_children_households",
         "hmrc/state_pension_income_band_40_000_to_50_000",
         "hmrc/state_pension_income_band_50_000_to_70_000",
         "hmrc/self_employment_income_income_band_50_000_to_70_000",
