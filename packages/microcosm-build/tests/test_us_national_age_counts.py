@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.us_runtime import demographic_calibration_graph as demographic
 from microcosm.build.us_runtime import graph_national_age_counts
 from microcosm.build.us_runtime.demographic_calibration_graph import (
     DemographicCalibrationKernel,
@@ -33,8 +34,10 @@ from microcosm.build.us_runtime.graph_national_age_counts import (
 from microcosm.build.us_runtime.national_age_activation import (
     NATIONAL_AGE_ACTIVATION,
     band_columns,
+    demographic_target_hierarchy,
 )
 from microcosm.calibrate import calibrate, diagnostics_payload
+from microcosm.calibrate.hierarchy import HierarchyCategory, HierarchyGeography
 from microcosm.calibrate.registry import TargetRegistry, TargetSpec
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph import (
@@ -139,6 +142,9 @@ FIXTURE_TARGETS = {
 EPOCHS, LEARNING_RATE, CAP = 240, 0.05, 4.0
 
 
+FIXTURE_BANDS = {band.variable: band for band in NATIONAL_AGE_ACTIVATION.bands}
+
+
 def fixture_registry() -> TargetRegistry:
     """Fictional values and identities; these are not Census observations."""
 
@@ -152,6 +158,9 @@ def fixture_registry() -> TargetRegistry:
                 period="2024",
                 source="Invented fixture; no published Census value",
                 family="acs.S0101",
+                hierarchy=demographic_target_hierarchy(
+                    "S0101", FIXTURE_BANDS[name], geography="0100000US"
+                ),
                 metadata={
                     "table": "S0101",
                     "reference_sha256": "a" * 64,
@@ -881,6 +890,21 @@ def graph_fixture(output, warm=False):
 
 def test_the_real_graph_counts_and_calibrates_the_invented_population(tmp_path):
     cold = graph_fixture(tmp_path)
+    diagnostics = cold["diagnostics"]
+    assert diagnostics["schema_version"] == 8
+    rows = diagnostics["targets"]
+    assert [row["target_name"] for row in rows] == list(FIXTURE_TARGETS)
+    for row in rows:
+        hierarchy = row["hierarchy"]
+        assert hierarchy["target"]["id"] == row["target_name"]
+        assert hierarchy["provider"]["id"] == "census_acs"
+        assert hierarchy["category"]["id"] == "census_acs.population_by_age"
+        assert hierarchy["geography"] == {
+            "id": "0100000US",
+            "label": "United States",
+            "level": "country",
+        }
+        assert [d["value_id"] for d in hierarchy["dimensions"]] == [row["target_name"]]
     assert cold["hits"] == [False, False, False, False]
     assert cold["household_ids"] == list(HOUSEHOLD_IDS)
     assert cold["count_dtypes"] == ["int64"]
@@ -954,3 +978,56 @@ pathlib.Path(sys.argv[4]).write_text(json.dumps(m.graph_fixture(sys.argv[3], war
     assert {k: v for k, v in warm.items() if k != "hits"} == {
         k: v for k, v in cold.items() if k != "hits"
     }
+
+
+def test_the_registry_json_round_trips_every_calibration_hierarchy():
+    registry = fixture_registry()
+    frozen = demographic._registry_from_json(demographic._registry_json(registry))
+    assert [spec.hierarchy for spec in frozen] == [spec.hierarchy for spec in registry]
+    assert demographic._registry_json(frozen) == demographic._registry_json(registry)
+    for spec in frozen:
+        hierarchy = spec.hierarchy
+        assert hierarchy.provider.id == "census_acs"
+        assert hierarchy.category == HierarchyCategory(
+            "census_acs.population_by_age", "Population by age", "census_acs"
+        )
+        assert hierarchy.geography == HierarchyGeography(
+            "0100000US", "United States", "country"
+        )
+        (dimension,) = hierarchy.dimensions
+        assert dimension.id == "publisher_cell"
+        assert dimension.value_id == hierarchy.target.id == spec.name
+        assert dimension.value_label == hierarchy.target.label
+        assert hierarchy.target.label == FIXTURE_BANDS[spec.name].label
+
+
+@pytest.mark.parametrize(
+    "kind", ["missing", "foreign_cell", "foreign_geography", "foreign_category"]
+)
+def test_a_spec_without_exactly_its_own_hierarchy_is_refused(kind):
+    registry = fixture_registry()
+    first, *rest = list(registry)
+    hierarchy = first.hierarchy
+    if kind == "missing":
+        hierarchy = None
+    elif kind == "foreign_cell":
+        (dimension,) = hierarchy.dimensions
+        hierarchy = replace(
+            hierarchy, dimensions=(replace(dimension, value_id="S0101_C01_019"),)
+        )
+    elif kind == "foreign_geography":
+        hierarchy = replace(
+            hierarchy,
+            geography=HierarchyGeography("0400000US06", "California", "state"),
+        )
+    else:
+        hierarchy = replace(
+            hierarchy,
+            category=HierarchyCategory(
+                "census_acs.resident_population", "Resident population", "census_acs"
+            ),
+        )
+    changed = TargetRegistry([replace(first, hierarchy=hierarchy), *rest], country="us")
+    with pytest.raises(ValueError, match="calibration hierarchy"):
+        demographic._validate_registry(changed)
+    demographic._validate_registry(registry)

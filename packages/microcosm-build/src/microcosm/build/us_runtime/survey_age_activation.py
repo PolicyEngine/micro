@@ -178,6 +178,9 @@ def activate_survey_age_targets(
                 se=age._standard_error(derived, band.variable, confidence_level=0.9),
                 source=f"{data_url} (S0101 {band.variable}E)",
                 family="acs.S0101",
+                hierarchy=age.demographic_target_hierarchy(
+                    "S0101", band, geography="0100000US"
+                ),
                 notes=f"activation={digest}; label={band.label}; age_convention={_CONVENTION}; published 90% MOE divided by {age._MOE_90_TO_SE}, not consumed by current loss",
                 metadata={
                     "table": "S0101",

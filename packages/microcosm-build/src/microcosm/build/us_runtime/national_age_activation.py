@@ -42,7 +42,16 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from microcosm.calibrate.hierarchy import (
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyDimension,
+    HierarchyGeography,
+    HierarchyNode,
+)
+from microcosm.calibrate.provider_labels import calibration_provider_label
 from microcosm.calibrate.registry import TargetRegistry, TargetSpec
+from microcosm.calibrate.variable_labels import calibration_variable_label
 
 from ..cd_benchmark.protocol import RESERVED_FAMILIES
 from .cd_reference import AUTHORITIES, classify_acs_value
@@ -129,6 +138,67 @@ class AgeBand:
             ),
             f"AGE_BAND_BOUNDS:{self.variable}",
         )
+
+
+#: Diagnostics schema 8 hierarchy vocabulary for activated national age cells.
+#: The provider and category labels come from the reviewed US label catalogs;
+#: the geography is the activation's own national publisher row; the single
+#: dimension is the publisher cell whose published label the band binds.
+HIERARCHY_PROVIDER = "census_acs"
+HIERARCHY_DIMENSION_ID = "publisher_cell"
+HIERARCHY_DIMENSION_LABEL = "Publisher cell"
+NATIONAL_GEOGRAPHY_ID = "0100000US"
+NATIONAL_GEOGRAPHY_LABEL = "United States"
+NATIONAL_GEOGRAPHY_LEVEL = "country"
+
+
+def _hierarchy_category_id(table: str) -> str:
+    if table == "S0101":
+        return "population_by_age"
+    if table == "B01001":
+        return "population_by_sex_and_age"
+    raise ActivationError(f"UNSUPPORTED_TABLE:{table}")
+
+
+def expected_demographic_hierarchy(
+    table: str, *, variable: str, label: str, geography: str
+) -> CalibrationHierarchy:
+    """The only hierarchy a national demographic count cell may carry.
+
+    Everything but the published cell label is fixed by the table and the
+    national geography, so a registry validator can rebuild it from a spec and
+    refuse any other provider, category, geography, dimension, or target.
+    """
+    _require(geography == NATIONAL_GEOGRAPHY_ID, f"UNSUPPORTED_GEOGRAPHY:{geography}")
+    category_id = _hierarchy_category_id(table)
+    provider_label = calibration_provider_label("us", HIERARCHY_PROVIDER)
+    category_label = calibration_variable_label("us", HIERARCHY_PROVIDER, category_id)
+    _require(bool(provider_label) and bool(category_label), "HIERARCHY_LABELS")
+    return CalibrationHierarchy(
+        provider=HierarchyNode(HIERARCHY_PROVIDER, provider_label),
+        category=HierarchyCategory(
+            f"{HIERARCHY_PROVIDER}.{category_id}", category_label, HIERARCHY_PROVIDER
+        ),
+        geography=HierarchyGeography(
+            NATIONAL_GEOGRAPHY_ID, NATIONAL_GEOGRAPHY_LABEL, NATIONAL_GEOGRAPHY_LEVEL
+        ),
+        dimensions=(
+            HierarchyDimension(
+                HIERARCHY_DIMENSION_ID, HIERARCHY_DIMENSION_LABEL, variable, label
+            ),
+        ),
+        target=HierarchyNode(variable, label),
+    )
+
+
+def demographic_target_hierarchy(
+    table: str, band: AgeBand, *, geography: str
+) -> CalibrationHierarchy:
+    """The complete schema 8 hierarchy for one activated band's target spec."""
+    _require(type(band) is AgeBand, "AGE_BAND_TYPE")
+    return expected_demographic_hierarchy(
+        table, variable=band.variable, label=band.label, geography=geography
+    )
 
 
 def _bands() -> tuple[AgeBand, ...]:
@@ -617,6 +687,9 @@ def activate_national_age_targets(
                 ),
                 source=f"{data_entry['url']} ({declaration.table} {variable}E)",
                 family=f"acs.{declaration.table}",
+                hierarchy=demographic_target_hierarchy(
+                    declaration.table, band, geography=declaration.geography
+                ),
                 notes=(
                     f"activation={digest}; band={band.low}-"
                     f"{'+' if band.high is None else band.high}; "

@@ -23,6 +23,7 @@ import numpy as np
 from pandas.api.types import is_complex_dtype, is_numeric_dtype
 
 import microcosm.build.cd_benchmark.protocol as protocol_module
+import microcosm.build.us_runtime.national_age_activation as age_module
 import microcosm.calibrate._target_loss_attribution as attribution_module
 import microcosm.calibrate.diagnostics as diagnostics_module
 import microcosm.calibrate.kernels as kernels_module
@@ -31,6 +32,7 @@ import microcosm.calibrate.registry as registry_module
 import microcosm.calibrate.solve as solve_module
 from microcosm.build.cd_benchmark.protocol import RESERVED_FAMILIES
 from microcosm.calibrate import calibrate, diagnostics_payload
+from microcosm.calibrate.hierarchy import CalibrationHierarchy
 from microcosm.calibrate.registry import TargetRegistry, TargetSpec
 from microcosm.frame import WeightKind
 from microcosm.graph import (
@@ -121,6 +123,18 @@ def _validate_registry(registry: TargetRegistry) -> None:
             raise ValueError(
                 "Demographic target scope must be explicit national population counts for 2024."
             )
+        if spec.hierarchy is None or spec.hierarchy != (
+            age_module.expected_demographic_hierarchy(
+                table,
+                variable=spec.name,
+                label=spec.hierarchy.target.label,
+                geography=metadata["geography"],
+            )
+        ):
+            raise ValueError(
+                "Each demographic target must carry exactly its own national "
+                "Census ACS calibration hierarchy."
+            )
         scopes.add(metadata["evidence_scope"])
     if len(scopes) != 1:
         raise ValueError(
@@ -134,9 +148,15 @@ def _registry_from_json(text: str) -> TargetRegistry:
     document = json.loads(text)
     if not isinstance(document, dict) or set(document) != {"country", "specs"}:
         raise ValueError("Unsupported registry declaration shape.")
-    registry = TargetRegistry(
-        [TargetSpec(**raw) for raw in document["specs"]], country=document["country"]
-    )
+    specs = []
+    for raw in document["specs"]:
+        if not isinstance(raw, dict):
+            raise ValueError("Unsupported registry declaration shape.")
+        hierarchy = raw.get("hierarchy")
+        if hierarchy is not None:
+            raw = {**raw, "hierarchy": CalibrationHierarchy.from_dict(hierarchy)}
+        specs.append(TargetSpec(**raw))
+    registry = TargetRegistry(specs, country=document["country"])
     if text != _registry_json(registry):
         raise ValueError(
             "Registry declaration must have its canonical typed representation."
@@ -240,6 +260,7 @@ class DemographicCalibrationKernel(KernelBase):
                 {
                     "adapter": source_hash(
                         sys.modules[__name__],
+                        age_module,
                         registry_module,
                         diagnostics_module,
                         attribution_module,

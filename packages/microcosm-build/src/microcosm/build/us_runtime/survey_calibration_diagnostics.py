@@ -72,11 +72,12 @@ def validate_survey_calibration_diagnostics(
     anchors,
     activation_binding=None,
 ):
-    """Return defensive schema-6 values plus an explicit verification annotation.
+    """Return defensive schema-8 values plus an explicit verification annotation.
 
     Every field except the four named history fields is reconstructed using
     score_targets and the package's diagnostics encoder. Only warning-free
-    schema 6 with target-loss attribution is supported in this first profile.
+    schema 8 (every registry-backed target carrying its calibration hierarchy)
+    with target-loss attribution is supported in this first profile.
     No convergence, optimality, target eligibility or release claim is granted.
     """
     _require(
@@ -185,14 +186,14 @@ def validate_survey_calibration_diagnostics(
     )
     expected = diagnostics_payload(combined, target_registry=registry, build=anchors)
     _require(
-        expected.get("schema_version") == 6
+        expected.get("schema_version") == 8
         and expected.get("diagnostic_warnings") == []
         and "target_loss_basis" in expected,
         "UNSUPPORTED_DIAGNOSTIC_SCHEMA",
     )
     _require(canonical_json(expected) == payload, "RECOMPUTED_VALUES")
     # Make the distinction visible to downstream callers without altering the
-    # stored schema-6 evidence or its digest.
+    # stored schema-8 evidence or its digest.
     document["verification"] = {
         "protocol": "microcosm.us.survey-age-diagnostics-verification.v1",
         "artifact_sha256": hashlib.sha256(payload).hexdigest(),
