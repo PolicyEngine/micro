@@ -280,9 +280,7 @@ def test_expected_support_matches_hand_computed_two_stage_result(tmp_path) -> No
             ),
         )
     )
-    household = pd.DataFrame(
-        {"household_id": [1, 2], "region": ["LONDON", "London"]}
-    )
+    household = pd.DataFrame({"household_id": [1, 2], "region": ["LONDON", "London"]})
 
     support = expected_uk_ladder_area_support(household, ladder, n_clones=2)
 
@@ -664,3 +662,35 @@ def test_join_raises_on_unmatched_lad_itl() -> None:
             oa_ward=_oa_ward(),
             lad_itl=lad_itl,
         )
+
+
+def test_region_tier_roster_and_enum_table_are_consistent() -> None:
+    from microcosm.build.uk_runtime.frs_spine import REGION_MAP
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_ENGLAND_WALES_REGION_CODES,
+        UK_LADDER_NATION_REGION_CODES,
+        UK_REGION_TIER,
+        UK_REGION_TIER_ENUM,
+    )
+
+    codes = [code for _, code in UK_REGION_TIER]
+    assert len(codes) == 12 == len(set(codes))
+    assert [code for level, code in UK_REGION_TIER if level == "region"] == [
+        code for code in UK_ENGLAND_WALES_REGION_CODES if code.startswith("E12")
+    ]
+    assert [code for level, code in UK_REGION_TIER if level == "country"] == [
+        "W92000004",
+        "S92000003",
+        "N92000002",
+    ]
+    # Every spine region enum has exactly one tier code, and every tier code
+    # names a spine region: the predicate a fan-out row carries can never name
+    # a region the frame does not carry.
+    assert set(UK_REGION_TIER_ENUM) == set(codes)
+    assert sorted(UK_REGION_TIER_ENUM.values()) == sorted(REGION_MAP.values())
+    assert len(set(UK_REGION_TIER_ENUM.values())) == 12
+    assert set(UK_LADDER_NATION_REGION_CODES.values()) == {
+        "W92000004",
+        "S92000003",
+        "N92000002",
+    }
