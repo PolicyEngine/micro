@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import hashlib
 import importlib.metadata
@@ -162,6 +163,111 @@ SEED_MODULES = (
     "microcosm.calibrate.solve",
     "microcosm.fit.qrf",
 )
+
+
+#: Public parameter data files the pinned policyengine-us distribution reads
+#: at import time (pandas.read_csv at module import: HUD fair market rents,
+#: income limits, payment standards and utility allowances; HHS rating areas
+#: and second-lowest silver plan costs). The derive phase must import the
+#: engine, so these exact files -- and nothing else with a data suffix -- may
+#: be opened, and only when their bytes hash to the pin. The pins are the
+#: distribution's RECORD digests, verified against policyengine-us 1.819.0 on
+#: 2026-09-11. A distribution whose files differ fails closed before the
+#: boundary is armed (ENGINE_PARAMETER_PIN).
+ENGINE_PUBLIC_PARAMETER_FILES_POLICY = "pinned_engine_public_parameter_files_v1"
+ENGINE_PUBLIC_PARAMETER_DISTRIBUTION = "policyengine-us"
+ENGINE_PUBLIC_PARAMETER_FILES = (
+    (
+        "policyengine_us/parameters/gov/hhs/medicaid/geography/aca_rating_areas.csv",
+        "a953284013a051956e1951f26e31252fcdf2275010953d09fd16546cb3df508e",
+        68571,
+    ),
+    (
+        "policyengine_us/parameters/gov/hhs/medicaid/geography/medicaid_rating_areas.csv",
+        "98bd49798e56026262002fb82699b7940d6bfb26589934909682f355ee4e086e",
+        59225,
+    ),
+    (
+        "policyengine_us/parameters/gov/hhs/medicaid/geography/second_lowest_silver_plan_cost.csv",
+        "b2e415151d5ecc662b62e8b05ea3e1878dcad9e63384c255a314ea3254e47c55",
+        293454,
+    ),
+    (
+        "policyengine_us/parameters/gov/hud/fmr/fair_market_rents.csv",
+        "aaaa3fe7935e553c5333da51722640704351040092dbf8102c2b19b86a373183",
+        1314027,
+    ),
+    (
+        "policyengine_us/parameters/gov/hud/fmr/small_area_fair_market_rents.csv",
+        "3ae1edbe6491bafd0b4c4d66401d914e9edf37304f8d93eb43a786a3e4d98ec1",
+        246698,
+    ),
+    (
+        "policyengine_us/parameters/gov/hud/income_limits/section8_income_limits.csv",
+        "2a8de86c81a8806e75eb15b278a9708e855cd241ba4cc564871c94a565f46442",
+        1570746,
+    ),
+    (
+        "policyengine_us/parameters/gov/hud/payment_standards/zip_code_payment_standards.csv",
+        "66179687d3e0d9d6c99a58a528aad672ee6a3af8820189209eac6be1ba02d097",
+        84054,
+    ),
+    (
+        "policyengine_us/parameters/gov/hud/utility_allowance/county_utility_allowances.csv",
+        "0642a75980473ffa33be12d51a3c58ed735472598109b0998b3634d918563809",
+        3913,
+    ),
+)
+
+
+def pinned_engine_parameter_files(
+    *,
+    distribution: str = ENGINE_PUBLIC_PARAMETER_DISTRIBUTION,
+    pins: tuple[tuple[str, str, int], ...] = ENGINE_PUBLIC_PARAMETER_FILES,
+) -> tuple[dict, frozenset[Path]]:
+    """Verify the pinned engine parameter files before the boundary is armed.
+
+    Locates the installed distribution through its metadata (the engine is
+    not imported), requires every pinned file to be a regular file inside the
+    distribution root whose bytes hash to the pin and whose RECORD entry
+    carries that digest, and returns the bounded report plus the resolved
+    paths the audit hook may allow. Hashing happens once here; the hook only
+    compares resolved paths.
+    """
+    from importlib import metadata
+
+    try:
+        dist = metadata.distribution(distribution)
+    except metadata.PackageNotFoundError:
+        raise RefusalError("ENGINE_PARAMETER_PIN") from None
+    root = Path(dist.locate_file("")).resolve()
+    record = {}
+    for entry in dist.files or ():
+        if entry.hash is not None and entry.hash.mode == "sha256":
+            padded = entry.hash.value + "=" * (-len(entry.hash.value) % 4)
+            record[str(entry)] = base64.urlsafe_b64decode(padded).hex()
+    allowed: set[Path] = set()
+    files = []
+    for relative, expected, size in pins:
+        path = (root / relative).resolve()
+        require(path.is_relative_to(root), "ENGINE_PARAMETER_PIN")
+        require(path.is_file() and not path.is_symlink(), "ENGINE_PARAMETER_PIN")
+        raw = path.read_bytes()
+        actual = digest(raw)
+        require(len(raw) == size and actual == expected, "ENGINE_PARAMETER_PIN")
+        require(record.get(relative) == expected, "ENGINE_PARAMETER_PIN")
+        allowed.add(path)
+        files.append({"path": relative, "sha256": expected, "size": size})
+    return (
+        {
+            "policy": ENGINE_PUBLIC_PARAMETER_FILES_POLICY,
+            "distribution": distribution,
+            "version": dist.version,
+            "files": files,
+            "count": len(files),
+        },
+        frozenset(allowed),
+    )
 
 
 class RefusalError(RuntimeError):
@@ -323,6 +429,39 @@ def read_refusal_context(code, event, path, requested, roots) -> bytes:
     return payload
 
 
+_LOOPBACK_PROBE_HOSTS = frozenset({"::1", "127.0.0.1"})
+
+
+def _is_urllib3_ipv6_probe(event: str, args: tuple[object, ...]) -> bool:
+    """Recognise urllib3's import-time IPv6 capability probe and nothing else.
+
+    ``urllib3.util.connection._has_ipv6`` creates one socket and binds it to
+    the loopback address on an ephemeral port; it never connects, sends or
+    resolves a name. Only ``socket.__new__`` and a loopback ``socket.bind``
+    issued from that exact function are accepted; every other socket event
+    keeps the NETWORK_OR_CHILD refusal.
+    """
+    if event == "socket.bind":
+        address = args[1] if len(args) > 1 else None
+        if not (
+            isinstance(address, tuple)
+            and address
+            and address[0] in _LOOPBACK_PROBE_HOSTS
+        ):
+            return False
+    elif event != "socket.__new__":
+        return False
+    frame = sys._getframe(1)
+    while frame is not None:
+        code = frame.f_code
+        if code.co_name == "_has_ipv6" and code.co_filename.replace("\\", "/").endswith(
+            "urllib3/util/connection.py"
+        ):
+            return True
+        frame = frame.f_back
+    return False
+
+
 def install_boundary(
     root: Path,
     owned: Path,
@@ -331,6 +470,7 @@ def install_boundary(
     first_refusal: list[bytes] | None = None,
     distinct_refusals: list[str] | None = None,
     code_contexts: dict[str, bytes] | None = None,
+    allowed_data_files: frozenset[Path] = frozenset(),
 ) -> list[str]:
     refusals: list[str] = []
     blocked_files = (
@@ -368,6 +508,12 @@ def install_boundary(
         Path("/proc/self/maps"),
         # operation_path resolves /proc/self to this process's numeric PID.
         Path(f"/proc/{os.getpid()}/maps"),
+        # psutil reads the CPU-times field layout from /proc/stat when it is
+        # imported (joblib's loky backend imports it during the derive phase);
+        # metadata only, like /proc/cpuinfo above.
+        Path("/proc/stat"),
+        # The pinned engine parameter files verified before the hook was armed.
+        *allowed_data_files,
     }
 
     context_roots = (
@@ -440,7 +586,11 @@ def install_boundary(
     def audit(event: str, args: tuple[object, ...]) -> None:
         # gethostname reads a local OS label; it opens no network connection.
         if (
-            (event.startswith("socket.") and event != "socket.gethostname")
+            (
+                event.startswith("socket.")
+                and event != "socket.gethostname"
+                and not _is_urllib3_ipv6_probe(event, args)
+            )
             or event.startswith("subprocess.")
             or event
             in {
@@ -485,7 +635,7 @@ def install_boundary(
         if event == "open" and args:
             path = operation_path(args[0])
             name = str(path)
-            if name.lower().endswith(blocked_files):
+            if name.lower().endswith(blocked_files) and path not in allowed_data_files:
                 refuse("DATA_FILE", event="open", path=path, requested=args[0])
             flags = args[2] if len(args) > 2 else 0
             writing = isinstance(flags, int) and bool(
@@ -959,6 +1109,7 @@ def main() -> int:
         first_refusal: list[bytes] = []
         distinct_refusals: list[str] = []
         code_contexts: dict[str, bytes] = {}
+        engine_parameter_files, allowed_data_files = pinned_engine_parameter_files()
         refusals = install_boundary(
             root,
             owned,
@@ -966,6 +1117,7 @@ def main() -> int:
             first_refusal=first_refusal,
             distinct_refusals=distinct_refusals,
             code_contexts=code_contexts,
+            allowed_data_files=allowed_data_files,
         )
         # Dependency-created temporaries must stay inside this invocation's scope.
         tempfile.tempdir = str(owned)
@@ -994,6 +1146,7 @@ def main() -> int:
                 "contents": "invented_spec_fixture_and_dependency_temporaries",
                 "uploaded": False,
             },
+            "engine_public_parameter_files": engine_parameter_files,
         }
         try:
             bootstrap["absent_stdlib_zip_omitted"] = omit_absent_stdlib_zip()
