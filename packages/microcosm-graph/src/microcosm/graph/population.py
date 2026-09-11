@@ -2701,8 +2701,11 @@ def _object_storage_values(values: np.ndarray) -> bytes:
     little-endian body length followed by the ContentStore's own object-scalar
     body, mirroring the ``StringDtype`` framing above.  Reusing that encoder is
     what keeps a column equal to its own persisted-and-reloaded self: it is the
-    single definition of an object leaf's bytes in this package, and its tags
-    keep ``1``, ``1.0``, ``True``, ``"1"`` and ``b"1"`` distinct.  Every body
+    store's definition of an object leaf's bytes, and its tags keep ``1``,
+    ``1.0``, ``True``, ``"1"`` and ``b"1"`` distinct.  (The executor's
+    kernel-context digest keeps a separate leaf vocabulary in
+    ``executor._update_scalar``, with a ``repr()`` fallback; storage hashing
+    deliberately does not share it.)  Every body
     carries a tag, so a body is never empty and a zero length stays reserved.
 
     What it deliberately does not keep distinct is a NumPy scalar from its
