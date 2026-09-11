@@ -395,7 +395,14 @@ def derive_frs_relationships(
     raw = _aligned_raw_person(person, raw_adult, raw_child)
     person_ids = person["person_id"].to_numpy(dtype="int64")
     household_ids = person["person_household_id"].to_numpy(dtype="int64")
-    ages = pd.to_numeric(person["age"], errors="coerce").fillna(0).to_numpy()
+    age_values = pd.to_numeric(person["age"], errors="coerce")
+    if age_values.isna().any():
+        # A blank age would read as 0 and silently make a dependent child.
+        raise FRSRelationshipsError(
+            f"{int(age_values.isna().sum())} frame person(s) carry a non-numeric "
+            "age; the derivation refuses rather than reading them as 0."
+        )
+    ages = age_values.to_numpy()
     frame_head = person["is_household_head"].to_numpy(dtype=bool)
     person_index = person_ids % 1000
     grid_columns = list(FRS_RELATIONSHIPS_SOURCE_COLUMNS["grid"])

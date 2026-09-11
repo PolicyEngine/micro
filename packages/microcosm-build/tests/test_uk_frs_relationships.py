@@ -498,6 +498,24 @@ def test_reciprocity_mismatches_are_counted_and_fenced() -> None:
     assert _types(tolerated) == ["lone_parent_dependent_children_households"]
 
 
+def test_a_non_numeric_age_refuses_instead_of_reading_as_zero() -> None:
+    person, household, adult, child, raw_household = _tables(
+        [
+            _person(1, age=45, hrp=True, rel={2: PARENT}),
+            _person(2, age=10, table="child", rel={1: CHILD}),
+        ]
+    )
+    person.loc[person["person_id"] == 1002, "age"] = np.nan
+    with pytest.raises(FRSRelationshipsError, match="non-numeric age"):
+        derive_frs_relationships(
+            person,
+            household,
+            raw_adult=adult,
+            raw_child=child,
+            raw_household=raw_household,
+        )
+
+
 def test_a_frame_person_missing_from_the_tabs_refuses() -> None:
     person, household, adult, child, raw_household = _tables(
         [_person(1, age=30, hrp=True)]
