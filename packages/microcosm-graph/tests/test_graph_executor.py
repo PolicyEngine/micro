@@ -17,6 +17,9 @@ import pytest
 import microcosm.graph.executor as graph_executor
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph.decl import (
+    ArtifactInput,
+    ArtifactOutput,
+    ArtifactType,
     Graph,
     GraphError,
     Node,
@@ -30,6 +33,7 @@ from microcosm.graph.decl import (
 )
 from microcosm.graph.executor import NodeRejected, run_graph
 from microcosm.graph.kernel import (
+    ArtifactValue,
     Capabilities,
     Determinism,
     KernelContext,
@@ -40,7 +44,8 @@ from microcosm.graph.kernel import (
     NumericScope,
     Tolerance,
 )
-from microcosm.graph.keys import platform_fingerprint
+from microcosm.graph.errors import NodeRejectedError
+from microcosm.graph.keys import opaque_artifact_key, platform_fingerprint
 from microcosm.graph.manifest import Decision, RunManifest
 from microcosm.graph.store import (
     ContentStore,
@@ -3364,3 +3369,248 @@ def test_entrant_materialization_rejects_a_masked_claimant(
             registry,
         )
     assert mask_kernel.calls == size_kernel.calls == 0
+
+
+# --- Amendment 19: typed opaque artifacts -----------------------------------
+
+FOREST = ArtifactType("qrf.forest", 1)
+
+
+def _artifact_graph(
+    *,
+    declare_output: bool = True,
+    consumer_type: ArtifactType = FOREST,
+) -> Graph:
+    fit = Node(
+        "fit",
+        "fit@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "fitted", "float64"),),
+        params={"source": "age", "target": "fitted", "scale": 1.0},
+        population="survey",
+        artifact_outputs=(ArtifactOutput("forest", FOREST),) if declare_output else (),
+    )
+    draw = Node(
+        "draw",
+        "consume@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "drawn", "float64"),),
+        population="survey",
+        artifact_inputs=(ArtifactInput("donor", "fit", "forest", consumer_type),),
+    )
+    return Graph("toy", (SOURCE,), (CREATE, fit, draw))
+
+
+def _artifact_registry(
+    *,
+    seen: list[Mapping[str, object]] | None = None,
+    payload: bytes = b"forest-bytes",
+    emit: bool = True,
+    producer: Capabilities | None = None,
+    consumer: Capabilities | None = None,
+) -> KernelRegistry:
+    def fit(context: KernelContext) -> KernelResult:
+        table = context.tables["person"]
+        return KernelResult(
+            columns={
+                ("person", "fitted"): pd.Series(
+                    table["age"].to_numpy(dtype=np.float64),
+                    index=pd.Index(table["person_id"], name="person_id"),
+                    dtype="float64",
+                )
+            },
+            artifacts=({"forest": payload} if emit else {}) | {"notes": b"diagnostic"},
+            receipt={"trees": 3},
+        )
+
+    def consume(context: KernelContext) -> KernelResult:
+        if seen is not None:
+            seen.append(dict(context.artifacts))
+        donor = context.artifacts["donor"]
+        table = context.tables["person"]
+        return KernelResult(
+            columns={
+                ("person", "drawn"): pd.Series(
+                    np.full(len(table), float(len(donor.payload))),
+                    index=pd.Index(table["person_id"], name="person_id"),
+                    dtype="float64",
+                )
+            },
+            receipt={"payload_bytes": len(donor.payload)},
+        )
+
+    registry = _registry()
+    registry.register(
+        _Kernel("fit@1", producer or Capabilities(Determinism.DETERMINISTIC), fit)
+    )
+    registry.register(
+        _Kernel(
+            "consume@1", consumer or Capabilities(Determinism.DETERMINISTIC), consume
+        )
+    )
+    return registry
+
+
+def test_a_declared_artifact_reaches_its_consumer_verified(tmp_path: Path) -> None:
+    """Amendment 19: the executor hands over the producer's exact bytes."""
+    seen: list[Mapping[str, object]] = []
+    store = ContentStore(tmp_path / "store")
+    registry = _artifact_registry(seen=seen)
+    manifest = _run(_artifact_graph(), _source_path(tmp_path / "src"), store, registry)
+    assert len(seen) == 1
+    donor = seen[0]["donor"]
+    assert set(seen[0]) == {"donor"}
+    assert donor.payload == b"forest-bytes"
+    assert donor.type == FOREST
+    producer_key = manifest.nodes["fit"].key
+    assert donor.producer_key == producer_key
+    assert donor.key == opaque_artifact_key(producer_key, "forest")
+    assert donor.numerics == NumericScope(numeric=Numeric.BITWISE)
+    assert manifest.nodes["fit"].opaque_artifacts["forest"] == donor.key
+    # Every person row carries the payload length the consumer measured.
+    drawn = manifest.populations["survey"].person["drawn"]
+    assert set(drawn.to_numpy()) == {float(len(b"forest-bytes"))}
+
+
+def test_a_kernel_that_omits_a_declared_artifact_is_rejected(tmp_path: Path) -> None:
+    """Amendment 19: a declared output is required of the kernel."""
+    store = ContentStore(tmp_path / "store")
+    registry = _artifact_registry(emit=False)
+    with pytest.raises(NodeRejected, match="missing declared artifact 'forest'"):
+        _run(_artifact_graph(), _source_path(tmp_path / "src"), store, registry)
+
+
+def test_undeclared_opaque_bytes_stay_legal_and_unaddressable(tmp_path: Path) -> None:
+    """Amendment 19: only declared outputs become artifact edges."""
+    store = ContentStore(tmp_path / "store")
+    manifest = _run(
+        _artifact_graph(), _source_path(tmp_path / "src"), store, _artifact_registry()
+    )
+    assert set(manifest.nodes["fit"].opaque_artifacts) == {"forest", "notes"}
+    assert set(manifest.nodes["fit"].typed_artifacts["outputs"]) == {"forest"}
+    graph = _artifact_graph()
+    bad = Graph(
+        graph.country,
+        graph.sources,
+        tuple(
+            node
+            if node.id != "draw"
+            else replace(
+                node,
+                artifact_inputs=(ArtifactInput("donor", "fit", "notes", FOREST),),
+            )
+            for node in graph.nodes
+        ),
+    )
+    with pytest.raises(GraphError, match="no declared artifact 'notes'"):
+        compile_graph(bad)
+
+
+def test_an_artifact_edge_is_memoized_like_every_other_input(tmp_path: Path) -> None:
+    """Amendment 19: a second run hits the store and executes no kernel."""
+    store = ContentStore(tmp_path / "store")
+    source = _source_path(tmp_path / "src")
+    first = _artifact_registry()
+    _run(_artifact_graph(), source, store, first)
+    second = _artifact_registry()
+    manifest = _run(_artifact_graph(), source, store, second)
+    assert all(receipt.hit for receipt in manifest.nodes.values())
+    assert _calls(second)["fit@1"] == 0
+    assert _calls(second)["consume@1"] == 0
+
+
+def test_a_cached_typed_contract_that_disagrees_with_the_graph_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Amendment 19: the cached record pins the typed contract it was run under."""
+    store = ContentStore(tmp_path / "store")
+    source = _source_path(tmp_path / "src")
+    manifest = _run(_artifact_graph(), source, store, _artifact_registry())
+    # Rewriting a cached consumer record's contract is corruption, not a miss.
+    key = manifest.nodes["draw"].key
+    raw = store.load_json(graph_executor._cache_record_key(key))
+    raw["typed_artifacts"]["inputs"]["donor"]["type"]["schema_version"] = 99
+    store.put_json(
+        graph_executor._cache_record_key(key), raw, node_key=key, verify_existing=False
+    )
+    with pytest.raises(StoreCorrupt, match="typed artifact contracts disagree"):
+        _run(_artifact_graph(), source, store, _artifact_registry())
+
+
+def test_the_manifest_records_typed_provenance_and_round_trips(tmp_path: Path) -> None:
+    """Amendment 19: typed edges are portable provenance at manifest schema 3."""
+    store = ContentStore(tmp_path / "store")
+    manifest = _run(
+        _artifact_graph(), _source_path(tmp_path / "src"), store, _artifact_registry()
+    )
+    binding = manifest.nodes["draw"].typed_artifacts["inputs"]["donor"]
+    assert binding["producer"] == "fit" and binding["artifact"] == "forest"
+    assert binding["producer_key"] == manifest.nodes["fit"].key
+    text = manifest.to_json()
+    assert '"schema_version":3' in text
+    restored = RunManifest.from_json(text)
+    assert restored.key == manifest.key
+    assert restored.nodes["draw"].typed_artifacts == manifest.nodes["draw"].typed_artifacts
+
+
+def test_a_typed_edge_refuses_to_launder_its_producer_numeric_scope(
+    tmp_path: Path,
+) -> None:
+    """Amendment 19 x 16/17: bytes carry their producer's numeric contract."""
+    store = ContentStore(tmp_path / "store")
+    registry = _artifact_registry(
+        producer=Capabilities(Determinism.SEEDED, numeric=Numeric.PLATFORM_BITWISE)
+    )
+    with pytest.raises(
+        NodeRejectedError, match="platform_bitwise artifact requires"
+    ):
+        _run(_artifact_graph(), _source_path(tmp_path / "src"), store, registry)
+    bounded = _artifact_registry(
+        producer=Capabilities(
+            Determinism.SEEDED,
+            numeric=Numeric.TOLERANCE_BOUND,
+            tolerance=Tolerance(rtol=1e-6),
+        )
+    )
+    with pytest.raises(
+        NodeRejectedError, match="tolerance_bound artifact requires"
+    ):
+        _run(_artifact_graph(), _source_path(tmp_path / "src"), store, bounded)
+
+
+def test_an_artifact_payload_enters_the_input_context_digest(tmp_path: Path) -> None:
+    """Amendment 19: artifact bytes are input state, so mutation is detectable."""
+    node = Node("draw", "consume@1")
+    scope = NumericScope()
+    base = dict(
+        node=node,
+        tables={},
+        weights={},
+        strata=pd.Series(dtype="int64"),
+        params={},
+        rng=np.random.default_rng(0),
+    )
+    first = KernelContext(
+        **base,
+        artifacts={
+            "donor": ArtifactValue(b"one", FOREST, "a" * 64, "b" * 64, scope)
+        },
+    )
+    second = KernelContext(
+        **base,
+        artifacts={
+            "donor": ArtifactValue(b"two", FOREST, "a" * 64, "b" * 64, scope)
+        },
+    )
+    bare = KernelContext(**base)
+    digest = graph_executor._context_digest
+    assert digest(first) != digest(second)
+    assert digest(first) != digest(bare)
+    assert digest(first) == digest(
+        KernelContext(
+            **base,
+            artifacts={
+                "donor": ArtifactValue(b"one", FOREST, "a" * 64, "b" * 64, scope)
+            },
+        )
+    )
