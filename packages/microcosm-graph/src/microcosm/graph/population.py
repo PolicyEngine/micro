@@ -1044,7 +1044,8 @@ def storage_equal(
     at the ContentStore's own leaf resolution, which is what makes that round
     trip a fixed point: a NumPy floating leaf compares at ``float64`` width and
     a NumPy integer leaf by value, because that is what the store decodes back.
-    A leaf outside that vocabulary raises rather than comparing addresses.
+    A leaf outside that vocabulary raises :class:`PopulationError` rather than
+    comparing addresses, so for object columns this predicate is not total.
 
     Masked storage is not compared by content: it reads ``_data`` under the
     null mask, where pandas leaves whatever the construction route happened to
@@ -2695,6 +2696,13 @@ def _object_storage_values(values: np.ndarray) -> bytes:
     single definition of an object leaf's bytes in this package, and its tags
     keep ``1``, ``1.0``, ``True``, ``"1"`` and ``b"1"`` distinct.  Every body
     carries a tag, so a body is never empty and a zero length stays reserved.
+
+    What it deliberately does not keep distinct is a NumPy scalar from its
+    Python counterpart: the encoder normalizes ``np.int32(1)`` to ``1`` and
+    ``np.float32(1.0)`` to ``1.0`` because the store's decoder hands back the
+    Python form, so a leaf-type-only difference inside an object column is not
+    a storage change.  Refusing it would mean a column could never equal its
+    own persisted-and-reloaded self, which is the defect being fixed.
     """
 
     payload = bytearray()

@@ -1635,6 +1635,34 @@ def test_object_storage_refusal_message_excludes_the_value_repr() -> None:
     assert "_Loud" in str(excinfo.value)
 
 
+@pytest.mark.parametrize(
+    ("numpy_leaf", "python_leaf"),
+    [
+        (np.int32(1), 1),
+        (np.int64(1), 1),
+        (np.uint64(2**64 - 1), 2**64 - 1),
+        (np.float32(1.0), 1.0),
+        (np.float64(1.5), 1.5),
+        (np.bool_(True), True),
+        (np.str_("a"), "a"),
+        (np.bytes_(b"a"), b"a"),
+    ],
+)
+def test_object_storage_normalizes_numpy_scalars_like_the_store_decoder(
+    numpy_leaf: object, python_leaf: object
+) -> None:
+    """A deliberate widening, and the reason the store round trip is a fixed point.
+
+    ``_decode_object_chunks`` hands back the Python form, so refusing to call
+    these equal would mean a column could never equal its own reloaded self.
+    """
+
+    assert storage_equal(
+        _object_series([numpy_leaf, None, None]),
+        _object_series([python_leaf, None, None]),
+    )
+
+
 def test_object_storage_uses_the_content_store_leaf_encoding() -> None:
     """The object encoding is the ContentStore's, not a second definition."""
 
