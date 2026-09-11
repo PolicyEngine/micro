@@ -263,6 +263,9 @@ def compile_uk_target_registry(
                 country="uk",
             )
             registry = _assert_region_facts_resolved_at_region(restamped, registry)
+            registry = align_dft_bus_fare_receipts_to_period(
+                restamped, registry, fact_rows, target_period=target_period
+            )
             registry = validate_uc_source_month_coverage(
                 restamped, registry, candidate_facts
             )
@@ -289,6 +292,145 @@ def compile_uk_target_registry(
         TargetRegistry(compiled, country="uk"),
         tuple(unsupported),
     )
+
+
+#: DfT BUS05ai fare receipts are aligned from the publisher's year-ending-March
+#: period to the calibration year with the BUS0415 local bus fares index (a
+#: ruling of 2026-09-10: calendar-year basis). Net support is never aligned.
+UK_DFT_BUS_FARE_RECEIPTS_CONCEPT = "dft.local_bus_passenger_fare_receipts"
+UK_DFT_BUS_FARES_INDEX_CONCEPT = "dft.local_bus_fares_index"
+UK_DFT_BUS_FARE_INDEX_BASIS = (
+    "mean of the quarter-end BUS0415 index (March, June, September, December) "
+    "inside the calibration calendar year over the mean of the four quarter-ends "
+    "inside the receipts' April-to-March fiscal year"
+)
+
+
+def _fares_index_series(
+    facts: Iterable[Mapping[str, Any]], geography_id: str
+) -> dict[str, tuple[float, str]]:
+    """Month -> (index value, source record id) for one BUS0415 series."""
+
+    series: dict[str, tuple[float, str]] = {}
+    for fact in facts:
+        observed = fact.get("observed_measure")
+        concept = (
+            observed.get("source_concept") if isinstance(observed, Mapping) else None
+        )
+        if concept != UK_DFT_BUS_FARES_INDEX_CONCEPT:
+            alignment = fact.get("concept_alignment")
+            if not isinstance(alignment, Mapping) or (
+                alignment.get("canonical_concept") != UK_DFT_BUS_FARES_INDEX_CONCEPT
+            ):
+                continue
+        geography = fact.get("geography")
+        if not isinstance(geography, Mapping) or geography.get("id") != geography_id:
+            continue
+        period = fact.get("period")
+        if not isinstance(period, Mapping) or period.get("type") != "month":
+            continue
+        month = str(period.get("value"))
+        value = fact.get("value")
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            continue
+        lineage = fact.get("lineage")
+        record_id = (
+            str(lineage.get("source_record_id")) if isinstance(lineage, Mapping) else ""
+        )
+        if month in series and series[month][0] != float(value):
+            raise ValueError(
+                f"BUS0415 series {geography_id!r} carries two values for {month!r}."
+            )
+        series[month] = (float(value), record_id)
+    return series
+
+
+def _quarter_end_months(start_year: int, start_month: int) -> tuple[str, ...]:
+    months = []
+    year, month = start_year, start_month
+    for _ in range(4):
+        # advance to the next quarter-end month (3, 6, 9, 12) on or after
+        # (year, month), then step past it
+        while month not in (3, 6, 9, 12):
+            month += 1
+            if month > 12:
+                month, year = 1, year + 1
+        months.append(f"{year:04d}-{month:02d}")
+        month += 1
+        if month > 12:
+            month, year = 1, year + 1
+    return tuple(months)
+
+
+def align_dft_bus_fare_receipts_to_period(
+    reference: LedgerTargetReference,
+    registry: TargetRegistry,
+    facts: Iterable[Mapping[str, Any]],
+    *,
+    target_period: int,
+) -> TargetRegistry:
+    """Transport BUS05ai fare receipts to the calibration year with BUS0415.
+
+    Applies only to ``dft_local_bus`` fare-receipt references that carry the
+    generator's uprating hold (fact period earlier than the target period).
+    Net support rows pass through untouched. The factor is declared on the
+    spec's metadata with the index concept, the series geography, the months
+    used, their source record ids and the pre-alignment value, so the run
+    manifest and receipts show the publisher facts the transport stands on.
+    """
+
+    if reference.family != "dft_local_bus":
+        return registry
+    if str(reference.ledger_selector.get("source_concept") or "") != (
+        UK_DFT_BUS_FARE_RECEIPTS_CONCEPT
+    ):
+        return registry
+    if reference.uprating_from_period is None or reference.uprating_to_period is None:
+        return registry
+    fact_list = list(facts)
+    aligned = []
+    for spec in registry.specs:
+        geography_id = str(spec.metadata.get("ledger_geography_id") or "")
+        fact_period = str(spec.metadata.get("ledger_fact_period") or "")
+        if not geography_id or not fact_period.isdigit():
+            raise ValueError(
+                f"UK target {spec.name!r}: cannot align fare receipts without a "
+                "resolved Ledger geography and fiscal start year."
+            )
+        start_year = int(fact_period)
+        from_months = _quarter_end_months(start_year, 4)
+        to_months = _quarter_end_months(int(target_period), 1)
+        series = _fares_index_series(fact_list, geography_id)
+        missing = [m for m in (*from_months, *to_months) if m not in series]
+        if missing:
+            raise ValueError(
+                f"UK target {spec.name!r}: BUS0415 series {geography_id!r} lacks "
+                f"quarter-end month(s) {missing}; refusing to align fare receipts."
+            )
+        from_mean = sum(series[m][0] for m in from_months) / len(from_months)
+        to_mean = sum(series[m][0] for m in to_months) / len(to_months)
+        if from_mean <= 0 or to_mean <= 0:
+            raise ValueError(
+                f"UK target {spec.name!r}: BUS0415 index means must be positive."
+            )
+        factor = to_mean / from_mean
+        record_ids = ",".join(series[m][1] for m in (*from_months, *to_months))
+        metadata = {
+            **spec.metadata,
+            "uprating_index": UK_DFT_BUS_FARES_INDEX_CONCEPT,
+            "uprating_index_basis": UK_DFT_BUS_FARE_INDEX_BASIS,
+            "uprating_index_series_geography_id": geography_id,
+            "uprating_index_from_months": ",".join(from_months),
+            "uprating_index_to_months": ",".join(to_months),
+            "uprating_index_from_mean": f"{from_mean:.15g}",
+            "uprating_index_to_mean": f"{to_mean:.15g}",
+            "uprating_index_source_record_ids": record_ids,
+            "uprating_factor": f"{factor:.15g}",
+            "ledger_value_before_alignment": f"{spec.value:.15g}",
+            "uprating_adjudication": "microcosm#890 (ruling 2026-09-10: calendar-year basis)",
+        }
+        aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
+    return TargetRegistry(aligned, country="uk")
 
 
 #: National references may pin a region only from the published English
