@@ -6,25 +6,46 @@ Report: `/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/lanes/out-9
 
 ## State
 
-In progress. Environment synced (`uv sync --all-packages --locked --extra us
---extra uk`, exit 0). Defect reproduced directly against the checked-out
-`microcosm.graph.population._storage_parts`.
+Implementation complete on `fix-907-population-stamp-object-storage`; four
+commits, nothing pushed, no new branch, no stash. Full-workspace suite and
+adversarial review in flight at the time of writing. `decl.py`, `kernel.py`,
+`docs/graph-interface.lock`, every `test_acceptance_*`, `uv.lock`, spec pins
+and evidence JSON are untouched (`shasum -a 256` on `decl.py`/`kernel.py`
+still matches the lock byte for byte).
 
 ## Done
 
-- Read `CLAUDE.md`; confirmed the lane rules (no push, no new branch, no
-  stash, no spec-pin/evidence/uv.lock edits, `decl.py`/`kernel.py`/
-  `docs/graph-interface.lock`/`test_acceptance_*` untouched).
-- Reproduced #907: two independently constructed object-dtype Series with
-  equal content produce different `_storage_parts` value bytes (PyObject
-  pointers), so `storage_equal` returns `False` for equal content.
+- Read `CLAUDE.md` and `docs/shared-constants.md`; confirmed the lane rules.
+- Reproduced #907 directly: two independently constructed equal object-dtype
+  Series give different `_storage_parts` value bytes (PyObject pointers), so
+  `storage_equal` is `False` for equal content.
+- Landed the red regression in `packages/microcosm-graph/tests/`
+  (`test_graph_population.py`, an already-tracked file, so
+  `tools/ci_test_groups.py` needed no change). Red run against the pre-fix
+  source: 34 failed, 24 passed, 46 deselected; direct exit 1.
+- Fixed `_storage_parts` by routing any materialized object array through a
+  length-prefixed encoding whose body is `store._encode_object_scalar` — the
+  graph package's existing object-leaf codec, the one `ContentStore` writes
+  and reads back. A second, parallel vocabulary would have left a column
+  unequal to its own persisted-and-reloaded self for `pd.NA`, `pd.NaT` and
+  NumPy scalars. Unsupported leaves raise `PopulationError` under the static
+  code `storage-object-leaf` instead of being `repr()`-ed.
+- Kept the masked, numeric and `StringDtype` branches byte-identical, pinned
+  by hex-literal characterization tests.
+- Documented at `storage_equal` what the parts do and do not seal, with a
+  regression pinning the masked-storage half of that claim.
+- `tools/spec_engine_coverage.py --check` exit 0 (42156/42156 fields, 41/41
+  inventory checks); `tools/ci_test_groups.py --verify` exit 0, the test file
+  landing in `fast:rest` and `engine:us-am`, never `[defaulted]`.
 
 ## Next
 
-- Land the red regression in `packages/microcosm-graph/tests/`.
-- Fix the object-dtype branch with a length-prefixed content encoding and a
-  fail-closed refusal for unsupported leaf types.
-- Audit `_storage_parts` reachability and pinned-digest drift; report.
+- Human review. The one item this lane could not complete is the issue's
+  request to document `_population_stamp` in
+  `us_runtime/survey_atomic_geography.py`: that module does not exist on
+  `origin/main`, only at the tip of the unmerged
+  `origin/microcosm-us-launch-integration-20260909`. The exact wording is in
+  the lane report for whoever owns that branch.
 
 ---
 
