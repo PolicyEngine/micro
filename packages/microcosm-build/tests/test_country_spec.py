@@ -981,10 +981,10 @@ class TestUKCountryPackage:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 28 spine stages (uc_reporter_redraw #832, then uc_deduction_attributes
-        # #685 as the newest) plus the
+        # 29 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
+        # #685, then frs_relationships #791 as the newest) plus the
         # two certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 30
+        assert len(spec.sources.stages) == 31
 
 
 class TestExistingPackagesGeneralize:
@@ -1322,6 +1322,7 @@ class TestUKGatesManifest:
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
+            "uk_stage_frs_relationships_composition",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1335,6 +1336,7 @@ class TestUKGatesManifest:
             "uk_export_surface",
             "uk_take_up_signal",
             "uk_brma_enum_domain",
+            "uk_ons_household_type_enum_domain",
             "uk_uc_deduction_combination_enum_domain",
             "uk_student_loan_plan_enum_domain",
             "uk_calibration_reference_coverage",
@@ -1411,6 +1413,7 @@ class TestUKGatesManifest:
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
+            "uk_stage_frs_relationships_composition",
             "uk_weights_audit",
         ]
         assert all(g.not_applicable is None for g in manifest.gates)

@@ -13,7 +13,7 @@
     "spi_sample_fraction": 0.0135,
     "student_loans_calibration_year": 2025
   },
-  "description": "Data-only inputs for reconstructing the same 28 current UK stage transform classes used by the legacy StagePlan oracle.",
+  "description": "Data-only inputs for reconstructing the same 29 current UK stage transform classes used by the legacy StagePlan oracle.",
   "inputs": {
     "cgt_distribution": "cgt_distribution.json",
     "etb": "etb.csv",
@@ -442,8 +442,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "5dce5c323681a5dd77b366fc52da49326d7626b6bbe99c34aee0808e21a81829",
-          "size_bytes": 14896,
+          "sha256": "c56d5f75ee60027e6ff74f54889f6880ade9f6deb0bace0f27d21f8e5976c6a1",
+          "size_bytes": 15173,
           "table": "househol",
           "vintage": "synthetic-h2"
         }
@@ -522,8 +522,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "2738aa2d7357f8bc560de607f9c3a5add38856e96015b7b1e9f85d3ab80d73ba",
-          "size_bytes": 22851,
+          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
+          "size_bytes": 24966,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -533,8 +533,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "30f9fcabb0c54673e14c368e46627010b0b239c4305b2c4e4c46803d089c6fac",
-          "size_bytes": 1601,
+          "sha256": "fd24138e8c97aa641b126ed03b867e6ea177d22cbcc8c1e53b44530ba045724a",
+          "size_bytes": 2123,
           "table": "child",
           "vintage": "synthetic-h2"
         }
@@ -638,8 +638,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "2738aa2d7357f8bc560de607f9c3a5add38856e96015b7b1e9f85d3ab80d73ba",
-          "size_bytes": 22851,
+          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
+          "size_bytes": 24966,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -681,8 +681,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "2738aa2d7357f8bc560de607f9c3a5add38856e96015b7b1e9f85d3ab80d73ba",
-          "size_bytes": 22851,
+          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
+          "size_bytes": 24966,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -860,8 +860,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "2738aa2d7357f8bc560de607f9c3a5add38856e96015b7b1e9f85d3ab80d73ba",
-          "size_bytes": 22851,
+          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
+          "size_bytes": 24966,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -963,6 +963,220 @@
       "stage": "frs_person_draws",
       "survey": "Family Resources Survey 2024-25"
     },
+    "frs_relationships": {
+      "artifacts": [
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "adult.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
+          "size_bytes": 24966,
+          "table": "adult",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "child.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "fd24138e8c97aa641b126ed03b867e6ea177d22cbcc8c1e53b44530ba045724a",
+          "size_bytes": 2123,
+          "table": "child",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "househol.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "c56d5f75ee60027e6ff74f54889f6880ade9f6deb0bace0f27d21f8e5976c6a1",
+          "size_bytes": 15173,
+          "table": "househol",
+          "vintage": "synthetic-h2"
+        }
+      ],
+      "grain": "household+person",
+      "nonnegative_outputs": [
+        "ons_family_index"
+      ],
+      "notes": "Derives the ONS Families and households Table 7 household type from the FRS household grid (microcosm#791). Every person's relhrp code becomes relationship_to_head (HEAD for the household reference person, whose relhrp is blank and whose hrpid is 1; hrpnum on the househol tab is the independent check). The pairwise R01-R14 matrix builds ONS families: any partner pair (spouse, cohabitee, civil partner) is a couple; a person with no partner and no own child in the household joins a parent's family through a natural/adopted or step child link (natural before step, then the lowest person number, on ties); foster, in-law, grandparent and sibling links never form a family, so foster children and grandchildren without a parent present stay individuals, as ONS treats them. A child is dependent under 16, or 16-18 in full-time education (child-tab members are in full-time non-advanced education by construction; adults use educft, fted on earlier tapes); 19 and over is non-dependent whatever the education status - the FRS child tab runs to 19, ONS stops at 18, so the two definitions are translated here rather than assumed equal. Household type: one person (split at 65), no family present (two or more unrelated adults, which counts related non-family households such as two siblings), exactly one family classified by that family whatever other individuals live there (a couple plus a lodger is a couple household - the class the #757 person-count restrictions could not place), or two or more families. The ten values are the Chronicle ons-families-households-2025 ons.household_type value ids verbatim, so the frame value, this declaration, the contract row and the published fact share one string. The reciprocity tolerance is the 2024-25 tape's three ordered pairs (two households) where a child records a parent link the parent records as non-relative or sibling; either side's declaration establishes the link, and any other count refuses the build for review.",
+      "operations": [
+        {
+          "delimiter": "\t",
+          "format": "tab",
+          "kind": "read_tables",
+          "lowercase_columns": true,
+          "numeric_errors": "coerce",
+          "runtime_sha256_required": true
+        },
+        {
+          "dependent_child": {
+            "full_time_education_through_age": 18,
+            "unconditional_below_age": 16
+          },
+          "documentation": {
+            "category_ids": "chronicle package ons-families-households-2025, Table 7, dimension ons.household_type value ids",
+            "frs_codes": "UK Data Service SN 9563 (DOI 10.5255/UKDA-SN-9563-1), FRS 2024-25 question instructions, Household Grid: Relationship; HRP definition in the FRS background information and methodology",
+            "ons_definitions": "ONS Families and households in the UK: 2025, Measuring the data and Glossary (family, dependent and non-dependent children, one-family, two or more unrelated adults, multi-family households)"
+          },
+          "family_link_codes": {
+            "child_of": [
+              3,
+              4
+            ],
+            "parent_of": [
+              7,
+              8
+            ],
+            "partner": [
+              1,
+              2,
+              20
+            ]
+          },
+          "family_role_values": [
+            "COUPLE_PARTNER",
+            "LONE_PARENT",
+            "DEPENDENT_CHILD",
+            "NON_DEPENDENT_CHILD",
+            "INDIVIDUAL"
+          ],
+          "frs_household_grid_relationship_codes": [
+            {
+              "code": 1,
+              "label": "SPOUSE"
+            },
+            {
+              "code": 2,
+              "label": "COHABITEE"
+            },
+            {
+              "code": 3,
+              "label": "CHILD"
+            },
+            {
+              "code": 4,
+              "label": "STEP_CHILD"
+            },
+            {
+              "code": 5,
+              "label": "FOSTER_CHILD"
+            },
+            {
+              "code": 6,
+              "label": "CHILD_IN_LAW"
+            },
+            {
+              "code": 7,
+              "label": "PARENT"
+            },
+            {
+              "code": 8,
+              "label": "STEP_PARENT"
+            },
+            {
+              "code": 9,
+              "label": "FOSTER_PARENT"
+            },
+            {
+              "code": 10,
+              "label": "PARENT_IN_LAW"
+            },
+            {
+              "code": 11,
+              "label": "SIBLING"
+            },
+            {
+              "code": 12,
+              "label": "STEP_SIBLING"
+            },
+            {
+              "code": 13,
+              "label": "FOSTER_SIBLING"
+            },
+            {
+              "code": 14,
+              "label": "SIBLING_IN_LAW"
+            },
+            {
+              "code": 15,
+              "label": "GRANDCHILD"
+            },
+            {
+              "code": 16,
+              "label": "GRANDPARENT"
+            },
+            {
+              "code": 17,
+              "label": "OTHER_RELATIVE"
+            },
+            {
+              "code": 18,
+              "label": "OTHER_NON_RELATIVE"
+            },
+            {
+              "code": 20,
+              "label": "CIVIL_PARTNER"
+            }
+          ],
+          "head_label": "HEAD",
+          "household_type_values": [
+            "lone_households_under_65",
+            "lone_households_over_65",
+            "unrelated_adult_households",
+            "couple_no_children_households",
+            "couple_under_3_children_households",
+            "couple_3_plus_children_households",
+            "couple_non_dependent_children_only_households",
+            "lone_parent_dependent_children_households",
+            "lone_parent_non_dependent_children_households",
+            "multi_family_households"
+          ],
+          "kind": "derive_ons_household_composition",
+          "one_person_age_split": 65,
+          "reciprocity_mismatch_tolerance": 3,
+          "source_columns": {
+            "full_time_education": [
+              "fted",
+              "educft"
+            ],
+            "grid": [
+              "r01",
+              "r02",
+              "r03",
+              "r04",
+              "r05",
+              "r06",
+              "r07",
+              "r08",
+              "r09",
+              "r10",
+              "r11",
+              "r12",
+              "r13",
+              "r14"
+            ],
+            "head": "relhrp",
+            "head_flag": "hrpid",
+            "head_index": "hrpnum"
+          }
+        }
+      ],
+      "outputs": [
+        "relationship_to_head",
+        "ons_family_role",
+        "ons_family_index",
+        "ons_household_type"
+      ],
+      "rewrites": [],
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs (household grid, relhrp and R01-R14).",
+      "stage": "frs_relationships",
+      "survey": "Family Resources Survey 2024-25"
+    },
     "frs_spine": {
       "artifacts": [
         {
@@ -982,8 +1196,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "2738aa2d7357f8bc560de607f9c3a5add38856e96015b7b1e9f85d3ab80d73ba",
-          "size_bytes": 22851,
+          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
+          "size_bytes": 24966,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1015,8 +1229,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "30f9fcabb0c54673e14c368e46627010b0b239c4305b2c4e4c46803d089c6fac",
-          "size_bytes": 1601,
+          "sha256": "fd24138e8c97aa641b126ed03b867e6ea177d22cbcc8c1e53b44530ba045724a",
+          "size_bytes": 2123,
           "table": "child",
           "vintage": "synthetic-h2"
         },
@@ -1048,8 +1262,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "5dce5c323681a5dd77b366fc52da49326d7626b6bbe99c34aee0808e21a81829",
-          "size_bytes": 14896,
+          "sha256": "c56d5f75ee60027e6ff74f54889f6880ade9f6deb0bace0f27d21f8e5976c6a1",
+          "size_bytes": 15173,
           "table": "househol",
           "vintage": "synthetic-h2"
         },

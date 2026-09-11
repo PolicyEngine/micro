@@ -335,33 +335,6 @@
       "expires_on": "2026-11-26"
     },
     {
-      "name": "ons.household_composition.multi_family_households",
-      "reason": "The ONS household-composition split requires a relationship-to-head frame column the spine does not carry; without it multi-family, unrelated-adult, and lone-parent-with-non-dependent-children households are indistinguishable and the categories bleed into each other (multi_family +1618% on the rebind packet).",
-      "tracking": "microcosm#791",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "ons.household_composition.unrelated_adult_households",
-      "reason": "The ONS household-composition split requires a relationship-to-head frame column the spine does not carry; without it multi-family, unrelated-adult, and lone-parent-with-non-dependent-children households are indistinguishable and the categories bleed into each other (multi_family +1618% on the rebind packet).",
-      "tracking": "microcosm#791",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
-      "name": "ons.household_composition.lone_parent_non_dependent_children_households",
-      "reason": "The ONS household-composition split requires a relationship-to-head frame column the spine does not carry; this cell fits numerically (-0.03% on the rebind packet) but measures the wrong concept - the solver holds it by stuffing misclassified households into the sibling categories, so it must unbind together with them.",
-      "tracking": "microcosm#791",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
-      "approved_on": "2026-08-26",
-      "expires_on": "2026-11-26"
-    },
-    {
       "name": "hmrc/dividend_income_income_band_500_000_to_1_000_000",
       "reason": "Sparse cell support: 6 in-band carrier records under the SPI assessable-income concept and 10 under the component-sum proxy (6,914 weighted carriers), measured identically on spine-i and spine-j (microcosm#807) - too few for the solver to hit the published value without distorting neighbouring cells. One of the three thin 500k-1m cells retained when the microcosm#807 revision lifted the three mid-band cells whose measured support was in the hundreds; re-measure on the next spine build before renewal.",
       "tracking": "microcosm#757",

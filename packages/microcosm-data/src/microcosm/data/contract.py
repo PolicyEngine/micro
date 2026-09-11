@@ -385,13 +385,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "8deb610d25fced25e27be58989311efa217f49e6d644f37268cf0f7efd122193"
+    "38a8a01467e372c87d845e3aacef67c5cc67d90dbc86fa5325408296be00afab"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "cd90537532e1800a76d4414a7d7454f5dedb4dfd574aca2dfca4ec1e1fe6cff3"
+    "49e86be979d5a266c88ea3091b295f8efe2fa96c85fddeb153c6d6083be6c72b"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "8b28c7d23b9e8ebc9e7436abd7309e59f0ef14fb582506f874147a5c1c4f44ef"
+    "25049e61956b1f4145c1915f0e9a0b9523ec86da428f2a378c6ed8dce5cd2793"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -410,6 +410,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
+    "uk_ons_household_type_enum_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
     "uk_target_surface": "target_surface",
@@ -459,6 +460,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_stage_student_loans_realization": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
+    "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -477,6 +479,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled"),
+    "uk_ons_household_type_enum_domain": ("enum_domain", "assembled"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
@@ -525,6 +528,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_salary_sacrifice_realization",
         "uk_stage_student_loans_realization",
         "uk_stage_age_tail_targets",
+        "uk_stage_frs_relationships_composition",
     }
 )
 # The input-mass binding's evidence payload wraps the reviewed reference
@@ -656,12 +660,14 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
     "spine": frozenset(
         {
             "uk_brma_enum_domain",
+            "uk_ons_household_type_enum_domain",
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_band_donors_support",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_etb_services_support",
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_relationships_composition",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_lcfs_consumption_support",
@@ -710,10 +716,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "70a47a57039a236ae67df7d019fc7f8d43cbffab14a47d00a1e3e28dbc83a5a3"
+            "7f9f07e60ba300cc39cbc22d7df60804374664827a803856bf6d6b11d9045287"
         ),
         "policy_sha256": (
-            "21e6b68e013cfc33a5bf96e141c42fd6fb23a34a237ae71a9e5f806a958552c8"
+            "7058df03511284046d89932747012908d731198359f2b779be9e478e33703364"
         ),
     },
     "calibration_seam": {
@@ -726,10 +732,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "79a1bd35f18ced387d988a1285aa26afb9404c635f69f32204aa020559d4a0e3"
+            "1aaf29c5e95e70cdbd499fec3a06098478a925caf32e3f09f6fcf3b0ac32f436"
         ),
         "policy_sha256": (
-            "e9cdea8c7dad2ee582a6b71df0d5f25eed142f52bd352e29683a4977f6ac69d9"
+            "4a93792fb9d03da4401f1aa58d261af19677ead0afb56d93ae9f195203f68307"
         ),
     },
 }

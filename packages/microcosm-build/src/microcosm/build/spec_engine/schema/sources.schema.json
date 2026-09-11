@@ -1925,6 +1925,225 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "kind": {
+       "const": "derive_ons_household_composition"
+      },
+      "source_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "head": {
+         "type": "string"
+        },
+        "head_flag": {
+         "type": "string"
+        },
+        "head_index": {
+         "type": "string"
+        },
+        "grid": {
+         "type": "array",
+         "minItems": 14,
+         "maxItems": 14,
+         "items": {
+          "type": "string"
+         }
+        },
+        "full_time_education": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        }
+       },
+       "required": [
+        "head",
+        "head_flag",
+        "head_index",
+        "grid",
+        "full_time_education"
+       ]
+      },
+      "frs_household_grid_relationship_codes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "code": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "label": {
+          "type": "string",
+          "enum": [
+           "SPOUSE",
+           "COHABITEE",
+           "CHILD",
+           "STEP_CHILD",
+           "FOSTER_CHILD",
+           "CHILD_IN_LAW",
+           "PARENT",
+           "STEP_PARENT",
+           "FOSTER_PARENT",
+           "PARENT_IN_LAW",
+           "SIBLING",
+           "STEP_SIBLING",
+           "FOSTER_SIBLING",
+           "SIBLING_IN_LAW",
+           "GRANDCHILD",
+           "GRANDPARENT",
+           "OTHER_RELATIVE",
+           "OTHER_NON_RELATIVE",
+           "CIVIL_PARTNER"
+          ]
+         }
+        },
+        "required": [
+         "code",
+         "label"
+        ]
+       }
+      },
+      "head_label": {
+       "const": "HEAD"
+      },
+      "family_link_codes": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "partner": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        },
+        "child_of": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        },
+        "parent_of": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        }
+       },
+       "required": [
+        "partner",
+        "child_of",
+        "parent_of"
+       ]
+      },
+      "dependent_child": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "unconditional_below_age": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "full_time_education_through_age": {
+         "type": "integer",
+         "minimum": 0
+        }
+       },
+       "required": [
+        "unconditional_below_age",
+        "full_time_education_through_age"
+       ]
+      },
+      "one_person_age_split": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "family_role_values": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string",
+        "enum": [
+         "COUPLE_PARTNER",
+         "LONE_PARENT",
+         "DEPENDENT_CHILD",
+         "NON_DEPENDENT_CHILD",
+         "INDIVIDUAL"
+        ]
+       }
+      },
+      "household_type_values": {
+       "type": "array",
+       "minItems": 10,
+       "maxItems": 10,
+       "items": {
+        "type": "string",
+        "enum": [
+         "lone_households_under_65",
+         "lone_households_over_65",
+         "unrelated_adult_households",
+         "couple_no_children_households",
+         "couple_under_3_children_households",
+         "couple_3_plus_children_households",
+         "couple_non_dependent_children_only_households",
+         "lone_parent_dependent_children_households",
+         "lone_parent_non_dependent_children_households",
+         "multi_family_households"
+        ]
+       }
+      },
+      "reciprocity_mismatch_tolerance": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "documentation": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "frs_codes": {
+         "type": "string"
+        },
+        "ons_definitions": {
+         "type": "string"
+        },
+        "category_ids": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "frs_codes",
+        "ons_definitions",
+        "category_ids"
+       ]
+      },
+      "reason": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "source_columns",
+      "frs_household_grid_relationship_codes",
+      "head_label",
+      "family_link_codes",
+      "dependent_child",
+      "one_person_age_split",
+      "family_role_values",
+      "household_type_values",
+      "reciprocity_mismatch_tolerance",
+      "documentation"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
       "dc_share_of_remainder": {
        "type": "number"
       },
