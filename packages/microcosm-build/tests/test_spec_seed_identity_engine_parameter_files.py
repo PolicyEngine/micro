@@ -48,6 +48,7 @@ def _boundary(diagnostic, monkeypatch, allowed):
     return hooks[0], distinct
 
 
+@pytest.mark.requires_us
 def test_pins_match_the_installed_distribution_record(diagnostic):
     """Every pin is a regular file in the distribution whose RECORD digest agrees."""
 
