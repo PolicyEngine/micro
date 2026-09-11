@@ -10,6 +10,9 @@ import pytest
 
 from microcosm.graph.canonical import canonical_json, sha256_domain
 from microcosm.graph.decl import (
+    ArtifactInput,
+    ArtifactOutput,
+    ArtifactType,
     CompiledGraph,
     Graph,
     Node,
@@ -29,6 +32,7 @@ from microcosm.graph.kernel import (
 )
 from microcosm.graph.keys import (
     artifact_key,
+    opaque_artifact_key,
     frame_key,
     node_key,
     seed,
@@ -355,3 +359,58 @@ def test_platform_bitwise_keys_carry_the_platform(
     ) == node_key(
         compiled, "a", {"survey": "s" * 64}, "impl", {}, kernel_capabilities=plain
     )
+
+
+_FOREST = ArtifactType("qrf.forest", 1)
+
+
+def _artifact_graph(*, declare: bool = True) -> Graph:
+    producer = Node(
+        "fit",
+        "toy.model@1",
+        inputs=(Slice("person", ("age",)),),
+        artifact_outputs=(ArtifactOutput("forest", _FOREST),) if declare else (),
+    )
+    consumer = Node(
+        "draw",
+        "toy.model@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "drawn", "float64"),),
+        artifact_inputs=(
+            (ArtifactInput("donor", "fit", "forest", _FOREST),) if declare else ()
+        ),
+    )
+    return Graph("toy", (SOURCE,), (CREATE, producer, consumer))
+
+
+def test_opaque_artifact_key_is_the_node_key_and_the_output_name() -> None:
+    """Amendment 19: a typed output keeps the pre-existing opaque identity."""
+    key = "c" * 64
+    expected = sha256_domain("node-artifact", canonical_json((key, "forest")))
+    assert opaque_artifact_key(key, "forest") == expected
+    assert opaque_artifact_key(key, "forest") != opaque_artifact_key(key, "other")
+    assert opaque_artifact_key(key, "forest") != opaque_artifact_key("d" * 64, "forest")
+
+
+def test_a_declared_artifact_edge_enters_both_ends_of_the_key() -> None:
+    """Amendment 19: the output declaration is normative and the input adds a term."""
+    _, declared = _all_keys(_artifact_graph())
+    _, undeclared = _all_keys(_artifact_graph(declare=False))
+    assert declared["survey"] == undeclared["survey"]
+    assert declared["fit"] != undeclared["fit"]
+    assert declared["draw"] != undeclared["draw"]
+    _, again = _all_keys(_artifact_graph())
+    assert again == declared
+
+
+def test_a_node_declaring_no_artifacts_keeps_its_pre_amendment_projection() -> None:
+    """Amendment 19: empty declarations are elided, so they add no key term."""
+    compiled = compile_graph(_artifact_graph(declare=False))
+    for node_id in compiled.order:
+        projection = compiled.graph.node(node_id).normative()
+        assert "artifact_inputs" not in projection
+        assert "artifact_outputs" not in projection
+    declared = compile_graph(_artifact_graph()).graph.node("draw").normative()
+    assert set(declared) - set(compiled.graph.node("draw").normative()) == {
+        "artifact_inputs"
+    }
