@@ -1040,13 +1040,18 @@ def storage_equal(
     """Compare physical values and nullable masks exactly, including float bits.
 
     Dense, string and object leaves are compared by content, so a column stays
-    equal to its own persisted-and-reloaded self.  Masked storage is not: the
-    comparison reads ``_data`` under the null mask, where pandas leaves
-    whatever the construction route happened to put, so two content-equal
-    ``Int64`` columns built by different routes can legitimately differ.  A
-    digest folded from these parts is therefore an in-process seal, not a
-    cross-reconstruction content identity; pin the latter on a content
-    identity of the frame itself.
+    equal to its own persisted-and-reloaded self.  Object leaves are compared
+    at the ContentStore's own leaf resolution, which is what makes that round
+    trip a fixed point: a NumPy floating leaf compares at ``float64`` width and
+    a NumPy integer leaf by value, because that is what the store decodes back.
+    A leaf outside that vocabulary raises rather than comparing addresses.
+
+    Masked storage is not compared by content: it reads ``_data`` under the
+    null mask, where pandas leaves whatever the construction route happened to
+    put, so two content-equal ``Int64`` columns built by different routes can
+    legitimately differ.  A digest folded from these parts is therefore an
+    in-process seal, not a cross-reconstruction content identity; pin the
+    latter on a content identity of the frame itself.
     """
 
     if left.dtype != right.dtype or len(left) != len(right):
@@ -2696,10 +2701,13 @@ def _object_storage_values(values: np.ndarray) -> bytes:
     for value in values:
         try:
             body = _encode_object_scalar(value)
-        except TypeError as error:
-            # Fail closed rather than repr() an unvetted leaf: a repr is
-            # neither guaranteed injective nor guaranteed stable across
-            # reconstructions, and calling it can itself raise.
+        except (TypeError, UnicodeEncodeError) as error:
+            # Both ways that encoder declines a leaf: TypeError for a type
+            # outside its vocabulary, UnicodeEncodeError for a str that is not
+            # encodable (a lone surrogate).  Fail closed rather than repr() an
+            # unvetted leaf: a repr is neither guaranteed injective nor
+            # guaranteed stable across reconstructions, and calling it can
+            # itself raise.
             raise PopulationError(f"storage-object-leaf: {error}") from error
         payload.extend(len(body).to_bytes(8, "little"))
         payload.extend(body)

@@ -1599,6 +1599,30 @@ def test_object_storage_refuses_unsupported_leaves(leaf: object) -> None:
         _storage_parts(series, _ALL_ROWS)
 
 
+def test_object_storage_refuses_an_unencodable_string_leaf() -> None:
+    """A lone surrogate makes the encoder raise UnicodeEncodeError, not TypeError."""
+
+    series = _object_series(["\ud800", None, None])
+
+    with pytest.raises(PopulationError, match="storage-object-leaf"):
+        _storage_parts(series, _ALL_ROWS)
+
+
+def test_object_storage_refuses_an_unsupported_leaf_compared_with_itself() -> None:
+    """The one place the refusal is new rather than sharper.
+
+    Positional copies preserve PyObject identity, so the pre-fix pointer
+    comparison answered True for a column compared against itself no matter
+    what it held. It now refuses, matching ContentStore, which will not
+    persist such a column, and token_for_dtype, which will not declare it.
+    """
+
+    series = _object_series([date(2020, 1, 1), None, None])
+
+    with pytest.raises(PopulationError, match="storage-object-leaf"):
+        storage_equal(series, series)
+
+
 def test_object_storage_refusal_message_excludes_the_value_repr() -> None:
     class _Loud:
         def __repr__(self) -> str:  # pragma: no cover - must never be called
