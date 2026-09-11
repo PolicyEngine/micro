@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -31,6 +35,7 @@ from microcosm.graph.population import (
     token_for_dtype,
     weight_cap_receipt,
 )
+from microcosm.graph.store import ContentStore, _encode_object_scalar
 
 
 def _frame() -> Frame:
@@ -1541,6 +1546,13 @@ def test_object_storage_does_not_conflate_distinct_leaves(
         True,
         False,
         None,
+        pd.NA,
+        pd.NaT,
+        np.int64(3),
+        np.bool_(True),
+        np.float64(1.5),
+        np.bytes_(b"label"),
+        np.str_("label"),
     ],
 )
 def test_object_storage_accepts_every_supported_leaf(leaf: object) -> None:
@@ -1567,16 +1579,17 @@ def test_object_storage_preserves_negative_zero_and_nan_payloads() -> None:
 @pytest.mark.parametrize(
     "leaf",
     [
-        pd.NA,
-        pd.NaT,
         object(),
         ("tuple",),
         ["list"],
         {"set"},
         {"dict": 1},
         bytearray(b"mutable"),
-        np.int64(3),
-        np.bool_(True),
+        complex(1, 2),
+        np.datetime64("2020-01-01"),
+        np.timedelta64(1, "D"),
+        Decimal("1.5"),
+        date(2020, 1, 1),
     ],
 )
 def test_object_storage_refuses_unsupported_leaves(leaf: object) -> None:
@@ -1596,6 +1609,73 @@ def test_object_storage_refusal_message_excludes_the_value_repr() -> None:
     with pytest.raises(PopulationError, match="storage-object-leaf") as excinfo:
         _storage_parts(series, _ALL_ROWS)
     assert "_Loud" in str(excinfo.value)
+
+
+def test_object_storage_uses_the_content_store_leaf_encoding() -> None:
+    """The object encoding is the ContentStore's, not a second definition."""
+
+    leaves = [_fresh_str("alpha"), 7, None]
+    series = _object_series(leaves)
+
+    payload = bytearray()
+    for leaf in leaves:
+        body = _encode_object_scalar(leaf)
+        payload.extend(len(body).to_bytes(8, "little"))
+        payload.extend(body)
+
+    assert _storage_parts(series, _ALL_ROWS)[0] == bytes(payload)
+
+
+@pytest.mark.parametrize(
+    ("left_leaf", "right_leaf"),
+    [(None, pd.NA), (None, pd.NaT), (pd.NA, pd.NaT), (None, float("nan"))],
+)
+def test_object_storage_keeps_distinct_null_sentinels_apart(
+    left_leaf: object, right_leaf: object
+) -> None:
+    """A null bitmap alone would collapse these; the value bytes must not."""
+
+    left = _object_series([left_leaf, _fresh_str("tail"), None])
+    right = _object_series([right_leaf, _fresh_str("tail"), None])
+
+    assert left.isna().tolist() == right.isna().tolist()
+    assert _storage_parts(left, _ALL_ROWS)[1] == _storage_parts(right, _ALL_ROWS)[1]
+    assert _storage_parts(left, _ALL_ROWS) != _storage_parts(right, _ALL_ROWS)
+
+
+def test_object_column_survives_a_content_store_round_trip(tmp_path: Path) -> None:
+    """The point of the fix: a reloaded column equals the one that was stored."""
+
+    schema = EntitySchema(group_entities=("household",))
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3], dtype=np.int64),
+            "person_household_id": np.asarray([10, 10, 20], dtype=np.int64),
+            "tenure": pd.Series(
+                [_fresh_str("OWNED"), None, _fresh_str("RENTED")], dtype=object
+            ),
+        }
+    )
+    household = pd.DataFrame({"household_id": np.asarray([10, 20], dtype=np.int64)})
+    frame = Frame(
+        {"person": person, "household": household},
+        schema,
+        {"household": Weights(np.asarray([1.0, 2.0]), WeightKind.DESIGN)},
+        pd.Series(["a", "a", "b"], name="stratum", dtype=object),
+    )
+    key = "b" * 64
+    store = ContentStore(tmp_path / "store")
+    store.put_frame(key, frame, node_key="c" * 64)
+    reloaded = store.load_frame(key, node_key="c" * 64)
+
+    original = frame.table("person")["tenure"]
+    restored = reloaded.table("person")["tenure"]
+    assert restored.dtype == object
+    assert [id(value) for value in restored.to_numpy()] != [
+        id(value) for value in original.to_numpy()
+    ]
+    assert storage_equal(original, restored)
+    assert storage_equal(frame.strata, reloaded.strata)
 
 
 def test_object_storage_flows_through_storage_equal_dtype_guard() -> None:
