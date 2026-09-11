@@ -197,6 +197,10 @@ def test_uk_target_references_load_as_typed_non_empty_resource() -> None:
 
     assert len(spec.target_references) == ACTIVE_REFERENCE_COUNT
     assert {reference.name for reference in spec.target_references}
+    assert all(
+        reference.hierarchy is not None and reference.hierarchy.target_label
+        for reference in spec.target_references
+    )
 
 
 def test_uk_target_references_follow_contract_derivation_rules() -> None:
@@ -205,6 +209,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
     names = [reference["name"] for reference in resource["target_references"]]
 
     assert resource["country"] == "uk"
+    assert resource["schema_version"] == 2
     assert resource["allowed_value_operations"] == [
         "identity",
         "sum",
@@ -255,6 +260,17 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         if binding.get("require_matching_fact_period"):
             expected_metadata["source_period_policy"] = "exact_observation"
         assert reference["metadata"] == expected_metadata
+        category_id = target["category_id"]
+        category = resource["hierarchy"]["categories"][category_id]
+        provider_id = category["provider_id"]
+        assert resource["hierarchy"]["target_categories"][contract_target_id] == (
+            category_id
+        )
+        assert (
+            resource["hierarchy"]["target_labels"][contract_target_id]
+            == target["label"]
+        )
+        assert resource["hierarchy"]["providers"][provider_id]["label"]
         # The measure is a prepared column, so the pointed-to contract binding
         # must carry what the microcosm#622 materializer needs to prepare it.
         assert (
@@ -262,6 +278,21 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
             or binding.get("value_expression")
             or binding.get("kind")
         ), contract_target_id
+
+
+def test_chronicle_household_reference_surface_is_complete() -> None:
+    resource = _load_uk_resource("local_target_references.json")
+    household_references = [
+        reference
+        for reference in resource["target_references"]
+        if reference["metadata"]["contract_target_id"] == "ons.census.households"
+    ]
+
+    assert len(household_references) == 1_011
+    names = {reference["name"] for reference in household_references}
+    assert "ons.census.households@E06000053" in names
+    assert "ons.census.households@E09000001" in names
+    assert not any(name.startswith("external:") for name in names)
 
 
 def test_childcare_and_bus_references_compile_with_declared_provenance() -> None:

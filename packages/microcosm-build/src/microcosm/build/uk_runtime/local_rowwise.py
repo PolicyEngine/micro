@@ -1002,6 +1002,14 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
     targets = []
     for row in problem.target_frame.itertuples(index=False):
         area_type = str(row.area_type)
+        target_name = str(
+            row.target_name
+            if "target_name" in problem.target_frame.columns
+            else f"{row.area_type}/{row.area_code}/{row.metric}"
+        )
+        hierarchy = (
+            row.hierarchy if "hierarchy" in problem.target_frame.columns else None
+        )
         metadata = {
             "area_type": area_type,
             "area_code": str(row.area_code),
@@ -1014,11 +1022,7 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
                     metadata[column] = str(value)
         targets.append(
             Target(
-                name=str(
-                    row.target_name
-                    if "target_name" in problem.target_frame.columns
-                    else f"{row.area_type}/{row.area_code}/{row.metric}"
-                ),
+                name=target_name,
                 entity="household",
                 measure=_constant_vector(metric_columns[(area_type, str(row.metric))]),
                 value=float(row.value),
@@ -1030,6 +1034,7 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
                     else "uk_rowwise_local_surface"
                 ),
                 metadata=metadata,
+                hierarchy=hierarchy,
             )
         )
     return TargetSet(targets)

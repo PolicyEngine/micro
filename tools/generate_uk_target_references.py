@@ -84,7 +84,8 @@ DESCRIPTION = (
     "classes and geography-pin decisions are recorded in "
     "uk/target_reference_membership.json. metadata.measure_kind records that "
     "measures are prepared columns produced from the contract binding payload "
-    "referenced by metadata.contract_target_id."
+    "referenced by metadata.contract_target_id. Provider and category ownership "
+    "come from the normalized hierarchy in the target contract."
 )
 NATIONAL_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
 
@@ -124,6 +125,7 @@ def main() -> None:
         country="uk",
         description=DESCRIPTION,
         authored=authored,
+        hierarchy=contract["hierarchy"],
     )
     args.output.write_text(json.dumps(resource, indent=2) + "\n")
     args.membership_report.write_text(
@@ -272,7 +274,7 @@ def _sum_target_ids(contract: Mapping[str, Any]) -> frozenset[str]:
         if "value_expression" in binding:
             target_ids.add(str(target["target_id"]))
         if any(
-            key != "dimensions" and isinstance(value, list)
+            key not in {"any_of", "dimensions"} and isinstance(value, list)
             for key, value in selector.items()
         ):
             target_ids.add(str(target["target_id"]))

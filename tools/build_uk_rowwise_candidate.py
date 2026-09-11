@@ -1863,14 +1863,19 @@ def _build_bound_problem(
         code_column="code",
     )
     target_identity = surface.set_index(surface["area_code"].astype(str))[
-        ["target_name", "contract_target_id"]
+        ["target_name", "contract_target_id", "hierarchy"]
     ]
     joined_identity = problem.target_frame[["area_code"]].join(
         target_identity,
         on="area_code",
         validate="many_to_one",
     )
-    if joined_identity[["target_name", "contract_target_id"]].isna().any().any():
+    if (
+        joined_identity[["target_name", "contract_target_id", "hierarchy"]]
+        .isna()
+        .any()
+        .any()
+    ):
         raise ValueError(
             "households-only target identities do not cover every matrix area code."
         )
@@ -1878,6 +1883,7 @@ def _build_bound_problem(
     problem.target_frame["contract_target_id"] = joined_identity[
         "contract_target_id"
     ].to_numpy()
+    problem.target_frame["hierarchy"] = joined_identity["hierarchy"].to_numpy()
     return (
         household,
         problem,
@@ -1962,6 +1968,7 @@ def _local_diagnostics_registry(
             source=str(target.source),
             family=family,
             metadata={key: str(value) for key, value in target.metadata.items()},
+            hierarchy=target.hierarchy,
         )
         specs.append(spec)
         geography[spec.to_target().row_name] = str(row.area_type)
@@ -2286,6 +2293,7 @@ def _write_output_bundle(
         support.to_csv(staged["support"], index=False)
         staged["past_cap"].write_text(_json_text(dict(solve.past_cap_census or {})))
         local_registry = _local_output_registry(
+            solve,
             problem,
             period=(
                 args._joint_inputs_receipt["calibration_year"]
@@ -2822,12 +2830,20 @@ def _dataset_size_selection_frame(
 
 
 def _local_output_registry(
+    solve: UKRowwiseDoctrineSolve,
     problem: UKRowwiseLocalMatrix,
     *,
     period: int,
 ) -> TargetRegistry:
     specs = []
-    for row in problem.target_frame.itertuples(index=False):
+    targets = tuple(solve.calibration_result.problem.targets)
+    if len(targets) < len(problem.target_frame):
+        raise RuntimeError("candidate target set is shorter than its local surface.")
+    for target, row in zip(
+        targets[: len(problem.target_frame)],
+        problem.target_frame.itertuples(index=False),
+        strict=True,
+    ):
         payload = row._asdict()
         specs.append(
             TargetSpec(
@@ -2843,6 +2859,7 @@ def _local_output_registry(
                     "area_code": str(payload["area_code"]),
                     "metric": str(payload["metric"]),
                 },
+                hierarchy=target.hierarchy,
             )
         )
     return TargetRegistry(specs, country="uk")

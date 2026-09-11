@@ -83,9 +83,19 @@ def _armenia_scalar_ledger_fact(
     source_measure_id = str(selector["source_measure_id"])
     geography_level = str(selector["geography_level"])
     cell_id = f"cell-{ordinal}"
+    dimension_values = dimensions or {}
+    dimension_labels = {
+        dimension_id: dimension_id.replace("_", " ").title()
+        for dimension_id in dimension_values
+    }
+    dimension_value_labels = {
+        dimension_id: {str(value): str(value).replace("_", " ").title()}
+        for dimension_id, value in dimension_values.items()
+    }
     return {
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:am-scalar-{ordinal}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:am-scalar-{ordinal}",
+        "label": f"{reference.name} fixture",
         "lineage": {
             "source_record_id": f"ledger_am.scalar_fixture.{reference.name}.{cell_id}",
             "source_cell_keys": [f"ledger.source_cell.v1:am-{ordinal}"],
@@ -122,7 +132,9 @@ def _armenia_scalar_ledger_fact(
             "url": "https://statbank.armstat.am/",
             "vintage": "2024",
         },
-        "dimensions": dimensions or {},
+        "dimensions": dimension_values,
+        "dimension_labels": dimension_labels,
+        "dimension_value_labels": dimension_value_labels,
         "universe_constraints": {
             "domain": "all households"
             if reference.entity == "household"
@@ -132,6 +144,8 @@ def _armenia_scalar_ledger_fact(
             "record_set_id": f"{source_name}.2024.synthetic_scalar_fixture",
             "groupby_dimension": "fixture_cell",
             "groupby_value_id": cell_id,
+            "groupby_dimension_label": "Fixture cell",
+            "groupby_value_label": f"Cell {ordinal}",
             "measure_id": source_measure_id,
         },
     }
@@ -2206,10 +2220,15 @@ def test_schema2_be_geography_vintage_contract_survives_identifier_resolution(
     )
     fact = {
         "aggregate_fact_key": fact_key,
+        "label": "Taxable income in Brussels",
         "lineage": {"source_record_id": record_id},
         "value": 10.0,  # Synthetic resolver probe, not a Belgian source value.
         "period": {"type": "tax_year", "value": 2022},
-        "geography": {"level": "commune", "id": "21004"},
+        "geography": {
+            "level": "commune",
+            "id": "21004",
+            "name": "Brussels",
+        },
         "entity": {"name": "household"},
         "observed_measure": {
             "source_name": "statbel_fiscal_income",

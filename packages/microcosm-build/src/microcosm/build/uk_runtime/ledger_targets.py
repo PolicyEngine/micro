@@ -1420,6 +1420,7 @@ def uk_local_target_surface(
                     "source": spec.source,
                     "period": period,
                     "contract_target_id": contract_target_id,
+                    "hierarchy": spec.hierarchy,
                 }
             )
             reconciliation_rows.append(

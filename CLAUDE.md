@@ -105,6 +105,14 @@ historicize any currency claims in it ("nothing was pushed", "do not merge",
 readers. Adjudicated verdicts belong in `experiments/` or the tracking issue,
 with the journal pointing to them.
 
+## Shared constants
+
+Before adding a module-local mapping, enumeration, identifier, or display
+label, search for an existing definition and follow
+[`docs/shared-constants.md`](docs/shared-constants.md). Human contributors and
+AI assistants must import shared static data from its domain-specific constants
+module instead of copying it or reconstructing alternate views in consumers.
+
 ## Review this file
 
 Update this guide in the same PR whenever the workspace layout, test

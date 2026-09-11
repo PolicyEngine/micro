@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,11 @@ import pytest
 from microcosm.build.holdout import summarize_rotations
 from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_LOSS_CAP
 from microcosm.calibrate import (
+    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyGeography,
+    HierarchyNode,
     TargetRegistry,
     TargetSpec,
     default_target_loss_scales,
@@ -28,6 +34,34 @@ def _load_scorer():
     return module
 
 
+def _hierarchy(
+    *,
+    name: str,
+    label: str,
+    provider_id: str,
+    provider_label: str,
+    category_id: str,
+    category_label: str,
+    geography_id: str,
+    geography_level: str,
+) -> CalibrationHierarchy:
+    return CalibrationHierarchy(
+        provider=HierarchyNode(id=provider_id, label=provider_label),
+        category=HierarchyCategory(
+            id=category_id,
+            label=category_label,
+            provider_id=provider_id,
+        ),
+        geography=HierarchyGeography(
+            id=geography_id,
+            label=geography_id,
+            level=geography_level,
+        ),
+        dimensions=(),
+        target=HierarchyNode(id=name, label=label),
+    )
+
+
 def _case():
     specs = (
         TargetSpec(
@@ -42,6 +76,16 @@ def _case():
                 "ledger_geography_id": "E1",
                 "ledger_geography_level": "constituency",
             },
+            hierarchy=_hierarchy(
+                name="households@E1",
+                label="Occupied households",
+                provider_id="ons",
+                provider_label="Office for National Statistics",
+                category_id="ons.household_composition",
+                category_label="Household composition",
+                geography_id="E1",
+                geography_level="constituency",
+            ),
         ),
         TargetSpec(
             name="income@W1",
@@ -55,14 +99,38 @@ def _case():
                 "ledger_geography_id": "W1",
                 "ledger_geography_level": "local_authority",
             },
+            hierarchy=_hierarchy(
+                name="income@W1",
+                label="Employment income",
+                provider_id="hmrc",
+                provider_label="HM Revenue and Customs",
+                category_id="hmrc.employment_income",
+                category_label="Employment income",
+                geography_id="W1",
+                geography_level="local_authority",
+            ),
         ),
     )
     registry = TargetRegistry(specs, country="uk")
     candidate = {
-        "schema_version": 6,
+        "schema_version": CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
         "targets": [
-            {"name": specs[0].to_target().row_name, "final_estimate": 10.0},
-            {"name": specs[1].to_target().row_name, "final_estimate": 110.0},
+            {
+                "name": specs[0].to_target().row_name,
+                "final_estimate": 10.0,
+                "hierarchy": {
+                    **asdict(specs[0].hierarchy),
+                    "dimensions": [],
+                },
+            },
+            {
+                "name": specs[1].to_target().row_name,
+                "final_estimate": 110.0,
+                "hierarchy": {
+                    **asdict(specs[1].hierarchy),
+                    "dimensions": [],
+                },
+            },
         ],
         "uk_diagnostics": {
             "rotated_holdout": {
