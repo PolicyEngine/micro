@@ -56,7 +56,7 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 415
+ACTIVE_REFERENCE_COUNT = 417
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
 
@@ -244,7 +244,14 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
                 assert value.items() <= reference["ledger_selector"][key].items()
                 continue
             assert reference["ledger_selector"][key] == value
-        assert reference["ledger_selector"]["geography_level"] == "country"
+        # Region-only contract targets (the DfT London bus rows) pin the
+        # publisher's region-stamped fact; everything else pins a country.
+        expected_level = (
+            "region"
+            if list(target.get("geography_levels") or ()) == ["region"]
+            else "country"
+        )
+        assert reference["ledger_selector"]["geography_level"] == expected_level
         assert reference["ledger_selector"]["geography_id"]
         assert reference["entity"] == _expected_reference_entity(target)
         expected_measure = (
@@ -337,6 +344,8 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dfe.funded_childcare.universal_only_children": 396_965.0,
         "dft.bus_fare_receipts.england": 3_417_388_656.43538,
         "dft.bus_net_support.england": 3_024_904_320.8399997,
+        "dft.bus_fare_receipts.london": 1_347_434_943.01459,
+        "dft.bus_net_support.london": 1_130_214_000.0,
     }
     assert {
         name: spec.metadata["ledger_entity_name"] for name, spec in specs.items()
@@ -348,6 +357,21 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dfe.funded_childcare.universal_only_children": "person",
         "dft.bus_fare_receipts.england": "institutional_sector",
         "dft.bus_net_support.england": "institutional_sector",
+        "dft.bus_fare_receipts.london": "institutional_sector",
+        "dft.bus_net_support.london": "institutional_sector",
+    }
+    assert {
+        name: (
+            spec.metadata["ledger_geography_level"],
+            spec.metadata["ledger_geography_id"],
+        )
+        for name, spec in specs.items()
+        if name.startswith("dft.")
+    } == {
+        "dft.bus_fare_receipts.england": ("country", "E92000001"),
+        "dft.bus_net_support.england": ("country", "E92000001"),
+        "dft.bus_fare_receipts.london": ("region", "E12000007"),
+        "dft.bus_net_support.london": ("region", "E12000007"),
     }
     assert (
         specs["dfe.funded_childcare.universal_only_children"].metadata[
@@ -568,9 +592,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 415,
+        "active": 417,
         "no_fact_at_or_before_period": 7,
-        "signed_excluded": 8,
+        "signed_excluded": 6,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]

@@ -1,11 +1,11 @@
 {
- "compiled_count": 230,
+ "compiled_count": 232,
  "counts_by_kind": {
   "calibration_drift": 12,
   "fixture_only": 125,
-  "ledger_only": 206
+  "ledger_only": 208
  },
- "difference_count": 343,
+ "difference_count": 345,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -905,8 +905,22 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 1342087642.33642,
+   "name": "dft.bus_fare_receipts.london",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 2651721003.6800003,
    "name": "dft.bus_net_support.england",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 954406918.7,
+   "name": "dft.bus_net_support.london",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

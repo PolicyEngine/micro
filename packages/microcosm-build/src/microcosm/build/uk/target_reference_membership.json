@@ -3,11 +3,11 @@
   "target_period": 2025,
   "candidate_count": 430,
   "contract_target_count": 202,
-  "active_reference_count": 415,
+  "active_reference_count": 417,
   "status_counts": {
-    "active": 415,
+    "active": 417,
     "no_fact_at_or_before_period": 7,
-    "signed_excluded": 8
+    "signed_excluded": 6
   },
   "geography_pins": {
     "obr.income_tax": {
@@ -795,11 +795,11 @@
       "geography_id": "E92000001"
     },
     "dft.bus_fare_receipts.london": {
-      "geography_level": "country",
+      "geography_level": "region",
       "geography_id": "E12000007"
     },
     "dft.bus_net_support.london": {
-      "geography_level": "country",
+      "geography_level": "region",
       "geography_id": "E12000007"
     },
     "dft.bus_fare_receipts.england_outside_london": {
@@ -2681,6 +2681,16 @@
     },
     {
       "name": "dft.bus_net_support.england",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "dft.bus_fare_receipts.london",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "dft.bus_net_support.london",
       "from": "2024",
       "to": "2025"
     }
@@ -7890,26 +7900,32 @@
       ]
     },
     "dft.bus_fare_receipts.london": {
-      "status": "signed_excluded",
+      "status": "active",
       "candidates": [
         {
           "name": "dft.bus_fare_receipts.london",
-          "status": "signed_excluded",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "signed_rationale": "Region target held until the UK target compiler has a declared region roster and cross-grain leg; tracked by #790."
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 1347434943.01459,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_33611c64d2048fe660501802"
         }
       ]
     },
     "dft.bus_net_support.london": {
-      "status": "signed_excluded",
+      "status": "active",
       "candidates": [
         {
           "name": "dft.bus_net_support.london",
-          "status": "signed_excluded",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "signed_rationale": "Region target held until the UK target compiler has a declared region roster and cross-grain leg; tracked by #790."
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 1130214000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d8e40cee2fc723b719ff4680"
         }
       ]
     },
@@ -7921,7 +7937,7 @@
           "status": "signed_excluded",
           "matched_fact_count_overall": 0,
           "matched_fact_count_at_or_before_period": 0,
-          "signed_rationale": "Chronicle stamps this row at statistical_scope; Microcosm has no declared statistical-scope pin and must not bind the England total accidentally."
+          "signed_rationale": "England outside London is England minus London: the England row and the London row (pinned at region E12000007) are both bound, so this publisher partition member is derived rather than pinned; Chronicle stamps it at statistical_scope and test_uk_bus_targets asserts the partition reconciles to England within GBP 1,000."
         }
       ]
     },
@@ -7933,7 +7949,7 @@
           "status": "signed_excluded",
           "matched_fact_count_overall": 0,
           "matched_fact_count_at_or_before_period": 0,
-          "signed_rationale": "Chronicle stamps this row at statistical_scope; Microcosm has no declared statistical-scope pin and must not bind the England total accidentally."
+          "signed_rationale": "England outside London is England minus London: the England row and the London row (pinned at region E12000007) are both bound, so this publisher partition member is derived rather than pinned; Chronicle stamps it at statistical_scope and test_uk_bus_targets asserts the partition reconciles to England within GBP 1,000."
         }
       ]
     },
