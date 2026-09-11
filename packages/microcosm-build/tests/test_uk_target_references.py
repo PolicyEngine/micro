@@ -84,6 +84,7 @@ FIXTURE_FEED_ROWS = (
 )
 
 STABLE_UK_FACT_FEED_NAME = ".codex-work/consumer_facts_uk.jsonl"
+STABLE_UK_LOCAL_FACT_FEED_NAME = ".codex-work/consumer_facts_uk_local.jsonl"
 
 
 def _load_uk_resource(name: str) -> dict:
@@ -102,19 +103,30 @@ def test_committed_surfaces_regenerate_from_pinned_feed(
 ) -> None:
     root = Path(__file__).resolve().parents[3]
     # Local references keep their independently reviewed historical input.
-    # Never fall back to the configured national feed for the local surface.
+    # Never fall back to the configured national feed for the local surface:
+    # the two surfaces carry independently reviewed pins, so each has its own
+    # default file under .codex-work.
     environment_key = (
         "CHRONICLE_UK_FACTS" if surface == "national" else "CHRONICLE_UK_LOCAL_FACTS"
     )
     configured = os.environ.get(environment_key)
-    feed = Path(configured) if configured else root / STABLE_UK_FACT_FEED_NAME
+    stable_name = (
+        STABLE_UK_FACT_FEED_NAME
+        if surface == "national"
+        else STABLE_UK_LOCAL_FACT_FEED_NAME
+    )
+    feed = Path(configured) if configured else root / stable_name
     if not feed.exists():
         pytest.skip(f"pinned UK Chronicle {surface} consumer feed is not present")
 
     if feed.is_dir():
         artifact_path = feed
     else:
-        default_manifest = root / ".codex-work/consumer_facts_uk_manifest.json"
+        default_manifest = root / (
+            ".codex-work/consumer_facts_uk_manifest.json"
+            if surface == "national"
+            else ".codex-work/consumer_facts_uk_local_manifest.json"
+        )
         manifest = (
             default_manifest if not configured else feed.with_name("manifest.json")
         )

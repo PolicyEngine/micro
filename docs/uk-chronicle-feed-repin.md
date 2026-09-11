@@ -8,6 +8,13 @@ update does not authorize changes to local census membership or values.
 Rebuild the complete UK bundle and consumer artifact in
 `PolicyEngine/chronicle` at the declared commit. Keep the resulting
 `consumer_facts.jsonl` and `manifest.json` together; do not commit either file.
+Because the two surfaces are pinned independently, each has its own default
+location under `.codex-work`: the national feed at
+`.codex-work/consumer_facts_uk.jsonl` + `consumer_facts_uk_manifest.json`
+(also mirrored as the artifact directory `.codex-work/uk-artifact/` for the
+calibration runner), the local feed at `.codex-work/consumer_facts_uk_local.jsonl`
++ `consumer_facts_uk_local_manifest.json`. After a national-only re-pin the
+local files stay at the local pin's artifact.
 
 Verify both SHA-256 digests and the manifest's `facts_sha256`, row count, and
 schema version. For a national update, update
@@ -31,6 +38,12 @@ local regeneration test accepts either the default `.codex-work` files or a
 The national calibration runner refuses a feed whose facts or manifest digest
 differs from its committed pin. `--allow-unpinned-feed` is an explicit diagnostic override and
 is recorded in the run manifest; it is not a re-pin procedure.
+
+After the `c6f9361` national re-pin (#890), the national surface carries the
+chronicle #254/#255 and #257/#258 transport and energy packages; the local
+surface stays on `ec7169b`. Vendored per-concern copies of pinned facts for the
+spine stages are regenerated with `tools/vendor_uk_ledger_facts.py` from the
+national feed (`uk/ledger_fact_vendor_selections.json` names them).
 
 After the `ec7169b` re-pin, census household targets use the same Chronicle
 compile path as every other bound UK local family. The OA ladder now supplies
