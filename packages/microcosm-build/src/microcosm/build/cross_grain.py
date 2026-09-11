@@ -770,7 +770,15 @@ def _winning_controls(
         }
         for position in group.winning_positions
     ]
-    if group.winning_grain == rule.grain_precedence[0]:
+    # A winning row whose geography declares its legs is a parent control in
+    # its own right, whatever grain it sits at: the top grain always is, and a
+    # middle tier (a region between country and constituency) is when the
+    # country declares a leg map for every one of its codes. Rows with no
+    # declared legs stay on the area-derived path below.
+    declared_parents = group.winning_grain == rule.grain_precedence[0] or all(
+        row["geography_id"] in rule.parent_geography_legs for row in rows
+    )
+    if declared_parents:
         by_geography: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             by_geography.setdefault(row["geography_id"], []).append(row)

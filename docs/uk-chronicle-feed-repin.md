@@ -22,6 +22,13 @@ schema version. For a national update, update
 membership with `tools/generate_uk_target_references.py`. Verify the complete
 compiled target diff, including targets outside the intended policy area.
 The hermetic national regeneration test accepts `CHRONICLE_UK_FACTS`.
+Two-level (country + region) contract targets fan out over the region tier
+(`UK_REGION_TIER` in `uk_runtime/geography_ladder.py`), one reference per area
+(microcosm#905); their cells resolve Chronicle's region- and country-stamped
+facts, so a re-pin must carry all twelve areas or the generator refuses.
+The cross-grain legs of English constituencies and authorities come from
+`region_code_by_area` in `local_area_crosswalk.json`, regenerated from the
+sha-pinned ladder with `tools/generate_uk_local_area_crosswalk.py`.
 
 For a separately reviewed local update, update `_LEDGER_FACT_FEED_PIN` in
 `uk_runtime/local_target_census.py`, the local validation-level pin, and their
