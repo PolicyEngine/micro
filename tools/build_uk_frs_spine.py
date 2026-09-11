@@ -68,6 +68,10 @@ from microcosm.build.uk_runtime.frs_legacy_proxies import (
     UKFRSLegacyProxiesStageTransform,
 )
 from microcosm.build.uk_runtime.frs_person_draws import UKFRSPersonDrawsStageTransform
+from microcosm.build.uk_runtime.frs_relationships import (
+    CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS,
+    UKFRSRelationshipsStageTransform,
+)
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.frs_spine import (
     UKFRSSpineStageTransform,
@@ -885,6 +889,17 @@ def _run_plan_with_spine_sampling(
     return frame, (*spine_records, *assembled_records, *tail_records), sampling
 
 
+def _spine_gate_artifacts(engine: object) -> dict[str, object]:
+    """Evidence artifacts for spine-phase gates: the engine plus frame-only enum domains."""
+
+    return {
+        "rules_engine": engine,
+        # #791: ons_household_type is a frame column, not an engine variable,
+        # so its enum_domain gate takes the declared domain as an artifact.
+        "ons_household_type_enum_domain": CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS,
+    }
+
+
 def _run_spine_gate_phase(
     battery: GateBatteryRun,
     phase: str,
@@ -1106,6 +1121,12 @@ def main(argv: list[str] | None = None) -> int:
             "frs_disability": UKFRSDisabilityStageTransform(
                 stage=stages_by_name["frs_disability"],
             ),
+            "frs_relationships": _GraphSourceTransform(
+                lambda sources: UKFRSRelationshipsStageTransform(
+                    sources["frs"],
+                    stage=stages_by_name["frs_relationships"],
+                )
+            ),
             "frs_education": _GraphSourceTransform(
                 lambda sources: UKFRSEducationStageTransform(
                     sources["frs"],
@@ -1310,7 +1331,7 @@ def main(argv: list[str] | None = None) -> int:
                     stage_names=stage_names[:assembled_index],
                     implementations=implementations,
                 ),
-                gate_artifacts={"rules_engine": engine},
+                gate_artifacts=_spine_gate_artifacts(engine),
             )
             if assembled_index < len(stage_names):
                 _run_spine_gate_phase(
@@ -1321,7 +1342,7 @@ def main(argv: list[str] | None = None) -> int:
                         stage_names=stage_names,
                         implementations=implementations,
                     ),
-                    gate_artifacts={"rules_engine": engine},
+                    gate_artifacts=_spine_gate_artifacts(engine),
                 )
         if spine_battery is not None:
             append_phase(state, "spine_gates_evaluated")

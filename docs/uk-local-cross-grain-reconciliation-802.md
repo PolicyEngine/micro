@@ -15,7 +15,10 @@ cannot express on their own:
 
 - The 10-cell `ons.household_composition.*` partition sums to the national
   household-count control and bridges to the Chronicle-compiled
-  `ons.census.households` contract target.
+  `ons.census.households` contract target. Since microcosm#791 the ten cells
+  bind on the `frs_relationships` stage's `household.ons_household_type`
+  column, so the bridge is fully bound (it was reviewed-unbound while three
+  cells carried measure exclusions).
 - `dwp.uc.households` bridges to `dwp.uc.households_by_area`. The four
   `dwp.uc.payment_distribution_*` rows also match the by-area target exactly
   and form a separate exhaustive national partition.

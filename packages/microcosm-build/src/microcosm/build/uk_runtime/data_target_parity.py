@@ -250,7 +250,15 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_ons_household_composition",
         "status": "ported_national",
         "classification": "national_registry_family",
-        "evidence": "uk-data targets/sources/ons_households.py; Microcosm ten-row ons.household_composition partition and UK_CROSS_GRAIN_BRIDGES declaration.",
+        "evidence": (
+            "uk-data targets/sources/ons_households.py; Microcosm ten-row "
+            "ons.household_composition partition and UK_CROSS_GRAIN_BRIDGES "
+            "declaration. Since microcosm#791 the ten cells bind on the "
+            "frs_relationships stage's household.ons_household_type column "
+            "(FRS household grid, ONS family definitions) rather than on the "
+            "uk-data compute/households.py benefit-unit proxies, and the "
+            "partition bridge to ons.census.households is bound."
+        ),
     },
     {
         "concern_id": "national_ons_england_tenure",

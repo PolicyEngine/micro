@@ -30,6 +30,8 @@ E3_STAGE_NAMES = [
 ]
 POST_FRS_SPINE_STAGE_NAMES = [
     "age_tail",
+    # #791: the relationship grid runs right after the final age is fixed.
+    "frs_relationships",
 ]
 E4_STAGE_NAMES = [
     "frs_take_up",
@@ -323,6 +325,7 @@ class TestUKSourceStagesManifest:
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "age_tail": _identity,
+                    "frs_relationships": _identity,
                     "frs_hmrc_retained_leaves": _identity,
                     "hmrc_spi_income": _identity,
                     "hmrc_spi_income_fallback": _identity,

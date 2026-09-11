@@ -21,6 +21,10 @@ from microcosm.build.uk_runtime import (
     frs_legacy_proxies,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.frs_relationships import (
+    FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
+    frs_relationships_operation_parameters,
+)
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_SPINE_TABLES,
     REGION_MAP,
@@ -62,6 +66,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "SERNUM": 2,
         "GROSS4": 20.0,
         "GVTREGNO": 1,
+        "HRPNUM": 1,
         "PTENTYP2": 5,
         "TYPEACC": 1,
         "BEDROOM6": 3,
@@ -91,6 +96,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "SERNUM": 1,
         "GROSS4": 10.0,
         "GVTREGNO": 12,
+        "HRPNUM": 1,
         "PTENTYP2": 6,
         "TYPEACC": 4,
         "BEDROOM6": 2,
@@ -119,6 +125,11 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TOTHOURS": 40,
         "HRPID": 1,
         "UPERSON": 1,
+        # #791 household grid: the HRP carries a blank relhrp and the parent
+        # code toward person 2 (the child).
+        "RELHRP": "",
+        **{f"R{index:02d}": "" for index in range(1, 15)},
+        "R02": 7,
         "MARITAL": 1,
         "EMPSTATI": 5,
         "MJOBSECT": 1,
@@ -159,7 +170,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         # heartval is on the adult tape too; the three school columns are not.
         "HEARTVAL": 5.0,
     }
-    adult_2 = {**adult_1, "SERNUM": 2, "PERSON": 1, "SEX": 2, "HRPID": 1}
+    adult_2 = {**adult_1, "SERNUM": 2, "PERSON": 1, "SEX": 2, "HRPID": 1, "R02": ""}
     child_1 = {
         "SERNUM": 1,
         "BENUNIT": 1,
@@ -170,6 +181,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TOTHOURS": np.nan,
         "HRPID": 0,
         "UPERSON": 0,
+        "RELHRP": 3,
+        **{f"R{index:02d}": "" for index in range(1, 15)},
+        "R01": 3,
         "MARITAL": 2,
         "FTED": 1,
         "TYPEED2": 2,
@@ -415,6 +429,20 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
             policy="Synthetic FRS spine spec.",
             stages=(
                 stage,
+                # #791: the relationship-grid stage runs right after the root
+                # (age_tail sits later in this synthetic roster) and declares
+                # the same operation parameters the runtime lockstep-asserts.
+                source_stage(
+                    "frs_relationships",
+                    tables=("adult", "child", "househol"),
+                    operations=[
+                        {"kind": "read_tables"},
+                        frs_relationships_operation_parameters(),
+                    ],
+                    outputs=FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
+                    nonnegative_outputs=("ons_family_index",),
+                    grain="household+person",
+                ),
                 source_stage(
                     "frs_employment",
                     tables=("adult",),
@@ -959,14 +987,20 @@ def test_uc_claimant_input_uses_frs_membership_not_age_or_marriage(
             "HRPID": 0,
             "AGE": 17,
             "MARITAL": 2,
+            "RELHRP": 2,
+            "R01": 2,
+            "R02": "",
         }
     )
+    tables["adult"][0]["R02"] = 2
     tables["benunit"][0]["FAMTYPB2"] = 6
     if couple_has_children:
         tables["benunit"][0]["DEPCHLDB"] = 1
         tables["child"].append(
-            {**tables["child"][0], "SERNUM": 2, "PERSON": 3, "AGE": 18}
+            {**tables["child"][0], "SERNUM": 2, "PERSON": 3, "AGE": 18, "R02": 3}
         )
+        tables["adult"][0]["R03"] = 7
+        tables["adult"][-1]["R03"] = 7
     stage = _write_fixture(tmp_path, tables)
     frame = build_uk_frs_spine_frame(tmp_path, stage=stage)
     person = frame.table("person").set_index("person_id")

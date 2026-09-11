@@ -52,6 +52,7 @@ def uk_stage_implementations(
     retained_leaves_transform: Callable[[Frame], Frame],
     hmrc_income_transform: Callable[[Frame], Frame],
     frs_spine_transform: Callable[[Frame], Frame] | None = None,
+    frs_relationships_transform: Callable[[Frame], Frame] | None = None,
     frs_employment_transform: Callable[[Frame], Frame] | None = None,
     frs_council_tax_transform: Callable[[Frame], Frame] | None = None,
     frs_disability_transform: Callable[[Frame], Frame] | None = None,
@@ -85,6 +86,7 @@ def uk_stage_implementations(
     }
     optional = {
         "frs_spine": frs_spine_transform,
+        "frs_relationships": frs_relationships_transform,
         "frs_employment": frs_employment_transform,
         "frs_council_tax": frs_council_tax_transform,
         "frs_disability": frs_disability_transform,

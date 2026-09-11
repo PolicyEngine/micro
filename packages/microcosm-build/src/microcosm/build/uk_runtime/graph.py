@@ -101,6 +101,7 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
 
 _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_spine": ("frs",),
+    "frs_relationships": ("frs",),
     "frs_employment": ("frs",),
     "frs_council_tax": ("frs",),
     "frs_education": ("frs",),
@@ -131,6 +132,12 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
 # memberships, weights, and strata are executor-carried context rather than
 # ordinary owned cells.
 _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
+    # The relationship grid is re-read from the pinned adult/child tabs; the
+    # frame reads are the disaggregated age (#785 contract) and the HRP flag
+    # the derivation must agree with.
+    "frs_relationships": frozenset(
+        {("person", "age"), ("person", "is_household_head")}
+    ),
     "frs_employment": frozenset(),
     "frs_council_tax": frozenset(),
     "frs_disability": frozenset(
@@ -351,6 +358,12 @@ def _cells(
 
 
 _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
+    "frs_relationships": (
+        _Cell("person", "relationship_to_head", "string"),
+        _Cell("person", "ons_family_role", "string"),
+        _Cell("person", "ons_family_index", "int64"),
+        _Cell("household", "ons_household_type", "string"),
+    ),
     "frs_employment": (
         _Cell("person", "employment_status", "string"),
         _Cell("person", "employment_sector", "string"),

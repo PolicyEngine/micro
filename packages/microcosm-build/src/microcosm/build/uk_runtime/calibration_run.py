@@ -123,6 +123,10 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_salary_sacrifice_realization",
     "uk_stage_student_loans_realization",
     "uk_stage_age_tail_targets",
+    "uk_stage_frs_relationships_composition",
+    # Weight-independent like the BRMA enum below, and its column exists from
+    # frs_relationships onward (#791).
+    "uk_ons_household_type_enum_domain",
     # Weight-independent, and its column exists from frs_brma onward, so the
     # spine checks it at the assembled boundary instead of the release end.
     "uk_brma_enum_domain",
