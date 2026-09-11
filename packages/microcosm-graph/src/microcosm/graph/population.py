@@ -7,6 +7,7 @@ cell ownership, strict declaration dtypes, and a per-node mass ledger.
 
 from __future__ import annotations
 
+import struct
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -2666,6 +2667,66 @@ def _rebuild_frame(frame: Frame, tables: Mapping[str, pd.DataFrame]) -> Frame:
     )
 
 
+# Object arrays carry PyObject pointers, so ``tobytes()`` on one serializes
+# addresses rather than content: equal content re-materialized in a second
+# object array hashes differently.  Object leaves therefore get their own
+# content encoding, tagged by leaf type so that ``1``, ``1.0``, ``True``,
+# ``"1"`` and ``b"1"`` cannot collide.
+_OBJECT_LEAF_NONE = b"\x00"
+_OBJECT_LEAF_BOOL = b"\x01"
+_OBJECT_LEAF_INT = b"\x02"
+_OBJECT_LEAF_FLOAT = b"\x03"
+_OBJECT_LEAF_STR = b"\x04"
+_OBJECT_LEAF_BYTES = b"\x05"
+
+
+def _object_leaf_body(value: object) -> bytes:
+    """Return the tagged content bytes for one object-array leaf.
+
+    ``bool`` is tested before ``int`` because it is an ``int`` subclass, and
+    ``float`` is packed from its exact IEEE-754 bits so that ``-0.0`` and NaN
+    payloads survive, matching the dense float branch below.
+    """
+
+    if value is None:
+        return _OBJECT_LEAF_NONE
+    if isinstance(value, bool):
+        return _OBJECT_LEAF_BOOL + (b"\x01" if value else b"\x00")
+    if isinstance(value, int):
+        width = (value.bit_length() // 8) + 1
+        return _OBJECT_LEAF_INT + value.to_bytes(width, "little", signed=True)
+    if isinstance(value, float):
+        return _OBJECT_LEAF_FLOAT + struct.pack("<d", value)
+    if isinstance(value, str):
+        return _OBJECT_LEAF_STR + value.encode("utf-8")
+    if isinstance(value, bytes):
+        return _OBJECT_LEAF_BYTES + value
+    # Fail closed rather than repr() an arbitrary object: a repr is neither
+    # guaranteed injective nor guaranteed stable across reconstructions, and
+    # calling it on an unvetted leaf can itself raise.
+    raise PopulationError(
+        "storage-object-leaf: object-dtype storage accepts only str, bytes, "
+        "int, float, bool, and None leaves; got "
+        f"{type(value).__name__}."
+    )
+
+
+def _object_storage_values(values: np.ndarray) -> bytes:
+    """Encode an object array as length-prefixed, type-tagged content bytes.
+
+    Each leaf contributes an 8-byte little-endian body length followed by the
+    body, mirroring the ``StringDtype`` framing above.  Every body carries a
+    leaf tag, so a body is never empty and a zero length stays reserved.
+    """
+
+    payload = bytearray()
+    for value in values:
+        body = _object_leaf_body(value)
+        payload.extend(len(body).to_bytes(8, "little"))
+        payload.extend(body)
+    return bytes(payload)
+
+
 def _storage_parts(series: pd.Series, selected: np.ndarray) -> tuple[bytes, bytes]:
     nulls = series.isna().to_numpy(dtype=np.bool_, copy=False)[selected]
     array = series.array
@@ -2688,6 +2749,11 @@ def _storage_parts(series: pd.Series, selected: np.ndarray) -> tuple[bytes, byte
                 payload.extend(encoded)
         return bytes(payload), np.ascontiguousarray(nulls).tobytes()
     values = series.to_numpy(copy=False)[selected]
+    if values.dtype == object:
+        return (
+            _object_storage_values(values),
+            np.ascontiguousarray(nulls).tobytes(),
+        )
     return (
         np.ascontiguousarray(values).tobytes(),
         np.ascontiguousarray(nulls).tobytes(),
