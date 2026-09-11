@@ -127,25 +127,6 @@
       "assertion_policy": "allow_source_projection"
     },
     {
-      "name": "obr.fuel_duties",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.fuel_duties",
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "household",
-      "measure": "obr/fuel_duties",
-      "family": "obr",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "obr.fuel_duties",
-        "measure_kind": "prepared_column"
-      },
-      "assertion_policy": "allow_source_projection"
-    },
-    {
       "name": "hmrc.cgt.liability_total",
       "ledger_selector": {
         "source_name": "hmrc",
@@ -11203,6 +11184,214 @@
         "measure_kind": "prepared_column",
         "observation_basis": "fiscal_year_flow"
       },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.fuel_duties_cars",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.fuel_duty.receipts",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "vehicle_category": "cars"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/fuel_duties_cars",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.fuel_duties_cars",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection"
+    },
+    {
+      "name": "orr.rail_government_support",
+      "ledger_selector": {
+        "source_name": "orr",
+        "source_concept": "orr.rail.total_government_support",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "household",
+      "measure": "orr/rail_government_support",
+      "family": "orr_rail",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "orr.rail_government_support",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.household_energy_expenditure",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.household_expenditure.electricity_gas_other_fuels",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "dimension_values": {
+          "coicop": "04.5",
+          "frequency": "annual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "ons/household_energy_expenditure",
+      "family": "ons_national_accounts",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.household_energy_expenditure",
+        "measure_kind": "prepared_column"
+      }
+    },
+    {
+      "name": "scotgov.bus.passenger_revenue",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_concept": "scotgov.bus.operator_revenue",
+        "layout_groupby_value_id": "passenger_revenue",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "scotgov/bus_passenger_revenue",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.bus.passenger_revenue",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.bus.government_support",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_concept": "scotgov.bus.government_support",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "funding_component": "all_government_support"
+        },
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "scotgov/bus_government_support",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.bus.government_support",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "welshgov.bus.public_support",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "source_concept": "welshgov.local_transport.gross_expenditure",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "expenditure_component": "Gross expenditure",
+          "service_line": [
+            "Concessionary fares",
+            "Support to operators"
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "household",
+      "measure": "welshgov/bus_public_support",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.bus.public_support",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 2,
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfi_ni.bus.passenger_receipts",
+      "ledger_selector": {
+        "source_name": "dfi_ni",
+        "source_concept": "dfi_ni.translink_bus.passenger_receipts",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "service": [
+            "ulsterbus",
+            "metro_glider"
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "household",
+      "measure": "dfi_ni/bus_passenger_receipts",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfi_ni.bus.passenger_receipts",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 2,
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "nithc.public_transport_support",
+      "ledger_selector": {
+        "source_name": "nithc",
+        "source_concept": "nithc.dfi_transaction_value",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "mode_scope": "all_public_transport",
+          "funding_component": [
+            "Public Service Obligation compensation",
+            "Concessionary fare compensation for a range of groups"
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "household",
+      "measure": "nithc/public_transport_support",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "nithc.public_transport_support",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 2,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     }
