@@ -42,9 +42,9 @@ common source population alone does not guarantee identical estimates.
 
 | Stage | US demonstrated result | UK demonstrated result |
 | --- | --- | --- |
-| Population construction | Small real ACS/ASEC composition, clone and financial enrichment pass; complete PUF and remaining inputs pending | Real FRS 2024–25 spine and earlier whole-spine parity; latest integrated stage set needs fresh coverage and verification |
+| Population construction | Small real ACS/ASEC composition, clone and financial enrichment pass; maintained two-route PUF host passes invented cold/replay controls, with native PUF and remaining inputs pending | Real FRS 2024–25 spine and earlier whole-spine parity; latest integrated stage set needs fresh coverage and verification |
 | Geography | Small native post-clone block assignment and financial extension passed on 11 September; strict replay is running; complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
-| Calibration | Solver controls pass; fully enriched native national/CD solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
+| Calibration | Declared national/state/CD measurement stage and solver controls pass; dense graph integration and fully enriched native solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
 | Independent quality | Complete-candidate engine outcomes, holdouts and reform validation pending | Prior comparisons and diagnostics exist; the recorded 55k candidates skipped holdout evaluation and do not establish release quality |
 | Full/compact files | Small prefix replay and 36 supplied-parent full/pruned/local export checks pass; complete enriched release family pending | Size-selection implementation and measured candidates exist; current accepted full/compact local family pending |
 | Delivery | No accepted new-architecture release or default consumer adoption | Assembly implementation and historical assembled cuts exist; current certification and default promotion pending |
@@ -67,6 +67,31 @@ fixed and independently reviewed, and the shared graph changes are being
 consolidated against the amended main interface. These software changes still
 need their own native candidate verification; the frozen pilot does not
 certify the newer source.
+
+The maintained PUF55 host is now adopted. Its 31 small controls and two actual
+full-host controls pass on invented inputs: both conditioning routes, 110 fits
+and 110 applications, cold execution, required replay, whole-population
+preservation and numerical finalizer equality. The full-host run took 742
+seconds and 0.74 GB peak RSS. Those 64 invented donors do not establish the
+runtime or quality of the full native donor. A separate current-source native
+packet uses a fresh writable store and the actual retained financial run.
+See [the PUF host record](../experiments/us-puf55-host-adoption-20260912.md).
+
+The new fiscal measurement stage passes all 66 interpreter/stage checks on the
+combined integration, including an actual US-engine dividend calculation. It
+uses declared target bindings, household-aligned CSR measurements and explicit
+national/state/CD masks. Missing consumed predicates refuse, indicator sums
+are numeric, and local calculation helpers participate in cache identity.
+Specialized unsupported bindings refuse; this is not full fiscal-registry
+coverage. The dense grouped weight solve is being integrated separately.
+
+Complete-population ancestry remains an explicit requirement. The PUF host
+checks its output before return but does not issue a persistent authority token
+for its public dataclass. Later calibration and export must check the actual
+retained output; they cannot treat its receipt as an admission mechanism. The
+minimal invented fixture's 61 present input names out of 161 are diagnostic
+only, with unresolved original-channel values. Native coverage will be measured
+on the new candidate rather than inferred from this fixture.
 
 The remaining critical sequence is complete PUF/input integration, a small
 real full build, model and calibration evaluation, then progressive scale
