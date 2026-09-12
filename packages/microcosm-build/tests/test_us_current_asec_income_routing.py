@@ -735,3 +735,53 @@ def test_routing_code_systems_agree_with_the_existing_domain_constants():
     assert set(owner.PUBLISHED_ALLOCATION_FLAG_BY_FIELD.values()) <= set(
         owner.ALLOCATION_ENTRIES
     )
+
+
+def test_both_distribution_recipiency_literals_are_retained_with_the_route():
+    n = 2
+    raw = {
+        "amounts": {name: np.zeros(n) for name in owner.AMOUNT_FIELDS},
+        "statuses": {
+            name: np.full(n, int(owner.money.CodebookStatus.ZERO_NONE_OR_NIU), "u1")
+            for name in owner.AMOUNT_FIELDS
+        },
+        "allocations": {
+            name: ([0] * n, ["in_printed_range"] * n)
+            for name in owner.ALLOCATION_ENTRIES
+        },
+    }
+    for name in (*owner.RECEIPT_ENTRIES, *owner.ACCOUNT_ENTRIES, "OI_OFF"):
+        raw[name] = ["0"] * n
+    # A 70 year old whose under-58 recipiency answers yes, and a 40 year old
+    # whose 58-and-over recipiency answers yes: both are off-route answers.
+    raw["DST_YN_YNG"] = ["1", "0"]
+    raw["DST_YN"] = ["0", "1"]
+    out = owner.project_income_routing(raw, np.array([70.0, 40.0]))
+    assert out.retirement_distribution_route.tolist() == [
+        "age58_and_over",
+        "under_age58",
+    ]
+    assert out.retirement_distribution_receipt_58_literal.tolist() == ["0", "1"]
+    assert out.retirement_distribution_receipt_young_literal.tolist() == ["1", "0"]
+    assert out.retirement_distribution_offroute_receipt.tolist() == [True, True]
+    # The applicable literal still drives the reporting status.
+    assert out.retirement_distribution_reporting_status.tolist() == ["niu", "niu"]
+    # A clean pair reports no off-route answer. Here each person answers yes on
+    # their own route with every applicable slot at the printed "none or niu"
+    # zero, which stays ambiguous rather than becoming a known zero.
+    raw["DST_YN_YNG"], raw["DST_YN"] = ["0", "1"], ["1", "0"]
+    clean = owner.project_income_routing(raw, np.array([70.0, 40.0]))
+    assert clean.retirement_distribution_offroute_receipt.tolist() == [False, False]
+    assert clean.retirement_distribution_reporting_status.tolist() == [
+        "ambiguous_recipient_zero",
+        "ambiguous_recipient_zero",
+    ]
+    assert clean.retirement_distribution_known_amount.isna().all()
+    # Answering no on the applicable route does give a known zero.
+    raw["DST_YN_YNG"], raw["DST_YN"] = ["0", "2"], ["2", "0"]
+    declined = owner.project_income_routing(raw, np.array([70.0, 40.0]))
+    assert declined.retirement_distribution_reporting_status.tolist() == [
+        "known_nonreceipt",
+        "known_nonreceipt",
+    ]
+    assert declined.retirement_distribution_known_amount.tolist() == [0.0, 0.0]

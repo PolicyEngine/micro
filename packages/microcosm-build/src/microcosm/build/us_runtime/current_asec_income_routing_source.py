@@ -600,6 +600,31 @@ def _retirement_distribution(raw, ages):
             ira_slots.append(len(matched))
         else:
             ira_slots.append(None)
+    # Both printed recipiency literals are retained. The route selects which one
+    # applies; the other stays inspectable, because an answered off-route
+    # recipiency is a source contradiction rather than a missing answer.
+    route_codes = {}
+    for suffix, field in (("58", "DST_YN"), ("young", "DST_YN_YNG")):
+        frame, codes, statuses = _codes_frame(
+            "retirement_distribution_receipt_" + suffix,
+            raw[field],
+            RECEIPT_CODES,
+            RECEIPT_CODES,
+        )
+        out = pd.concat([out, frame], axis=1)
+        route_codes[field] = (codes, statuses)
+    offroute_receipt = [
+        (
+            route_codes["DST_YN_YNG" if route[i] == "age58_and_over" else "DST_YN"][0][
+                i
+            ]
+            not in (0, None)
+        )
+        for i in range(rows)
+    ]
+    out["retirement_distribution_offroute_receipt"] = pd.array(
+        offroute_receipt, dtype="boolean"
+    )
     receipt_tokens = [
         raw["DST_YN"][i] if route[i] == "age58_and_over" else raw["DST_YN_YNG"][i]
         for i in range(rows)

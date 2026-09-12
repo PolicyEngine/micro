@@ -112,6 +112,14 @@ judgments and recorded verbatim under
 - `DST_SC1` is gated on `DST_VAL1 > 0 and a_age ≥ 58` while `DST_SC1_YNG` is
   gated on `DST_YN_YNG = 1 and a_age < 58` — the two routes are not symmetric.
 
+Both printed recipiency literals are retained per row
+(`retirement_distribution_receipt_58_*` and `..._receipt_young_*`) alongside all
+four slots. The age route selects which pair applies;
+`retirement_distribution_offroute_receipt` and
+`retirement_distribution_offroute_nonzero` flag an answered recipiency or a
+non-zero amount on the route that does not apply, so the complete slot/receipt
+pattern stays inspectable rather than being reduced to the applicable half.
+
 ## Amount semantics from the money owner
 
 The authenticated money owner normalizes `ANN_VAL`'s printed `-1` to a stored
