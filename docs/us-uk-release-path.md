@@ -82,6 +82,18 @@ runtime or quality of the full native donor. A separate current-source native
 packet uses a fresh writable store and the actual retained financial run.
 See [the PUF host record](../experiments/us-puf55-host-adoption-20260912.md).
 
+The maintained financial graph now retains an eighth field: the tax-exempt
+interest remainder of its existing observed or modeled total. The split remains
+a modeling assumption. Twenty-five financial/source controls and three full
+invented PUF replay, finalizer and retained-output controls pass; the PUF stage
+preserves the original-channel remainder. The historical native financial
+receipt above still covers seven fields. See
+[the interest correction](../experiments/us-survey-interest-conservation-20260912.md).
+A separate reviewed source-hashing optimization preserves exact digest bytes
+and passes thirty source tests. Its repeated-string benchmark improvement is
+not a measured native build improvement; see
+[the scoped benchmark](../experiments/us-source-string-seal-20260912.md).
+
 The new fiscal measurement stage passes all 66 interpreter/stage checks on the
 combined integration, including an actual US-engine dividend calculation. It
 uses declared target bindings, household-aligned CSR measurements and explicit
@@ -111,12 +123,22 @@ source/store corruption and late output mutation. Independent review approved
 the source and mechanical test colocation; 45 cases share one expensive fixture.
 See [the retained-output evidence](../experiments/us-puf55-checked-output-20260912.md).
 
-The minimal invented fixture's 61 present input names out of 161 remain a
-diagnostic inventory, with unresolved original-channel values. Native coverage
+An earlier minimal invented fixture reported 61 present input names out of 161,
+a diagnostic inventory with unresolved original-channel values. Native coverage
 will be measured on the new candidate. Parallel successor work is qualifying
 unemployment receipt/amount, three health-cost amounts and current interview
 health coverage from the actual survey sources. Reporting universes and missing
 values remain explicit; no prior-wage or age-only zero fallback is introduced.
+
+Actual graph tracing also confirms that the legacy full ASEC carry and ACS
+gap-fill are not executed by this host. Remaining pension, retirement-account,
+property, farm and other-income inputs therefore need source-qualified producers
+and appropriate ACS completion. The ACS property-income aggregate should
+condition a joint decomposition before the dependent PUF fits; separately adding
+rent afterward would not conserve that observed anchor. Source measurement
+bridges and overlapping income categories must be resolved explicitly before
+claiming reconciliation. The broader ACS retirement total is not merely pension
+plus regular-IRA income.
 
 The remaining critical sequence is complete PUF/input integration, a small
 real full build, model and calibration evaluation, then progressive scale
