@@ -5,7 +5,9 @@ Journals are history, not state (see CLAUDE.md): check git/GitHub for current tr
 
 ## State
 
-In progress. Bounded first slice only — see "Out of scope for this slice".
+Bounded first slice implemented, tested and committed on this branch. Not
+pushed, no PR opened. #908 is NOT complete — see "Remaining #908 acceptance
+scope" below.
 
 ## Scope of this slice
 
@@ -31,8 +33,50 @@ In progress. Bounded first slice only — see "Out of scope for this slice".
 
 ## Done
 
-- (nothing yet)
+- `packages/microcosm-calibrate/src/microcosm/calibrate/target_snapshots.py`:
+  shared leaf codec. Schema name + version, aggregate-only validation
+  (unknown top-level keys and record-level key names refused at any depth),
+  compiled-order row check, finite-value check, signed relative error with
+  the solver's existing zero-target convention, ordered `(name, value)`
+  sha256 identity digest, `TargetSnapshotCadence` (bounded + `EVERY_EPOCH`),
+  and `TargetSnapshotWriter` (atomic `latest.json`, write-once history
+  chunks, bounded retention with recorded drops).
+- Solver integration in `solve.py`: emission from the Adam loop and the
+  proximal loop off the estimate tensor the epoch's loss was already
+  computed from (no second forward pass, so the hard-concrete gates' RNG
+  stream is untouched); budget-search probes carry their own search
+  identity; `l0_selection` / `post_l0_refit` carry their phase; one monotone
+  sequence counter spans every phase; the closing `selected` snapshot comes
+  off the float64 estimates the final diagnostics use.
+- Public opt-in parameter `target_snapshots=` on `calibrate`,
+  `refit_l0_selection` and `calibrate_l0_refit`; exports in the shard
+  `__init__`. Off by default.
+- 24 new tests in `packages/microcosm-calibrate/tests/test_target_snapshots.py`
+  (flat path; `tools/ci_test_groups.py --verify` = ok, lands in fast `rest`
+  and engine `us-am`, never `[defaulted]`).
+- Synthetic benchmark + receipts under `experiments/`, explicitly labelled
+  synthetic.
+- changelog.d fragment `908-calibration-target-snapshots.added.md`.
+
+## Remaining #908 acceptance scope (NOT done here)
+
+- Version-2 staging persistence/upload of the snapshot and its history.
+  PR #896 is open, draft, CONFLICTING and absent from `main`; its
+  `calibration_progress` filters on `kind == "calibration_epoch"` and its
+  per-event schema is `additionalProperties: false`, so it needs a new
+  schema name, not a widened one. Nothing here claims remote publication.
+- US host wiring (`tools/build_us_fiscal_refresh_release.py` still builds v1
+  `StagingTelemetry`) and UK host cadence flags.
+- Exact-k ladder phases in `microcosm.build.us_runtime.exact_k_ladder` and
+  the UK size-search phases in `uk_runtime.dataset_size` are not wired.
+- A test asserting intermediate snapshots never substitute for the canonical
+  `calibration_diagnostics.json`.
+- Real UK/US target/epoch counts, wall-clock, and upload time, and therefore
+  the production default cadence. Forbidden on this host; the default stays
+  off.
+- Calibration Diagnostics UI (different repository, by the issue's own text).
 
 ## Next
 
-- Read scouts, write failing tests, implement, bench, commit.
+- Independent review of this slice, then the staging/host wiring as a
+  separate slice once #896 lands.
