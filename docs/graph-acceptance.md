@@ -334,6 +334,16 @@ Amendments so far (each re-locked):
     used for undeclared opaque outputs, so declaring a type gives an
     existing output the identity it always had.
 
+    One shape is refused rather than modelled: a **gate kernel may not
+    declare a typed artifact output**. A gate whose kernel raises becomes a
+    `fail` verdict and the run continues (amendment 7), so its synthesized
+    result carries no artifacts, and a declared output would turn that
+    verdict into an aborted run. Amendment 19 carries no regime for an
+    output a node was unable to produce and for the consumers that are
+    therefore unreachable; until one is adopted the executor refuses the
+    declaration outright, so amendment 7 stays literally true for every
+    legal node shape.
+
     **Node keys do not move.** Unlike amendments 11's `entrants` and 12's
     `mass_partition`, the two new fields are normative but elided from the
     canonical projection when empty, and a consumer's `typed_artifacts`

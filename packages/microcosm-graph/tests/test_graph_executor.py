@@ -3618,3 +3618,35 @@ def test_an_artifact_payload_enters_the_input_context_digest(tmp_path: Path) -> 
             },
         )
     )
+
+
+def test_a_gate_kernel_may_not_declare_a_typed_artifact_output(tmp_path: Path) -> None:
+    """Amendment 19 holds amendment 7: a gate exception stays a verdict.
+
+    A gate whose kernel raises produces a synthesized ``fail`` result with no
+    artifacts, so a declared typed output would turn that verdict into an
+    aborted run. Amendment 19 carries no regime for an output a node was
+    unable to produce, so the declaration is refused outright.
+    """
+    gate = Node(
+        "gate",
+        "gate@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("household", "gate_verdict", "string"),),
+        population="survey",
+        artifact_outputs=(
+            ArtifactOutput("evidence", ArtifactType("gate.evidence", 1)),
+        ),
+    )
+    graph = Graph("toy", (SOURCE,), (CREATE, gate))
+    registry = _registry()
+    registry.register(
+        _Kernel(
+            "gate@1",
+            Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE),
+            lambda context: KernelResult(receipt={"outcome": "pass"}),
+        )
+    )
+    store = ContentStore(tmp_path / "store")
+    with pytest.raises(NodeRejected, match="gate kernel may not declare"):
+        _run(graph, _source_path(tmp_path / "src"), store, registry)

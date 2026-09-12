@@ -1988,6 +1988,21 @@ def run_graph(
         node_id: typed_contracts(compiled, compiled.graph.node(node_id), keys, kernels)
         for node_id in compiled.order
     }
+    for node_id in compiled.order:
+        node = compiled.graph.node(node_id)
+        # A gate whose kernel raises becomes a `fail` verdict and the run
+        # continues (amendment 7), so its synthesized result carries no
+        # artifacts. Amendment 19 has no regime for an output a node was
+        # unable to produce, so a gate that declares one is refused rather
+        # than allowed to turn a verdict into an aborted run.
+        if node.artifact_outputs and (
+            kernels.get(node.kernel).capabilities.role is KernelRole.GATE
+        ):
+            raise NodeRejected(
+                f"Node {node_id!r}: a gate kernel may not declare a typed artifact "
+                "output, because a gate exception is a verdict and would leave the "
+                "output unproduced."
+            )
     if resume == "require":
         _preflight_require(compiled, store, keys, implementations, kernels)
 
