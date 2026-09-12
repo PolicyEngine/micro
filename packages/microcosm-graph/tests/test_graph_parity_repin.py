@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import pytest
 
@@ -27,9 +27,7 @@ from tools.graph_parity_repin import derived_node_key, repin
 
 
 @pytest.fixture
-def case_copy(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Callable[[str], Path]:
+def case_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[[str], Path]:
     """Re-point the tool at a throwaway copy so a test can mutate a fixture."""
 
     def make(name: str) -> Path:

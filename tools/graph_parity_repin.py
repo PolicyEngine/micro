@@ -21,13 +21,36 @@ What a re-pin may and may not derive: the local platform's node key is
 **derived**, because a node key is a pure function of the declaration, the
 resolved input identities, the implementation hash, the capability projection,
 and — for a platform-bitwise kernel (amendment 16) — the platform fingerprint
-*string* (``microcosm.graph.keys.node_key``); nothing else about a platform
-reaches a key. The derivation is checked against the produced key on every run,
-so it cannot drift from what the executor does. Pinned **bytes** are never
-derived: each platform's ``direct.csv`` is left exactly as that platform
-recorded it, and a re-pin refuses to write at all if the local direct call's
-bytes moved, because that would mean the change was not additive and the
-fixture needs a real regeneration instead.
+*string* (``microcosm.graph.keys.node_key``).
+
+The fingerprint is not the *only* platform-dependent input, and this does not
+pretend otherwise: ``source_hash`` folds ``f"{distribution}=={version}"`` for
+each declared dependency into the implementation hash, so a platform on a
+different locked environment keys differently for a reason no fingerprint
+string records. A re-pin therefore establishes the condition it needs, in two
+checks that close different holes:
+
+1. ``pins["dependencies"]`` — the versions the existing keys were taken under —
+   must equal this machine's installed versions. This is the check that sees
+   the dependency channel. The reproduction below cannot see it, because
+   substituting the recorded implementation hash removes the only input those
+   versions reach.
+2. Every pinned platform's key must reproduce from
+   ``pins["implementation_hash"]``. This catches an entry inconsistent with the
+   hash recorded beside it — a hand edit, or a platform pinned while the
+   generator's own bytes had moved — which comparing versions would not.
+
+Together they say the pinned platforms and this one shared one locked
+environment at pin time, and every pin is the key that environment computed.
+That is what licenses deriving the new foreign keys here. The local key is
+additionally derived alongside being executed, so the derivation cannot drift
+from what the executor computes.
+
+Pinned **bytes** are never derived: each platform's ``direct.csv`` is left
+exactly as that platform recorded it, and a re-pin refuses to write at all if
+the local direct call's bytes moved from the file **this** platform's pin points
+at, because that would mean the change was not additive and the fixture needs a
+real regeneration instead.
 
 Usage::
 
@@ -41,6 +64,7 @@ import json
 import os
 import sys
 from collections.abc import Iterator
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -67,7 +91,12 @@ from tools.graph_parity_fixtures import (  # noqa: E402 - after the path bootstr
     parity_registry,
 )
 
-__all__ = ["BUILDERS", "derived_node_key", "repin"]
+__all__ = [
+    "BUILDERS",
+    "derived_node_key",
+    "installed_dependency_versions",
+    "repin",
+]
 
 BUILDERS = {
     "fit.qrf": _fit_case,
@@ -97,8 +126,15 @@ def derived_node_key(
     node_id: str,
     inputs_path: Path,
     fingerprint: str,
+    implementation_hash: str | None = None,
 ) -> str:
-    """The key ``fingerprint`` computes for ``node_id`` over ``inputs_path``."""
+    """The key ``fingerprint`` computes for ``node_id`` over ``inputs_path``.
+
+    ``implementation_hash`` substitutes that value for ``node_id``'s own kernel,
+    so a caller can ask what a platform keyed under a *previous* implementation
+    — the one its existing pin was taken under — and check the answer against
+    that pin. Every other node keeps its registered kernel's hash.
+    """
     compiled = compile_graph(graph)
     source_keys = {
         source.name: graph_keys.source_content_key(source.name, inputs_path)
@@ -113,11 +149,26 @@ def derived_node_key(
                 compiled,
                 current,
                 keys,
-                kernel.implementation_hash(),
+                implementation_hash
+                if current == node_id and implementation_hash is not None
+                else kernel.implementation_hash(),
                 source_keys,
                 kernel_capabilities=kernel.capabilities,
             )
     return keys[node_id]
+
+
+def installed_dependency_versions(kernel: object) -> dict[str, str]:
+    """This machine's versions of ``kernel``'s declared dependencies.
+
+    Built exactly as ``graph_parity_fixtures._pins`` builds the mapping it
+    records, so the two are comparable without normalising either.
+    """
+    capabilities = kernel.capabilities  # type: ignore[attr-defined]
+    return {
+        name: importlib_metadata.version(name)
+        for name in sorted(capabilities.dependencies)
+    }
 
 
 def _csv_bytes(frame: pd.DataFrame) -> bytes:
@@ -159,12 +210,6 @@ def repin(name: str) -> dict[str, str]:
         raise SystemExit(
             f"{name}: inputs.csv no longer matches the builder; regenerate instead"
         )
-    if (destination / "direct.csv").read_bytes() != _csv_bytes(direct):
-        raise SystemExit(
-            f"{name}: the direct call's bytes moved, so this is not a re-pin; "
-            "regenerate the fixture and say what changed"
-        )
-
     fingerprint = platform_fingerprint()
     platforms = dict(pins.get("platforms", {}))
     platforms.setdefault(
@@ -176,8 +221,62 @@ def repin(name: str) -> dict[str, str]:
             "use graph_parity_fixtures.py platform-pin to add one"
         )
 
+    # This platform's own pinned bytes, which for a platform-bitwise kernel are
+    # not the authoring platform's; comparing against the wrong file would refuse
+    # a legitimate re-pin off the authoring platform, or accept a drifted one.
+    local_direct = destination / platforms[fingerprint]["direct"]
+    if local_direct.read_bytes() != _csv_bytes(direct):
+        raise SystemExit(
+            f"{name}: the direct call's bytes moved from "
+            f"{platforms[fingerprint]['direct']}, so this is not a re-pin; "
+            "regenerate the fixture and say what changed"
+        )
+
     node_id = pins["node"]
     inputs_path = destination / "inputs.csv"
+    # Step 1 of the module docstring's argument, and the only step that sees the
+    # dependency channel. It has to come before any derivation: deriving first
+    # would already have trusted the environment under test.
+    installed = installed_dependency_versions(kernel)
+    if pins.get("dependencies") != installed:
+        drifted = sorted(
+            set(pins.get("dependencies", {})) | set(installed),
+            key=lambda dependency: dependency,
+        )
+        detail = ", ".join(
+            f"{dependency}: pinned "
+            f"{pins.get('dependencies', {}).get(dependency, '(absent)')} vs "
+            f"installed {installed.get(dependency, '(absent)')}"
+            for dependency in drifted
+            if pins.get("dependencies", {}).get(dependency) != installed.get(dependency)
+        )
+        raise SystemExit(
+            f"{name}: this environment is not the one the pins were taken "
+            f"under ({detail}). The implementation hash folds those versions "
+            "in, so a foreign platform's new key cannot be derived here; "
+            "re-pin from an environment matching uv.lock."
+        )
+
+    # Step 2: every pin must be internally consistent with the hash beside it.
+    for platform, entry in sorted(platforms.items()):
+        reproduced = derived_node_key(
+            graph, node_id, inputs_path, platform, pins["implementation_hash"]
+        )
+        if reproduced != entry["node_key"]:
+            local = " (this machine)" if platform == fingerprint else ""
+            raise SystemExit(
+                f"{name}: cannot reproduce {platform}'s existing pin "
+                f"{entry['node_key']} from the recorded implementation hash "
+                f"(got {reproduced}){local}. The pin does not belong to the "
+                "hash recorded beside it, so re-deriving it here would launder "
+                "a stale or hand-edited key. Causes, in the order worth "
+                "checking: tools/graph_parity_fixtures.py's own bytes moved "
+                "(that re-keys every parity node, and this machine fails "
+                "first); the entry was edited by hand; or it was pinned on "
+                "that platform under a different implementation. Regenerate "
+                "the fixture, or re-pin that platform there."
+            )
+
     produced = _executed_node_key(name, graph, inputs_path)
     if derived_node_key(graph, node_id, inputs_path, fingerprint) != produced:
         raise SystemExit(
