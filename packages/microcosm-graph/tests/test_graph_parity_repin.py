@@ -43,6 +43,22 @@ def _pins(case: Path) -> dict:
     return json.loads((case / "pins.json").read_text(encoding="utf-8"))
 
 
+def _skip_unless_this_platform_is_pinned(case: Path) -> None:
+    """The tool refuses a platform with no pin before the step under test.
+
+    On such a platform ``repin`` exits with "carries no pin to re-record",
+    which is neither the refusal these tests assert nor the no-op they
+    expect; the test cannot observe its subject there, so it skips.
+    """
+    pins = _pins(case)
+    pinned = {pins["platform"], *pins.get("platforms", {})}
+    if platform_fingerprint() not in pinned:
+        pytest.skip(
+            f"{platform_fingerprint()} carries no {case.name} pin; the tool "
+            "refuses before the behaviour under test"
+        )
+
+
 def _write(case: Path, pins: dict) -> None:
     (case / "pins.json").write_text(
         json.dumps(pins, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -76,6 +92,7 @@ def test_a_recorded_dependency_version_this_machine_lacks_refuses(
     then write a key that platform never computes, so the tool must refuse.
     """
     case = case_copy("fit.qrf")
+    _skip_unless_this_platform_is_pinned(case)
     pins = _pins(case)
     pins["dependencies"]["numpy"] = "0.0.0-not-installed-here"
     _write(case, pins)
@@ -114,6 +131,7 @@ def test_a_foreign_pin_the_recorded_hash_cannot_reproduce_refuses(
     re-deriving it here would launder that into a fresh-looking key.
     """
     case = case_copy("fit.qrf")
+    _skip_unless_this_platform_is_pinned(case)
     pins = _pins(case)
     foreign = next(p for p in pins["platforms"] if p != platform_fingerprint())
     pins["platforms"][foreign]["node_key"] = "0" * 64
@@ -199,6 +217,7 @@ def test_a_repin_of_an_unchanged_kernel_rewrites_the_pins_byte_for_byte(
 ) -> None:
     """Idempotence: the tool is a no-op when nothing about the kernel moved."""
     case = case_copy("fit.qrf")
+    _skip_unless_this_platform_is_pinned(case)
     before = (case / "pins.json").read_bytes()
     repin("fit.qrf")
     assert (case / "pins.json").read_bytes() == before
