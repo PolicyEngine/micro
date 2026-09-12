@@ -292,6 +292,39 @@ Amendments so far (each re-locked):
     `hit` forced to false) and `load_certified` refuses it. Raised by the
     #847 gate review; adopted 2026-09-03.
 
+20. **Keyed draw streams.** `SeedSource.KEYED` and
+    `microcosm.graph.randomness.keyed_uniform`: a keyed kernel's draws are a
+    pure function of normative stream parameters — `("sha256-u53-v1",
+    experiment_id, replicate, base_seed)` — and one stable coordinate per
+    draw, conventionally `(person_id, process, period, draw_index)`. It
+    reads and advances no generator, so a row's draw stops depending on how
+    many rows were drawn before it: the invariance to packing that C1 and C2
+    already gave a node's key and seed now reaches each individual draw, and
+    an inserted or removed identity leaves every other row's value alone. C4
+    is neither weakened nor edited — `randomness.py` consumes no RNG at all,
+    positionally or otherwise, so its static check still holds over the
+    whole shard. `microcosm-fit` carries the first consumer surface,
+    `FittedRegimeGatedQRF.predict_from_uniforms`, which draws from
+    caller-supplied per-row uniforms; pairing those with stable entity ids
+    makes a batch's results invariant to recipient ordering and chunking.
+    **`fit.qrf@1`'s existing outputs are unchanged.** `predict`, its RNG
+    consumption order, and every value it draws are untouched; the new
+    method is additive, and the kernel still declares `PARAM` or `EXECUTOR`,
+    never `KEYED`. Its *implementation* identity moves all the same, because
+    `QRFKernel.implementation_hash()` hashes `microcosm.fit.qrf`'s module
+    bytes — so H1's `fit.qrf` pins are re-recorded on every pinned platform
+    while `direct.csv` stays byte-identical on each, and that byte-identity
+    is the evidence for the additivity claim rather than a restatement of
+    it. Unlike amendments 11 and 13 this adds an enum member, not a
+    normative field, so no existing node's canonical projection changes and
+    no existing node key moves. One deliberate difference from the generator
+    path, commented where it lives: the sign gate's inverse CDF compares
+    strictly and closes its final bin at 1.0, so a uniform of exactly zero
+    skips a zero-probability class instead of selecting it, and a CDF that
+    sums to just under one can no longer silently select the first class.
+    Raised by the US launch integration branch, which carried the code
+    without an amendment; adopted 2026-09-11.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.
