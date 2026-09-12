@@ -75,6 +75,30 @@ def test_same_key_with_changed_metadata_refuses_without_replacing_original(tmp_p
     assert store.load_frame("b" * 64).metadata == original.metadata
 
 
+@pytest.mark.parametrize("wrap_in_tuple", [False, True])
+def test_roundtrip_preserves_frozen_sets_of_inherited_mappings(tmp_path, wrap_in_tuple):
+    parent = _frame({"sources": ({"id": "invented", "nested": {"rows": 2}},)})
+    source = parent.metadata["sources"][0]
+    member = (source,) if wrap_in_tuple else source
+    original = _frame({"source_set": frozenset({member})})
+    store = ContentStore(tmp_path / "invented-store")
+    key = "9" * 64
+    store.put_frame(key, original)
+    restored = store.load_frame(key)
+    assert isinstance(restored.metadata["source_set"], frozenset)
+    assert store_module._encode_frame_metadata(
+        restored.metadata
+    ) == store_module._encode_frame_metadata(original.metadata)
+    restored_member = next(iter(restored.metadata["source_set"]))
+    restored_source = restored_member[0] if wrap_in_tuple else restored_member
+    assert hash(restored_member) == hash(member)
+    with pytest.raises(TypeError):
+        restored_source["nested"]["rows"] = 3
+    # A normal same-key cache write must keep loading the admitted metadata.
+    store.put_frame(key, restored)
+    assert store.load_frame(key).metadata == original.metadata
+
+
 def test_v1_frame_is_unavailable_instead_of_silently_losing_metadata(
     tmp_path, monkeypatch
 ):

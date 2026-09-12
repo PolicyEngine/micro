@@ -39,6 +39,7 @@ from microcosm.frame import (
     Weights,
     nullable_boolean_values_and_mask,
 )
+from microcosm.frame.bundle import _freeze_metadata_value
 
 from .errors import (
     GraphRuntimeError,
@@ -1097,7 +1098,13 @@ def _decode_frame_metadata(encoded: object) -> object:
             return result
         if kind in ("tuple", "frozenset") and isinstance(value, list):
             items = [_decode_frame_metadata(item) for item in value]
-            return tuple(items) if kind == "tuple" else frozenset(items)
+            if kind == "tuple":
+                return tuple(items)
+            # Frame admits hashable frozen mappings, including inside tuple
+            # members. Reapply its recursive freezing before building a set.
+            return frozenset(
+                _freeze_metadata_value(item, path="stored metadata[]") for item in items
+            )
         if (
             kind == "float64"
             and isinstance(value, str)
