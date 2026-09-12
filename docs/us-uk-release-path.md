@@ -42,7 +42,7 @@ common source population alone does not guarantee identical estimates.
 
 | Stage | US demonstrated result | UK demonstrated result |
 | --- | --- | --- |
-| Population construction | Small real ACS/ASEC composition, clone and financial enrichment pass; maintained two-route PUF host passes invented cold/replay controls, with native PUF and remaining inputs pending | Real FRS 2024–25 spine and earlier whole-spine parity; latest integrated stage set needs fresh coverage and verification |
+| Population construction | Small real ACS/ASEC composition, clone and financial enrichment pass; maintained two-route PUF and subsequent amount/health hosts pass scoped invented controls; native PUF and remaining inputs pending | Real FRS 2024–25 spine and earlier whole-spine parity; latest integrated stage set needs fresh coverage and verification |
 | Geography | Small native post-clone block assignment and financial extension passed on 11 September; strict required replay passed on 12 September; complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
 | Calibration | Declared national/state/CD measurement and dense grouped calibration stages pass on invented inputs; fully enriched native solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
 | Independent quality | Complete-candidate engine outcomes, holdouts and reform validation pending | Prior comparisons and diagnostics exist; the recorded 55k candidates skipped holdout evaluation and do not establish release quality |
@@ -68,8 +68,11 @@ native-input, owned-file and thread-control checks remained unchanged, with no
 unexpected access refusals. See the
 [replay record](../experiments/us-financial19-required-replay-20260912.md).
 Meanwhile the maintained graph's observer-mutation defect has been fixed and
-independently reviewed, and the shared graph changes are being consolidated
-against the amended main interface. Those software changes still need their
+independently reviewed. The shared graph consolidation merged in
+[PR #913](https://github.com/PolicyEngine/microcosm/pull/913) at
+`a9cc63e737fd4619a304117dc2ec7dcd86d97901`; the release branch has incorporated
+that main revision without changing its existing graph implementation. Those
+software changes still need their
 own native candidate verification; this replay certifies only its frozen
 financial stage, not the newer source or a release.
 
@@ -81,6 +84,18 @@ seconds and 0.74 GB peak RSS. Those 64 invented donors do not establish the
 runtime or quality of the full native donor. A separate current-source native
 packet uses a fresh writable store and the actual retained financial run.
 See [the PUF host record](../experiments/us-puf55-host-adoption-20260912.md).
+
+That native packet's second attempt closed with an assertion failure after
+about 82 minutes, during its financial-stage acceptance and before any PUF
+execution. The source and resource pins remained unchanged and no unexpected
+access refusal was reported. Source review identified an invalid harness
+assumption: the atomic host first materializes CREATE and ALLOCATION, so those
+two nodes legitimately hit when its expanded graph runs in the same store.
+Requiring every prefix node to miss rejects that valid execution. The refusal
+record does not identify its precise assertion frame, so this diagnosis does
+not establish completed native financial acceptance. A narrowly corrected v3
+harness and invented assertion controls are in preparation; no retry pass or
+native PUF result is claimed.
 
 The maintained financial graph now retains an eighth field: the tax-exempt
 interest remainder of its existing observed or modeled total. The split remains
@@ -123,12 +138,29 @@ source/store corruption and late output mutation. Independent review approved
 the source and mechanical test colocation; 45 cases share one expensive fixture.
 See [the retained-output evidence](../experiments/us-puf55-checked-output-20260912.md).
 
-An earlier minimal invented fixture reported 61 present input names out of 161,
-a diagnostic inventory with unresolved original-channel values. Native coverage
-will be measured on the new candidate. Parallel successor work is qualifying
-unemployment receipt/amount, three health-cost amounts and current interview
-health coverage from the actual survey sources. Reporting universes and missing
-values remain explicit; no prior-wage or age-only zero fallback is introduced.
+The fixed post-PUF country host now assembles source-qualified unemployment,
+three health-cost amounts and nine current health-coverage inputs. It retains
+the checked PUF owner and attaches both fragments to the same receiving
+population, preserving existing columns, geography, design anchors and mass
+ledger. ASEC observations and unresolved values are retained on both clones;
+modeled ACS draws are deliberately shared within each original person's clone
+pair. Reporting universes remain explicit; no prior-wage or age-only zero
+fallback is introduced. The narrower ACS coverage concepts remain nullable
+where the source does not establish equivalence.
+
+The accepted invented fixture reports 74 present input names out of 161, up
+from 61, leaving 87 missing. It executed 26 new enrichment nodes over a validated
+245-node prefix, then required all 271 replay hits and complete Frame readback.
+Its six logical controls passed across five tests in the main attempt and a
+corrected focused parent-revocation follow-up, not one all-green full run.
+Independent review approved that scoped evidence. After integration with the
+eighth interest field and merged shared graph, 80 cheap source, attachment and
+health-fragment controls pass. Declaration checks still give 271 nodes: the
+eighth interest field adds an output to the existing financial attachment,
+not a new fit or graph node. This integration did not repeat the full combined
+host or measure fresh native coverage. See
+[the combined integration record](../experiments/us-survey-enrichment-integration-20260912.md)
+and [source/model decisions](us-current-survey-amount-successor.md).
 
 Actual graph tracing also confirms that the legacy full ASEC carry and ACS
 gap-fill are not executed by this host. Remaining pension, retirement-account,
@@ -139,6 +171,17 @@ rent afterward would not conserve that observed anchor. Source measurement
 bridges and overlapping income categories must be resolved explicitly before
 claiming reconciliation. The broader ACS retirement total is not merely pension
 plus regular-IRA income.
+
+Two reviewed building blocks for that completion are adopted in the release
+branch. The [ACS anchor qualifier](../experiments/us-current-acs-income-anchors-20260912.md)
+preserves original INTP/RETP amounts, adjustment factors, original ages and
+allocation flags through the retained source owner; its 35 invented-source
+controls pass. The [signed reconciliation helper](../experiments/signed-income-reconciliation-20260912.md)
+projects joint component draws onto a caller-qualified total while allowing
+declared signed components and preserving loss offsets; its 45 numeric controls
+pass. These components are not yet invoked by the financial or PUF host.
+The donor measurement bridge, scales, named graph reconciliation operation and
+dependent model replay remain to be implemented and verified.
 
 The remaining critical sequence is complete PUF/input integration, a small
 real full build, model and calibration evaluation, then progressive scale
