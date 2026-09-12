@@ -15,7 +15,14 @@ import pandas as pd
 import pytest
 
 import microcosm.graph.executor as graph_executor
-from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.frame import (
+    EntitySchema,
+    Frame,
+    LinkSpec,
+    MassChangeRecord,
+    WeightKind,
+    Weights,
+)
 from microcosm.graph.availability import EXECUTION_SCHEMA
 from microcosm.graph.decl import (
     ArtifactInput,
@@ -48,7 +55,7 @@ from microcosm.graph.kernel import (
 )
 from microcosm.graph.keys import opaque_artifact_key, platform_fingerprint
 from microcosm.graph.manifest import Decision, RunManifest
-from microcosm.graph.population import Population
+from microcosm.graph.population import MassRecord, Population
 from microcosm.graph.store import (
     ContentStore,
     StoreCorrupt,
@@ -4084,6 +4091,201 @@ def test_the_private_population_observer_sees_every_admitted_population(
             kernels=_registry(),
             _population_observer=refuse,
         )
+
+
+@pytest.mark.parametrize("warm", (False, True))
+def test_mutating_and_retained_observers_cannot_change_execution_or_cache(
+    tmp_path: Path, warm: bool
+) -> None:
+    source = _source_path(tmp_path / "source")
+    compiled = compile_graph(_graph(leaf=False))
+    plain = run_graph(
+        compiled,
+        sources={"survey": source},
+        store=ContentStore(tmp_path / "plain"),
+        kernels=_registry(),
+    )
+    store = ContentStore(tmp_path / "observed")
+    if warm:
+        run_graph(
+            compiled, sources={"survey": source}, store=store, kernels=_registry()
+        )
+    retained = []
+
+    def mutate(population):
+        population.frame.person.loc[:, "age"] += 100
+        weights = population.frame.weights_for("household").values
+        weights.setflags(write=True)
+        weights[:] = 999
+        population.frame._metadata = {"observer": "changed"}
+        object.__setattr__(population, "owners", {})
+
+    def observe(node_id, population):
+        # Also mutate earlier snapshots during later callbacks, after a simple
+        # before/after check around their own callback would have completed.
+        retained.append(population)
+        for previous in retained:
+            mutate(previous)
+
+    observed = run_graph(
+        compiled,
+        sources={"survey": source},
+        store=store,
+        kernels=_registry(),
+        _population_observer=observe,
+    )
+    for population in retained:
+        mutate(population)  # retained references remain harmless after return
+    replay = run_graph(
+        compiled, sources={"survey": source}, store=store, kernels=_registry()
+    )
+    assert all(receipt.hit for receipt in observed.nodes.values()) is warm
+    assert all(receipt.hit for receipt in replay.nodes.values())
+    for actual in (observed, replay):
+        assert actual.key == plain.key
+        assert {name: item.key for name, item in actual.nodes.items()} == {
+            name: item.key for name, item in plain.nodes.items()
+        }
+        for entity in plain.populations["survey"].entities:
+            pd.testing.assert_frame_equal(
+                actual.populations["survey"].table(entity),
+                plain.populations["survey"].table(entity),
+            )
+        np.testing.assert_array_equal(
+            actual.populations["survey"].weights_for("household").values,
+            plain.populations["survey"].weights_for("household").values,
+        )
+        assert (
+            actual.populations["survey"].metadata
+            == plain.populations["survey"].metadata
+        )
+    assert observed.populations["survey"].person["b"].tolist() == [60.0, 120.0, 180.0]
+
+
+def test_observer_snapshot_detaches_complete_population_storage(tmp_path: Path) -> None:
+    original = _source_frame(_source_path(tmp_path / "source"))
+    person = original.person.copy()
+    person.index = pd.MultiIndex.from_tuples(
+        [("a", 1), ("a", 2), ("b", 3)], names=["part", "row"]
+    )
+    person["object_cell"] = pd.Series(
+        [{"nested": [1]}, {"nested": [2]}, {"nested": [3]}],
+        index=person.index,
+        dtype=object,
+    )
+    person["category"] = pd.Categorical(["x", "y", "x"])
+    person["selected"] = pd.array([True, pd.NA, False], dtype="boolean")
+    person["selected"].array._data[1] = True  # preserve storage beneath the mask
+    person.attrs["nested"] = {"values": [1, 2]}
+    schema = EntitySchema(
+        group_entities=("household",),
+        links=(LinkSpec("relations", "person", "household"),),
+    )
+    link = pd.DataFrame({"person_id": [1, 2, 3], "household_id": [10, 10, 20]})
+    mass_log = (MassChangeRecord("household", 3.0, 3.0, 1.0, "unchanged"),)
+    frame = Frame(
+        {"person": person, "household": original.table("household"), "relations": link},
+        schema,
+        {"household": original.weights_for("household")},
+        pd.Series(["a", "a", "b"], index=person.index, name="stratum"),
+        metadata={"nested": [{"source": "fixture"}], "signed_zero": -0.0},
+        mass_log=mass_log,
+    )
+    ledger = (
+        MassRecord(
+            "fixture",
+            "reweight",
+            "conserve",
+            3.0,
+            3.0,
+            (("a", 3.0),),
+            (("a", 3.0),),
+            entity="household",
+        ),
+    )
+    population = Population.from_frame(frame, "fixture", mass_ledger=ledger)
+    snapshot = graph_executor._observer_snapshot(population)
+    assert snapshot.frame.schema == population.frame.schema
+    assert snapshot.frame.mass_log == population.frame.mass_log
+    assert snapshot.mass_ledger == population.mass_ledger
+    assert dict(snapshot.owners) == dict(population.owners)
+    assert dict(snapshot.weight_kind) == dict(population.weight_kind)
+    assert snapshot.frame.metadata == population.frame.metadata
+    assert np.signbit(snapshot.frame.metadata["signed_zero"])
+    assert snapshot.frame.metadata is not frame.metadata
+    assert snapshot.frame.metadata["nested"][0] is not frame.metadata["nested"][0]
+    for name in frame.entities:
+        pd.testing.assert_frame_equal(snapshot.frame.table(name), frame.table(name))
+    pd.testing.assert_frame_equal(
+        snapshot.frame.link("relations"), frame.link("relations")
+    )
+    pd.testing.assert_series_equal(snapshot.frame.strata, frame.strata)
+    np.testing.assert_array_equal(
+        snapshot.design_weights["household"], population.design_weights["household"]
+    )
+    assert not np.shares_memory(
+        snapshot.design_weights["household"], population.design_weights["household"]
+    )
+    np.testing.assert_array_equal(
+        snapshot.frame.person["selected"].array._data,
+        frame.person["selected"].array._data,
+    )
+
+    snapshot.frame.person.at[("a", 1), "object_cell"]["nested"].append(99)
+    snapshot.frame.person.attrs["nested"]["values"].append(99)
+    snapshot.frame.person.index.set_names(["changed", "row"], inplace=True)
+    level = snapshot.frame.person.index.levels[0].to_numpy(copy=False)
+    level.setflags(write=True)
+    level[0] = "changed"
+    categories = snapshot.frame.person["category"].cat.categories.to_numpy(copy=False)
+    categories.setflags(write=True)
+    categories[0] = "changed"
+    snapshot.frame.link("relations").iloc[0, 0] = 999
+    snapshot.frame.strata.iloc[0] = "changed"
+    snapshot.frame.person["selected"].array._data[1] = False
+    snapshot.frame.weights_for("household").values.setflags(write=True)
+    snapshot.frame.weights_for("household").values[:] = 999
+    captured_metadata = snapshot.frame.metadata["nested"][0]
+    object.__setattr__(captured_metadata, "_items", (("source", "changed"),))
+    assert frame.metadata["nested"][0]["source"] == "fixture"
+    snapshot.frame._metadata = {"changed": True}
+    object.__setattr__(snapshot.frame.schema.links[0], "name", "changed")
+    object.__setattr__(snapshot.frame.schema, "group_entities", ("changed",))
+    object.__setattr__(snapshot.frame.mass_log[0], "reason", "changed")
+    object.__setattr__(snapshot.mass_ledger[0], "policy", "changed")
+    object.__setattr__(snapshot, "owners", {})
+    assert frame.person.at[("a", 1), "object_cell"] == {"nested": [1]}
+    assert frame.person.attrs["nested"] == {"values": [1, 2]}
+    assert frame.person.index.names == ["part", "row"]
+    assert frame.person.index.levels[0].tolist() == ["a", "b"]
+    assert frame.person["category"].cat.categories.tolist() == ["x", "y"]
+    assert frame.link("relations").iloc[0, 0] == 1
+    assert frame.strata.iloc[0] == "a"
+    assert bool(frame.person["selected"].array._data[1]) is True
+    assert frame.weights_for("household").values.tolist() == [1.0, 2.0]
+    assert frame.metadata["nested"][0]["source"] == "fixture"
+    assert frame.schema.links[0].name == "relations"
+    assert frame.schema.group_entities == ("household",)
+    assert frame.mass_log[0].reason == "unchanged"
+    assert population.mass_ledger[0].policy == "conserve"
+    assert population.owners
+
+    # Record annotations do not freeze nested members. Even a caller-supplied
+    # container inside a record must not remain an alias across the seam.
+    nested_record = replace(ledger[0], before_by_stratum=((["mutable"], 3.0),))
+    nested = replace(population, mass_ledger=(nested_record,))
+    nested_snapshot = graph_executor._observer_snapshot(nested)
+    nested_snapshot.mass_ledger[0].before_by_stratum[0][0].append("changed")
+    assert nested.mass_ledger[0].before_by_stratum[0][0] == ["mutable"]
+
+
+def test_absent_observer_allocates_no_snapshot(tmp_path: Path, monkeypatch) -> None:
+    def forbidden(population):
+        raise AssertionError("snapshot without observer")
+
+    monkeypatch.setattr(graph_executor, "_observer_snapshot", forbidden)
+    source = _source_path(tmp_path / "source")
+    _run(_graph(), source, ContentStore(tmp_path / "store"), _registry())
 
 
 def test_a_gate_reached_only_through_bytes_still_derives_the_tier(

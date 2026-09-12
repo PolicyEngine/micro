@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import pickle
 import socket
 import time
 from collections.abc import Callable, Mapping
+from copy import deepcopy
+from dataclasses import fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -346,6 +349,61 @@ def _freeze_frame(table: pd.DataFrame) -> pd.DataFrame:
         _freeze_series(frozen[column])
     _set_read_only(frozen.index.to_numpy(copy=False))
     return frozen
+
+
+def _observer_snapshot(population: Population) -> Population:
+    """Detach every observation from the executable population and its cache.
+
+    Pandas deep copies retain object-cell referents and some immutable-by-API
+    axis/category buffers. An in-memory, in-band round trip copies those too;
+    only pandas objects from this admitted population are serialized here.
+    No external pickle bytes are accepted, retained, or persisted. Frame and
+    graph records are reconstructed explicitly to avoid reflective copy/pickle
+    writes to their dataclass namespaces (which source identities may seal).
+
+    When enabled, this costs one full detached population and a temporary
+    serialized table buffer per callback. Observers may retain that snapshot;
+    changing it immediately or later cannot change a kernel input or store write.
+    """
+    frame = population.frame
+    tables = {name: frame.table(name) for name in frame.entities}
+    tables.update({name: frame.link(name) for name in frame.links})
+    tables, strata = pickle.loads(pickle.dumps((tables, frame.strata), protocol=5))
+
+    def copied_record(record):
+        return replace(
+            record,
+            **{
+                field.name: deepcopy(getattr(record, field.name))
+                for field in fields(record)
+            },
+        )
+
+    snapshot = Frame(
+        tables,
+        replace(
+            frame.schema,
+            group_entities=deepcopy(frame.schema.group_entities),
+            links=tuple(copied_record(link) for link in frame.schema.links),
+        ),
+        {
+            entity: Weights(
+                frame.weights_for(entity).values, frame.weights_for(entity).kind
+            )
+            for entity in frame.weighted_entities
+        },
+        strata,
+        mass_log=tuple(copied_record(record) for record in frame.mass_log),
+        metadata=frame.metadata,
+    )
+    return Population(
+        snapshot,
+        population.version,
+        dict(population.owners),
+        dict(population.weight_kind),
+        mass_ledger=tuple(copied_record(record) for record in population.mass_ledger),
+        design_weights=population.design_weights,
+    )
 
 
 def _update_scalar(digest: hashlib._Hash, value: object) -> None:
@@ -2193,12 +2251,13 @@ def run_graph(
 ) -> RunManifest:
     """Execute a compiled graph with content-addressed reuse and receipts.
 
-    The private population observer exposes each node's admitted population,
-    design anchors included, to an integrating verifier. It runs for cold
-    execution and for restored cache hits alike, before the node is persisted;
-    it must not mutate the population, and an exception it raises refuses the
-    run. It is never a kernel capability, enters no key or receipt, and an
-    unreached node has no population to observe.
+    The private population observer exposes a detached snapshot of each node's
+    admitted population, design anchors included, to an integrating verifier.
+    It runs for cold execution and for restored cache hits alike, before the
+    node is persisted; changes to the snapshot cannot alter execution or
+    persistence, and an exception it raises refuses the run. It is never a
+    kernel capability, enters no key or receipt, and an unreached node has no
+    population to observe.
     """
 
     if resume not in ("auto", "require", "forbid"):
@@ -2500,7 +2559,7 @@ def run_graph(
             populations[node.id] = updated
 
         if _population_observer is not None:
-            _population_observer(node_id, updated)
+            _population_observer(node_id, _observer_snapshot(updated))
 
         if not hit:
             manifest_artifacts, record = _write_node(
