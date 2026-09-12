@@ -77,15 +77,24 @@ Other-income clearance requires known nonreceipt with a NIU category, or a
 readable reported category outside property codes 5–8 and unspecified code 19.
 A reported outside category resolves its route even if its own dollar amount
 is ambiguous; no other-income amount is included in this basis. Missing,
-unreadable or contradictory routing stays unresolved. Survivor clearance uses
-the dividend qualifier's nullable clearance and checks agreement with its
-readable codes: known no with NIU slots, or known yes with at least one active
-source and every slot outside estate/trust code 8 and unspecified code 10.
-Possible property overlaps and unknown routes have different exclusion reasons.
+unreadable or contradictory routing stays unresolved. The dividend qualifier's
+nullable survivor clearance is checked against its readable codes and retained
+as `survivor_visible_routes_clear`. It covers only `SUR_SC1` and `SUR_SC2`.
+The 2025 dictionary describes `SRVS_VAL` as including edited sources 1/2 plus
+unedited sources 3/4 (PDF page 49, printed page 6C-28); those additional source
+types are not qualified here. A positive survivor receipt therefore cannot
+establish complete absence of estate/trust income even when both visible
+slots are outside codes 8 and 10.
+
+The first bridge accepts only known survivor nonreceipt with readable NIU
+slots, exposed as `survivor_full_scope_clear`. Positive receipts have a separate
+`survivor_additional_sources_unresolved` exclusion and weighted coverage row.
+Possible visible property overlaps and unknown visible routes retain their own
+exclusion reasons. Overlapping exclusion rows must not be added together.
 Neither other income nor survivor amounts enter the component or reported sum.
 
 `reported_total_eligible` requires age 15+, a known finite reported total, and
-clear other-income and survivor routes. It is a diagnostic sample, not a second
+clear other-income routes and complete survivor scope. It is a diagnostic sample, not a second
 aggregate model. `joint_component_fit_eligible` additionally requires all four
 components and an exactly zero interest discrepancy. Missing or under-15 values
 are never turned into analytic zeros. Negative and zero net totals remain valid:

@@ -231,7 +231,14 @@ def _survivor_route(dividend, age):
         ),
         "SURVIVOR_ROUTE_AGREEMENT",
     )
-    return clear, possible
+    # SRVS_VAL includes unedited third/fourth sources absent from SUR_SC1/2
+    # (2025 dictionary, PDF49 / printed6C-28). Visible-slot clearance cannot
+    # establish full property scope for a person reporting survivor income.
+    # Retain that descriptive clearance, but only known nonreceipt can clear
+    # the first donor bridge until the additional-source scope is qualified.
+    full_clear = clear & receipt_ok & (receipt == 2)
+    extra_sources_unresolved = yes & (age >= 15)
+    return clear, possible, full_clear, extra_sources_unresolved
 
 
 def _weights(index, membership, weights):
@@ -312,10 +319,17 @@ def build_asec_property_basis(
     )
     retirement, count, derivation, derived_slots = _retirement(interest)
     other_clear, other_possible = _other_route(income_routing)
-    survivor_clear, survivor_possible = _survivor_route(dividend, age)
+    (
+        survivor_visible_clear,
+        survivor_possible,
+        survivor_clear,
+        survivor_extra_unresolved,
+    ) = _survivor_route(dividend, age)
     person = interest[["native_person_id", "source_age"]].copy(deep=True)
     person["original_household_id"] = original_household_membership.to_numpy(copy=True)
     person["original_household_design_weight"] = design
+    person["survivor_visible_routes_clear"] = survivor_visible_clear
+    person["survivor_full_scope_clear"] = survivor_clear
     for name, amount in zip(
         PROPERTY_COMPONENTS,
         (ordinary, retirement, dividends, property_amount),
@@ -354,7 +368,8 @@ def build_asec_property_basis(
             "other_income_possible_property": other_possible,
             "other_income_route_unresolved": ~other_clear & ~other_possible,
             "survivor_possible_property": survivor_possible,
-            "survivor_route_unresolved": ~survivor_clear & ~survivor_possible,
+            "survivor_route_unresolved": ~survivor_visible_clear & ~survivor_possible,
+            "survivor_additional_sources_unresolved": survivor_extra_unresolved,
         },
         index=interest.index,
     )

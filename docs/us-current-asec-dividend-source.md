@@ -70,7 +70,12 @@ leave it unknown. Under-15 rows remain unknown; incomplete under-15 literals
 are labeled unresolved rather than contradictory. Independent booleans
 retain the presence of codes 8 and 10 even when the receipt is unresolved.
 
-This clearance describes the recorded source routes. It does not establish
+This clearance describes only the two recorded source slots. The dictionary's
+`SRVS_VAL` entry (PDF page 49, printed page 6C-28) also includes unedited third
+and fourth sources. Their types are not qualified here, so two clear visible
+slots cannot establish complete absence of survivor estate/trust income.
+The property donor bridge conservatively excludes positive survivor receipts
+until that additional scope is qualified. This clearance does not establish
 that the person has no property income. No survivor amount is captured, no
 donor exclusion is applied, and a missing slot is never an observed zero
 amount. A later measurement bridge must explicitly choose and validate how

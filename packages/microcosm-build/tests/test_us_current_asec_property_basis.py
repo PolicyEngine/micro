@@ -260,6 +260,7 @@ def test_other_income_routes_are_strict_and_never_added(
         (1, 10, 0, None),
         (1, 1, None, None),
         (1, 0, 0, None),
+        (2, 0, 0, True),
         (2, 8, 0, None),
         (0, 0, 0, None),
     ],
@@ -273,9 +274,40 @@ def test_survivor_routes_keep_overlap_and_unknown_exclusions(
         code(d, name, [value], ["missing" if value is None else "in_printed_range"])
     d["survivor_property_route_clear"] = pd.array([declared], dtype="boolean")
     result = build_asec_property_basis(**source)
-    assert bool(result.person.reported_total_eligible.iloc[0]) is (declared is True)
+    full_clear = receipt == 2 and declared is True
+    assert bool(result.person.reported_total_eligible.iloc[0]) is full_clear
+    assert bool(result.person.joint_component_fit_eligible.iloc[0]) is full_clear
+    assert bool(result.person.survivor_visible_routes_clear.iloc[0]) is (
+        declared is True
+    )
+    assert bool(result.exclusions.survivor_additional_sources_unresolved.iloc[0]) is (
+        receipt == 1
+    )
     assert bool(result.exclusions.survivor_possible_property.iloc[0]) is (
         declared is False
+    )
+
+
+def test_visible_survivor_clearance_does_not_clear_unobserved_extra_sources():
+    source = inputs(3)
+    d = source["dividend"]
+    code(d, "SUR_YN", [1, 1, 2])
+    code(d, "SUR_SC1", [1, 8, 0])
+    d["survivor_property_route_clear"] = pd.array([True, False, True], dtype="boolean")
+    before = d.copy(deep=True)
+    result = build_asec_property_basis(**source)
+    assert result.person.survivor_visible_routes_clear.tolist() == [True, False, True]
+    assert result.person.survivor_full_scope_clear.tolist() == [False, False, True]
+    assert result.person.joint_component_fit_eligible.tolist() == [False, False, True]
+    assert result.person.property_reported_total.eq(-10).all()
+    reason = result.summary.loc["excluded:survivor_additional_sources_unresolved"]
+    assert reason.person_count == 2 and reason.household_count == 1
+    assert reason.design_weighted_person_mass == 4
+    assert reason.union_household_design_mass == 2
+    assert result.exclusions.survivor_possible_property.tolist() == [False, True, False]
+    assert_frame_equal(source["dividend"], before)
+    assert_frame_equal(
+        result.provenance.filter(like="dividend."), before.add_prefix("dividend.")
     )
 
 
