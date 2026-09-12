@@ -33,6 +33,13 @@ remain distinguishable by ordered position. Honest nonfinite intermediate
 estimates are represented by nulls and counts. Intermediate float32 estimates
 and final float64 estimates are labeled with their actual iterate semantics.
 Budget probes and subsequent selection/refit phases share one emission sequence.
+`epoch` counts completed optimizer updates: zero is the starting state. An
+in-loop estimate precedes that iteration's update; its selected counterpart uses
+the same convention. Cadence counts loss evaluations starting at one, so an
+every-25 cadence can emit epoch 24. The selected budget-search snapshot retains
+the winning probe's identity, even when another probe ran afterward. If computing
+a relative error overflows, the error is null and `non_finite_rows` counts it;
+finite operands remain visible.
 
 Metadata accepts bounded flat scalar mappings and checked string identifiers;
 it does not accept nested payloads or record vectors. `best_retained` must be a
@@ -45,6 +52,9 @@ The local writer atomically replaces `latest.json`. History chunks become
 visible only after their complete bytes are written and synced, and an existing
 chunk cannot be overwritten. Retention and dropped-history counts are explicit.
 Use a fresh run directory unless intentionally adopting existing history.
+Atomic history publication requires a filesystem that supports hard links and
+directory synchronization. Unsupported filesystem errors propagate to the caller;
+the writer does not expose partially written history as a fallback.
 
 ## The grouped US solver
 
@@ -69,8 +79,8 @@ Two grouped specifics a consumer must read correctly:
 - In-loop snapshots are **pre-update loss evaluations**, the same convention the
   ungrouped Adam loop uses. They are deliberately not the post-update projected
   accepted vector that the private `_post_projection_observer` proof seam
-  reports at the same epoch number: those are different vectors, and producing
-  target totals for the accepted one would require an extra matrix evaluation.
+  reports after the next completed update: those are different vectors, and
+  producing target totals for the accepted one would require an extra matrix evaluation.
   That private seam carries record-length weights, household IDs, the group map
   and the absolute-bound vector; none of it reaches a snapshot, and the public
   codec rejects record-level key names outright.
@@ -82,14 +92,51 @@ still run *after* the closing snapshot sink, and the unsupported grouped modes
 refused before the optimizer is constructed. Snapshot support does not turn any
 of them into a permitted numeric path.
 
-This implements the solver and local storage portion of
-[issue 908](https://github.com/PolicyEngine/microcosm/issues/908). Country-host
-wiring, staging upload, a dashboard consumer and native cadence/performance
-acceptance remain separate work. In particular
-`us_runtime/graph_fiscal_dense_calibration.py` still calls `calibrate` without
-an observer: a solver-side integration alone produces no snapshot files for
-that path, and wiring it needs an explicit host-owned instrumentation seam
-rather than a callback or filesystem path serialized into graph node params.
+## US fiscal host
+
+The actual dense fiscal kernel accepts the shared observer through an optional,
+keyword-only constructor argument:
+
+```python
+from microcosm.build.us_runtime.graph_fiscal_dense_calibration import (
+    FiscalDenseCalibrationKernel,
+)
+from microcosm.calibrate import TargetSnapshotCadence, TargetSnapshotObserver
+
+observer = TargetSnapshotObserver(
+    sink=host_owned_sink,
+    run_id="fiscal-run",
+    candidate_id="candidate-under-review",
+    cadence=TargetSnapshotCadence(every=25),
+)
+kernels.register(FiscalDenseCalibrationKernel(target_snapshots=observer))
+```
+
+The host owns the sink and any local writer directory. The kernel retains the
+observer only on its instance and forwards it to the existing `calibrate` call.
+Omitting the argument or passing `None` disables observation. Observer values,
+callbacks and paths are absent from node parameters, implementation identity,
+cache keys, graph artifacts and receipts. Changing this source implementation
+changes its fingerprint normally; changing observer configuration does not.
+
+The solver binds snapshot identity to the actual compiled target order and
+values from the fiscal measurement. The existing final matrix/target, household
+ID, weight and measurement checks run after the sink completes. Sink exceptions
+propagate, as with the ordinary progress callback. Each delivered dictionary is
+detached: mutating its aggregate metadata or target rows cannot change the next
+payload or optimizer result. This does not make an arbitrary callback safe to
+mutate unrelated live application state.
+
+A required graph cache hit does not execute the optimizer and emits no target
+snapshots, even when a new observer is supplied. Hosts should retain the previous
+run's diagnostics and history with their identities; a replay must not be shown
+as a new optimizer run. Complete-population and source admission remain the
+country host's responsibility.
+
+This implements the solver, local storage and dense fiscal-host portions of
+[issue 908](https://github.com/PolicyEngine/microcosm/issues/908). Staging upload,
+a dashboard consumer and native cadence/performance acceptance remain separate
+work. See [the fiscal-host integration evidence](../experiments/fiscal-target-snapshot-host-20260912.md).
 
 The reviewed repair branch passed 307 calibration tests before the final strict
 null correction. All 52 snapshot tests then passed after that one-line correction,
@@ -97,3 +144,12 @@ including passive solver parity tests. Independent review closed the metadata,
 detachment, partial-publication and codec findings. See the
 [invented benchmark evidence](../experiments/908-target-snapshot-bench-receipts.md)
 for overhead measurements; those are not native US or UK benchmarks.
+
+Fable's later PR review identified a mixed epoch convention, a missing winning
+budget-probe label and a relative-error overflow case. Four new counterexamples
+failed first; all 56 snapshot tests and all 311 calibration tests then passed
+after those corrections. The 26 affected build identity and graph parity checks
+also passed after recalculating the calibration source pins; fit and simulation
+pins were preserved. These changes affect diagnostics only. The public writer
+still validates each incoming payload because callers can supply serialized
+snapshots independently of an observer.

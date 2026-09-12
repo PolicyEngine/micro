@@ -490,7 +490,7 @@ def test_grouped_snapshots_report_a_closing_state_run_with_no_retained_best(
     in_loop = [item for item in seen if item["iterate"] != ITERATE_SELECTED]
     selected = [item for item in seen if item["iterate"] == ITERATE_SELECTED]
     assert len(selected) == 1
-    assert [item["epoch"] for item in in_loop] == list(range(1, 21))
+    assert [item["epoch"] for item in in_loop] == list(range(20))
     labels = {
         "rule": "closing_state",
         "constraint_mode": "grouped_upper_bounds",
@@ -518,7 +518,7 @@ def test_grouped_in_loop_estimates_are_the_observed_loss_tensor(monkeypatch):
     """Each row is the epoch's own float32 forward pass, not a recomputation.
 
     The contrast is the post-update accepted vector the private observer
-    reports at the same epoch number: producing target totals for that vector
+    reports after the next completed update: producing target totals for that vector
     would need another matrix evaluation, and the values differ.
     """
     counts, observed = _count_evaluations(monkeypatch)
@@ -591,7 +591,7 @@ def test_a_sink_mutating_delivered_payloads_cannot_reach_the_solver(monkeypatch)
     assert result.loss_trajectory.tobytes() == baseline.loss_trajectory.tobytes()
     # Every later payload arrived freshly built rather than carrying the damage.
     assert len(delivered) == 21
-    assert [item[0] for item in delivered] == list(range(1, 21)) + [20]
+    assert [item[0] for item in delivered] == list(range(20)) + [20]
     assert [item[1] for item in delivered[:-1]] == [ITERATE_CURRENT] * 20
     assert delivered[-1][1] == ITERATE_SELECTED
     for _, _, selection, names in delivered:

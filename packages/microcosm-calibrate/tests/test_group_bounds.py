@@ -699,7 +699,7 @@ def test_a_binding_bound_that_actually_corrects_is_unchanged_by_snapshots(
         )
 
     in_loop = [item for item in seen if item["iterate"] != ITERATE_SELECTED]
-    assert [item["epoch"] for item in in_loop] == list(range(1, 7))
+    assert [item["epoch"] for item in in_loop] == list(range(6))
     assert all(item["iterate"] == ITERATE_CURRENT for item in in_loop)
     assert all(item["precision"] == "float32" for item in in_loop)
     assert all(
