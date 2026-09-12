@@ -316,14 +316,16 @@ Amendments so far (each re-locked):
     while `direct.csv` stays byte-identical on each, and that byte-identity
     is the evidence for the additivity claim rather than a restatement of
     it. Unlike amendments 11 and 13 this adds an enum member, not a
-    normative field, so no existing node's canonical projection changes and
-    no existing node key moves. One deliberate difference from the generator
-    path, commented where it lives: the sign gate's inverse CDF compares
-    strictly and closes its final bin at 1.0, so a uniform of exactly zero
-    skips a zero-probability class instead of selecting it, and a CDF that
-    sums to just under one can no longer silently select the first class.
-    Raised by the US launch integration branch, which carried the code
-    without an amendment; adopted 2026-09-11.
+    normative field: no node's canonical projection gains a field, so the
+    member itself moves no node key — every kernel keeps projecting the seed
+    source it already declared. The `fit.qrf` keys move because the
+    implementation hash moved, not because `KEYED` exists. One deliberate
+    difference from the generator path, commented where it lives: the sign
+    gate's inverse CDF compares strictly and closes its final bin at 1.0,
+    so a uniform of exactly zero skips a zero-probability class instead of
+    selecting it, and a CDF that sums to just under one can no longer
+    silently select the first class. Raised by the US launch integration
+    branch, which carried the code without an amendment; adopted 2026-09-11.
 
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
