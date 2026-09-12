@@ -132,6 +132,33 @@ spec digest. Every identity pin above must therefore be recomputed on the
 merge ref before this branch merges, per CLAUDE.md's "CI tests the merge ref,
 so merge main and re-pin". Do not treat the values here as final.
 
+## How this lane ran the tests (no installs, no uv sync)
+
+An isolated interpreter with this worktree's shard sources ahead of a shared
+venv's site-packages, plus an import-path assertion so `microcosm.*` can never
+resolve outside this worktree:
+
+```python
+# run.py — invoke as: <venv>/bin/python -I -B -S run.py <pytest args>
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+VENV_SITE = Path("<a venv with numpy/pandas/scipy/torch/pytest>/site-packages")
+sys.path[:0] = [
+    *sorted(str(p) for p in ROOT.glob("packages/*/src")),
+    str(VENV_SITE),
+    str(ROOT),
+]
+import microcosm.calibrate as _cal
+assert str(ROOT) in str(Path(_cal.__file__).resolve()), _cal.__file__
+import pytest
+raise SystemExit(pytest.main(sys.argv[1:]))
+```
+
+Note pytest `addopts` already carries `-q`, so gate on the exit code rather
+than adding another `-q` (which hides the summary line).
+
 ## Next
 
 - Independent review of this slice, then the staging/host wiring as a
