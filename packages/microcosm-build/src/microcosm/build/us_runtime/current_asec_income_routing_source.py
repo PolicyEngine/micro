@@ -86,7 +86,7 @@ class PrintedAmountEntry:
 
 
 @lru_cache(maxsize=1)
-def printed_amount_entries():
+def _cached_printed_amount_entries():
     """Read the pinned domains artifact once, on demand, never at import."""
     payload = resources.files(__package__).joinpath(DOMAINS_RESOURCE).read_bytes()
     require(_sha(payload) == DOMAINS_SHA256, "DOMAINS_RESOURCE_SHA256")
@@ -95,6 +95,7 @@ def printed_amount_entries():
     for field in data["fields"]:
         if field["name"] not in AMOUNT_FIELDS:
             continue
+        require(field["name"] not in entries, "DOMAIN_FIELD_DUPLICATE:" + field["name"])
         domain = field["domain"]
         vintages = [
             v for v in field["vintages"] if v["income_year"] == CURRENT_INCOME_YEAR
@@ -122,7 +123,66 @@ def printed_amount_entries():
             zero_semantics=domain["zero_semantics"],
         )
     require(set(entries) == set(AMOUNT_FIELDS), "DOMAIN_FIELD_ROSTER")
-    return entries
+    return tuple(entries.items())
+
+
+def printed_amount_entries():
+    """Return a detached mapping over privately cached immutable entries."""
+    return dict(_cached_printed_amount_entries())
+
+
+# Retain the existing test/revalidation cache-control surface.
+printed_amount_entries.cache_clear = _cached_printed_amount_entries.cache_clear
+
+
+def _require_nonnegative_amount_domain(
+    field, vintage, *, zero_semantics, valid_minimum
+):
+    """Reject domains unsupported by the sibling unsigned-literal parsers.
+
+    Amount bounds remain artifact-derived. The checks bind the exact semantics
+    assumed by those parsers rather than silently adapting a later artifact.
+    """
+    name, domain = field["name"], field["domain"]
+    maximum = domain["encoded_range_inclusive"]["maximum"]
+    require(
+        field["entity"] == field["grain"] == "person"
+        and field["column"] == name
+        and type(maximum) is int
+        and maximum > 0
+        and domain["encoded_range_inclusive"] == {"minimum": 0, "maximum": maximum}
+        and field["minimum"] == 0
+        and field["maximum"] == maximum
+        and vintage["range_header"] == domain["encoded_range_inclusive"]
+        and domain["negative_dollars_permitted"] is False
+        and domain["declared_negative_nonmoney_codes"] == []
+        and domain["declared_other_missing_codes"] == []
+        and domain["declared_niu_codes"] == field["declared_niu_codes"] == [0]
+        and domain["valid_dollar_range_excludes"] == []
+        and domain["valid_dollar_range_inclusive"]
+        == {"minimum": valid_minimum, "maximum": maximum}
+        and domain["numeric_type"] == "integer_US_dollars_in_public_use_dictionary"
+        and domain["zero_semantics"] == field["zero_semantics"] == zero_semantics,
+        "UNSUPPORTED_AMOUNT_DOMAIN:" + name,
+    )
+
+
+def _require_live_amount_domains(ready, entries):
+    """Bind source domain triples to a unique retained MoneyDomain roster."""
+    fields = ready.bindings.spec.fields
+    domains = {d.name: d for d in fields}
+    require(len(domains) == len(fields), "MONEY_DOMAIN_DUPLICATE")
+    for name, (minimum, maximum, zero_semantics) in entries.items():
+        domain = domains.get(name)
+        require(domain is not None, "MONEY_DOMAIN_MISSING:" + name)
+        require(
+            domain.entity == domain.grain == "person"
+            and domain.column == name
+            and domain.minimum == minimum
+            and domain.maximum == maximum
+            and domain.zero_semantics == zero_semantics,
+            "MONEY_DOMAIN_DISAGREEMENT:" + name,
+        )
 
 
 # Printed yes/no entries. The zero label is not shared: OI_YN prints
@@ -1108,17 +1168,13 @@ def amount_observations(field, positions, literals):
 
 def _domain_agreement(ready):
     """Bind printed entries to the live current-money domain contract."""
-    domains = {d.name: d for d in ready.bindings.spec.fields}
-    for name, entry in printed_amount_entries().items():
-        domain = domains.get(name)
-        require(domain is not None, "MONEY_DOMAIN_MISSING:" + name)
-        require(
-            domain.entity == "person"
-            and domain.minimum == entry.encoded_minimum
-            and domain.maximum == entry.encoded_maximum
-            and domain.zero_semantics == entry.zero_semantics,
-            "MONEY_DOMAIN_DISAGREEMENT:" + name,
-        )
+    _require_live_amount_domains(
+        ready,
+        {
+            name: (entry.encoded_minimum, entry.encoded_maximum, entry.zero_semantics)
+            for name, entry in printed_amount_entries().items()
+        },
+    )
 
 
 @dataclass(frozen=True)

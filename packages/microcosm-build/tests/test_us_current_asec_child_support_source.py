@@ -249,6 +249,24 @@ def test_actual_owner_keeps_obligation_distinct_and_refuses_copied_owner(
     with pytest.raises(ValueError):
         owner.qualify_current_asec_child_support(copy.copy(parent))
 
+    # The actual qualifier checks the retained MoneyDomain before source capture.
+    check, checked = owner._domain_agreement, []
+
+    def rejected_domain(ready):
+        check(ready)
+        checked.append(True)
+        raise ValueError("INVENTED_DOMAIN_REFUSAL")
+
+    def forbidden_capture(*args):
+        pytest.fail("source capture preceded live domain agreement")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, "_domain_agreement", rejected_domain)
+        patch.setattr(owner, "_capture_member", forbidden_capture)
+        with pytest.raises(ValueError, match="INVENTED_DOMAIN_REFUSAL"):
+            owner.qualify_current_asec_child_support(parent)
+    assert checked == [True]
+
 
 @pytest.mark.parametrize("field", ["PERIDNUM", "A_AGE", "CSP_VAL", "CHSP_VAL"])
 def test_actual_owner_requires_original_source_identity_and_amounts(

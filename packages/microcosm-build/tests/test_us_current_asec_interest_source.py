@@ -302,6 +302,24 @@ def test_actual_owner_join_keeps_source_total_and_requalifies(tmp_path, monkeypa
     with pytest.raises(ValueError):
         owner.qualify_current_asec_interest(copy.copy(parent))
 
+    # The actual qualifier checks the retained MoneyDomain before source capture.
+    check, checked = owner._domain_agreement, []
+
+    def rejected_domain(ready):
+        check(ready)
+        checked.append(True)
+        raise ValueError("INVENTED_DOMAIN_REFUSAL")
+
+    def forbidden_capture(*args):
+        pytest.fail("source capture preceded live domain agreement")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, "_domain_agreement", rejected_domain)
+        patch.setattr(owner, "_capture_member", forbidden_capture)
+        with pytest.raises(ValueError, match="INVENTED_DOMAIN_REFUSAL"):
+            owner.qualify_current_asec_interest(parent)
+    assert checked == [True]
+
 
 @pytest.mark.parametrize("coordinate", ["PH_SEQ", "A_LINENO", "A_AGE", "PERIDNUM"])
 def test_actual_owner_refuses_changed_source_coordinates(

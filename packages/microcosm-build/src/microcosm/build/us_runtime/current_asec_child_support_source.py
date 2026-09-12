@@ -65,7 +65,7 @@ def require(condition, reason):
 
 
 @lru_cache(maxsize=1)
-def amount_entries():
+def _cached_amount_entries_json():
     payload = (
         resources.files(__package__).joinpath(routing.DOMAINS_RESOURCE).read_bytes()
     )
@@ -74,15 +74,27 @@ def amount_entries():
     for field in json.loads(payload)["fields"]:
         if field["name"] not in AMOUNT_FIELDS:
             continue
-        vintage = next(
+        require(field["name"] not in entries, "DOMAIN_FIELD_DUPLICATE:" + field["name"])
+        vintages = [
             v
             for v in field["vintages"]
             if v["income_year"] == routing.CURRENT_INCOME_YEAR
-        )
+        ]
+        require(len(vintages) == 1, "DOMAIN_VINTAGE:" + field["name"])
+        vintage = vintages[0]
         require(
-            vintage["pdf_sha256"] == routing.DICTIONARY_SHA256
+            vintage["dictionary_spelling"] == field["name"]
+            and vintage["pdf_sha256"] == routing.DICTIONARY_SHA256
             and vintage["source_url"] == routing.DICTIONARY_URL,
             "DICTIONARY_PIN",
+        )
+        routing._require_nonnegative_amount_domain(
+            field,
+            vintage,
+            zero_semantics="niu"
+            if field["name"] == "CHSP_VAL"
+            else "none_or_niu_not_distinguishable_from_amount_alone",
+            valid_minimum=1 if field["name"] == "CHSP_VAL" else 0,
         )
         entries[field["name"]] = {
             "width": vintage["ascii_length_as_printed"],
@@ -95,7 +107,29 @@ def amount_entries():
             "temporal_authority": field["temporal_authority"],
         }
     require(set(entries) == set(AMOUNT_FIELDS), "AMOUNT_ROSTER")
-    return entries
+    return json.dumps(entries, separators=(",", ":")).encode()
+
+
+def amount_entries():
+    """Return deeply detached evidence from privately cached immutable bytes."""
+    return json.loads(_cached_amount_entries_json())
+
+
+amount_entries.cache_clear = _cached_amount_entries_json.cache_clear
+
+
+def _domain_agreement(ready):
+    routing._require_live_amount_domains(
+        ready,
+        {
+            name: (
+                entry["domain"]["encoded_range_inclusive"]["minimum"],
+                entry["domain"]["encoded_range_inclusive"]["maximum"],
+                entry["domain"]["zero_semantics"],
+            )
+            for name, entry in amount_entries().items()
+        },
+    )
 
 
 def _amount_pair(token, entry):
@@ -321,6 +355,7 @@ def qualify_current_asec_child_support(preparation):
     )
     parent = issued[2].parent
     ready = parent.ready()
+    _domain_agreement(ready)
     header, native_document = json.loads(ready.header), json.loads(issued[1])
     require(
         header["target_year"] == routing.CURRENT_INCOME_YEAR
