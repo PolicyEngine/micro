@@ -137,6 +137,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # Source-qualified graph additions reviewed 2026-09-12. These are
         # original-record joins or declarations, not source-routed PUF models.
         "current_acs_income_anchor_source.py",  # ACS anchor -> exact original ids.
+        # Exact original ASEC joins, preserving reporting/routing unknowns;
+        # neither qualifier selects modeled donors or attaches tax leaves.
+        "current_asec_child_support_source.py",  # Paid/received support observations.
+        "current_asec_dividend_source.py",  # Dividend observations/survivor routes.
         "current_asec_interest_source.py",  # ASEC interest -> original money owner.
         "current_asec_unemployment_source.py",  # UC literal -> original ASEC ids.
         "current_survey_amounts.py",  # Validate origin join; fan out to both clones.
@@ -299,6 +303,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "org_wages.py",
         "parity_reference.py",
         "pregnancy.py",
+        # Shared numeric property component names; no source access or treatment.
+        "property_income_constants.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
         "puf_aggregate_records.py",
@@ -368,8 +374,15 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
     {
         # Qualified raw ACS INTP/RETP anchors, preserving literal knownness
         "current_acs_income_anchor_source.py",
+        # Exact received/paid child-support source observations; no tax treatment
+        "current_asec_child_support_source.py",
+        # Dividend receipt/amount and survivor-route source qualification
+        "current_asec_dividend_source.py",
         # Qualified ASEC interest components and unreconciled total diagnostics
         "current_asec_interest_source.py",
+        # Pure supplied-table property donor basis and exclusion diagnostics;
+        # no source owner or source-spine access exemption
+        "current_asec_property_basis.py",
         # Qualified UC receipt/amount observations, preserving unknown zeros
         "current_asec_unemployment_source.py",
         # Current UC/health amount qualification and exact two-clone attachment
@@ -378,12 +391,16 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_survey_health_coverage.py",
         # Authenticated original ACS/ASEC health-coverage observations
         "current_survey_health_source.py",
+        # Explicit fiscal input declarations; assumptions/inactivity disabled
+        "fiscal_leaf_policy.py",
         # Typed source, recode and attachment health graph fragment
         "graph_current_survey_health.py",
         # Grouped dense calibration over retained fiscal measurements
         "graph_fiscal_dense_calibration.py",
         # Measured fiscal inputs and exact retained population/target axes
         "graph_fiscal_measurement.py",
+        # Source-blind weighted QRF chain, raw draws and signed reconciliation
+        "graph_property_income.py",
         # Source-blind PUF clone placement and original-channel preservation
         "graph_puf55_route_attachment.py",
         # Complete PUF composition and retained checked-output lifetime
@@ -3446,6 +3463,12 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
 # accepted, and only for the listed modules.
 _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
     {
+        # Reviewed 2026-09-12: fixed dividend/interest/RINT-slot amount, status
+        # and code families passed to private helpers; no source-channel reads.
+        "current_asec_property_basis.py",
+        # Static leaf/entity closure and engine metadata/default dictionaries,
+        # not population provenance. Assumption execution remains disabled.
+        "fiscal_leaf_policy.py",
         # Reviewed 2026-09-12: exact geography fields/CSR masks, typed artifact
         # names and producer keys, retained registry entries and node histories.
         # These four remain scanned for provenance columns and accessor calls.
