@@ -24,6 +24,8 @@ import json
 import re
 import tempfile
 from dataclasses import dataclass
+from functools import lru_cache
+from importlib import resources
 from pathlib import Path
 
 import numpy as np
@@ -46,32 +48,81 @@ COORDINATE_COLUMNS = ("PERIDNUM", "PH_SEQ", "A_LINENO", "A_AGE")
 COORDINATE_WIDTHS = {"PH_SEQ": 5, "A_LINENO": 2, "A_AGE": 2}
 TOKEN_MAX_CHARS = 64
 
-# Printed money entries, verbatim from the pinned dictionary. `signed` marks an
-# entry whose printed range admits a net loss; `niu_codes` are printed codes that
-# are not dollars and must never be read as an amount.
-# name: (length, position, minimum, maximum, pdf_page, printed_page, universe,
-#        signed, niu_codes)
-AMOUNT_ENTRIES = {
-    "PNSN_VAL": (7, 571, 0, 9999999, 47, "6C-26", "PEN_YN = 1", False, ()),
-    "ANN_VAL": (6, 438, -1, 999999, 44, "6C-23", "ANN_YN = 1", False, (-1,)),
-    "DST_VAL1": (6, 495, 0, 999999, 45, "6C-24", "DST_SC1 = 1", False, ()),
-    "DST_VAL1_YNG": (6, 501, 0, 999999, 45, "6C-24", "DST_SC1_YNG = 1", False, ()),
-    "DST_VAL2": (6, 507, 0, 999999, 45, "6C-24", "DST_SC2 = 1", False, ()),
-    "DST_VAL2_YNG": (6, 513, 0, 999999, 45, "6C-24", "DST_SC2_YNG = 1", False, ()),
-    "RNT_VAL": (6, 621, -9999, 999999, 49, "6C-28", "RNT_YN = 1", True, ()),
-    "FRSE_VAL": (
-        7,
-        390,
-        -9999999,
-        9999999,
-        43,
-        "6C-22",
-        "ERN_YN=1 or FRMOTR=1",
-        True,
-        (),
-    ),
-    "OI_VAL": (6, 549, 0, 999999, 47, "6C-26", "OI_YN = 1", False, ()),
-}
+# The nine printed money entries are already attested in the packaged current
+# money domains artifact, so they are read from it rather than re-typed here.
+DOMAINS_RESOURCE = "asec_current_money_domains_v1.json"
+DOMAINS_SHA256 = money.RESOURCE_PINS[0]
+CURRENT_INCOME_YEAR = 2024
+AMOUNT_FIELDS = (
+    "PNSN_VAL",
+    "ANN_VAL",
+    "DST_VAL1",
+    "DST_VAL1_YNG",
+    "DST_VAL2",
+    "DST_VAL2_YNG",
+    "RNT_VAL",
+    "FRSE_VAL",
+    "OI_VAL",
+)
+
+
+@dataclass(frozen=True)
+class PrintedAmountEntry:
+    """One money entry exactly as the pinned domains artifact records it."""
+
+    name: str
+    printed_length: int
+    printed_position: int
+    printed_page: str
+    pdf_page_1based: int
+    encoded_minimum: int
+    encoded_maximum: int
+    universe_as_printed: str
+    values_as_printed: str
+    negative_dollars_permitted: bool
+    nonmoney_codes: tuple[int, ...]
+    zero_semantics: str
+
+
+@lru_cache(maxsize=1)
+def printed_amount_entries():
+    """Read the pinned domains artifact once, on demand, never at import."""
+    payload = resources.files(__package__).joinpath(DOMAINS_RESOURCE).read_bytes()
+    require(_sha(payload) == DOMAINS_SHA256, "DOMAINS_RESOURCE_SHA256")
+    data = json.loads(payload)
+    entries = {}
+    for field in data["fields"]:
+        if field["name"] not in AMOUNT_FIELDS:
+            continue
+        domain = field["domain"]
+        vintages = [
+            v for v in field["vintages"] if v["income_year"] == CURRENT_INCOME_YEAR
+        ]
+        require(len(vintages) == 1, "DOMAIN_VINTAGE:" + field["name"])
+        vintage = vintages[0]
+        require(
+            vintage["dictionary_spelling"] == field["name"]
+            and vintage["pdf_sha256"] == DICTIONARY_SHA256
+            and vintage["source_url"] == DICTIONARY_URL,
+            "DOMAIN_DICTIONARY_PIN:" + field["name"],
+        )
+        entries[field["name"]] = PrintedAmountEntry(
+            name=field["name"],
+            printed_length=vintage["ascii_length_as_printed"],
+            printed_position=vintage["ascii_position_as_printed"],
+            printed_page=vintage["printed_page"],
+            pdf_page_1based=vintage["pdf_page_1based"],
+            encoded_minimum=domain["encoded_range_inclusive"]["minimum"],
+            encoded_maximum=domain["encoded_range_inclusive"]["maximum"],
+            universe_as_printed=vintage["universe_as_printed"],
+            values_as_printed=vintage["values_description"],
+            negative_dollars_permitted=domain["negative_dollars_permitted"],
+            nonmoney_codes=tuple(domain["declared_negative_nonmoney_codes"]),
+            zero_semantics=domain["zero_semantics"],
+        )
+    require(set(entries) == set(AMOUNT_FIELDS), "DOMAIN_FIELD_ROSTER")
+    return entries
+
 
 # Printed yes/no entries. The zero label is not shared: OI_YN prints
 # "none or niu" where the others print "niu", so a zero receipt literal does not
@@ -80,7 +131,14 @@ AMOUNT_ENTRIES = {
 RECEIPT_ENTRIES = {
     "PEN_YN": (1, 570, 47, "6C-26", "All Persons aged 15+", "niu"),
     "ANN_YN": (1, 444, 44, "6C-23", "All Persons aged 15+", "niu"),
-    "DST_YN": (1, 519, 46, "6C-25", "Persons aged 58 and over (a_age >= 58)", "niu"),
+    "DST_YN": (
+        1,
+        519,
+        46,
+        "6C-25",
+        "Persons aged 58 and over (a_age \u2265 58)",
+        "niu",
+    ),
     "DST_YN_YNG": (1, 520, 46, "6C-25", "Persons under age 58 (a_age < 58)", "niu"),
     "RNT_YN": (1, 627, 49, "6C-28", "All Persons aged 15+", "niu"),
     "FRSE_YN": (1, 397, 43, "6C-22", "ERN_YN=1 or FRMOTR=1", "Niu"),
@@ -105,9 +163,9 @@ ACCOUNT_CODES = {
 REGULAR_IRA_CODE = 4
 # name: (length, position, pdf_page, printed_page, universe)
 ACCOUNT_ENTRIES = {
-    "DST_SC1": (1, 491, 45, "6C-24", "DST_VAL1 > 0 and a_age >= 58"),
+    "DST_SC1": (1, 491, 45, "6C-24", "DST_VAL1 > 0 and a_age \u2265 58"),
     "DST_SC1_YNG": (1, 492, 45, "6C-24", "DST_YN_YNG = 1 and a_age < 58"),
-    "DST_SC2": (1, 493, 45, "6C-24", "DST_VAL2 > 0 and a_age >= 58"),
+    "DST_SC2": (1, 493, 45, "6C-24", "DST_VAL2 > 0 and a_age \u2265 58"),
     "DST_SC2_YNG": (1, 494, 45, "6C-24", "DST_VAL_YNG > 0 and a_age < 58"),
 }
 
@@ -168,29 +226,44 @@ ALLOCATION_ENTRIES = {
     "I_RNTYN": (1, 862, 57, "6C-36", "RNT_YN > 0", ALLOCATION_ANNVAL_CODES),
 }
 
-# Fields these families publish with no direct allocation flag in the 2025
-# dictionary. Their allocation provenance is unresolved, never "raw respondent".
+# Which printed field each published flag names, and the fields for which the
+# 2025 dictionary publishes no flag at all. A family holding an unflagged field
+# can never report a clean "no allocation": that evidence is simply not printed.
+PUBLISHED_ALLOCATION_FLAG_BY_FIELD = {
+    "ANN_VAL": "I_ANNVAL",
+    "ANN_YN": "I_ANNYN",
+    "PEN_YN": "I_PENYN",
+    "RNT_VAL": "I_RNTVAL",
+    "RNT_YN": "I_RNTYN",
+    "OI_VAL": "I_OIVAL",
+    "ERN_YN": "I_ERNYN",
+    "FRMOTR": "I_FRMYN",
+    "DST_SC1": "I_DSTSC",
+    "DST_SC2": "I_DSTSC",
+    "DST_VAL1": "I_DSTVAL1COMP",
+    "DST_VAL2": "I_DSTVAL2COMP",
+    "DST_YN": "I_DSTYNCOMP",
+}
 UNFLAGGED_FIELDS = (
     "PNSN_VAL",
     "FRSE_VAL",
     "FRSE_YN",
-    "FRMOTR",
     "OI_OFF",
-    "DST_VAL1",
     "DST_VAL1_YNG",
-    "DST_VAL2",
     "DST_VAL2_YNG",
-    "DST_YN",
     "DST_YN_YNG",
-    "DST_SC1",
     "DST_SC1_YNG",
-    "DST_SC2",
     "DST_SC2_YNG",
 )
+AMBIGUOUS_FLAG_COVERAGE = {
+    "I_DSTSCCOMP": "printed label names DST_SC(2) while its printed universe "
+    "names DST_YN = 1 or DST_YNG_YN = 1; whether it covers the under-58 source "
+    "codes is unresolved"
+}
 
 READ_COLUMNS = (
     *COORDINATE_COLUMNS,
-    *AMOUNT_ENTRIES,
+    *AMOUNT_FIELDS,
     *RECEIPT_ENTRIES,
     *ACCOUNT_ENTRIES,
     "OI_OFF",
@@ -234,13 +307,20 @@ def _file_sha(path):
     return digest.hexdigest()
 
 
-def _amount_pattern(field):
-    length, _, minimum, *_ = AMOUNT_ENTRIES[field]
-    sign = "-?" if minimum < 0 else ""
-    return re.compile(sign + r"[0-9]{1," + str(length) + r"}", re.ASCII)
-
-
-_AMOUNT_PATTERNS = {name: _amount_pattern(name) for name in AMOUNT_ENTRIES}
+@lru_cache(maxsize=1)
+def amount_patterns():
+    """Token shapes from the printed width and the printed encoded minimum."""
+    entries = printed_amount_entries()
+    return {
+        name: re.compile(
+            ("-?" if entry.encoded_minimum < 0 else "")
+            + r"[0-9]{1,"
+            + str(entry.printed_length)
+            + r"}",
+            re.ASCII,
+        )
+        for name, entry in entries.items()
+    }
 
 
 def literal_code(token, allowed, *, width):
@@ -262,12 +342,19 @@ def literal_code(token, allowed, *, width):
     return value, "in_printed_range"
 
 
-def amount_state(value, *, niu_codes):
-    """Split a printed non-dollar code away from the dollar reading of a slot."""
-    if not np.isfinite(value):
-        require(np.isnan(value), "AMOUNT_NOT_FINITE")
+def amount_state(value, status):
+    """Read the dollar meaning of one cell from the parent's own status axis.
+
+    The authenticated money owner normalizes ANN_VAL's printed -1 to a stored
+    zero and records DECLARED_NIU. Re-deriving NIU from the stored number would
+    read that cell as a zero dollar annuity, so the status axis decides.
+    """
+    status = int(status)
+    if status == money.CodebookStatus.MISSING_NULL:
+        require(np.isnan(value), "MISSING_STATUS_WITH_AMOUNT")
         return "missing", np.nan
-    if int(value) in niu_codes and value == int(value):
+    require(np.isfinite(value), "AMOUNT_NOT_FINITE")
+    if status == money.CodebookStatus.DECLARED_NIU:
         return "declared_niu", np.nan
     return ("zero" if value == 0 else "nonzero"), float(value)
 
@@ -316,12 +403,12 @@ def receipt_status(universe, receipt, amount_kind, *, net_measure):
     return "known_nonreceipt" if amount_kind == "zero" else "contradictory_no_nonzero"
 
 
-def _classify(amounts, universes, receipts, *, niu_codes, net_measure):
+def _classify(amounts, statuses, universes, receipts, *, net_measure):
     """Row-wise family classification returning labels and canonical amounts."""
     labels, canonical = [], np.full(len(amounts), np.nan, dtype=np.float64)
     kinds, sources = [], np.full(len(amounts), np.nan, dtype=np.float64)
     for i, value in enumerate(amounts):
-        kind, dollars = amount_state(value, niu_codes=niu_codes)
+        kind, dollars = amount_state(value, statuses[i])
         kinds.append(kind)
         sources[i] = dollars
         label = receipt_status(universes[i], receipts[i], kind, net_measure=net_measure)
@@ -391,9 +478,9 @@ def _pension_annuity(raw, ages):
         )
         labels, canonical, kinds, sources = _classify(
             raw["amounts"][amount_field],
+            raw["statuses"][amount_field],
             universe,
             list(zip(codes, statuses, strict=True)),
-            niu_codes=AMOUNT_ENTRIES[amount_field][8],
             net_measure=False,
         )
         out = pd.concat([out, frame], axis=1)
@@ -447,7 +534,8 @@ def _retirement_distribution(raw, ages):
         )
         out = pd.concat([out, frame], axis=1)
         values = raw["amounts"][amount_field]
-        kinds = [amount_state(v, niu_codes=())[0] for v in values]
+        slot_statuses = raw["statuses"][amount_field]
+        kinds = [amount_state(v, slot_statuses[i])[0] for i, v in enumerate(values)]
         out["retirement_distribution_" + name + "_amount"] = values
         out["retirement_distribution_" + name + "_applicable"] = pd.array(
             [r == slot_route for r in route], dtype="boolean"
@@ -485,6 +573,7 @@ def _retirement_distribution(raw, ages):
         "under_age58": ("slot1_young", "slot2_young"),
     }
     totals = np.full(rows, np.nan, dtype=np.float64)
+    total_status = np.full(rows, int(money.CodebookStatus.AMOUNT_NONZERO), dtype="u1")
     ira = np.full(rows, np.nan, dtype=np.float64)
     ira_slots, ambiguity, offroute = [], [], []
     for i in range(rows):
@@ -493,6 +582,8 @@ def _retirement_distribution(raw, ages):
         offroute.append(any(slot_kinds[n][i] == "nonzero" for n in others))
         if all(slot_kinds[n][i] != "missing" for n in names):
             totals[i] = float(sum(slot_amounts[n][i] for n in names))
+            if totals[i] == 0:
+                total_status[i] = int(money.CodebookStatus.ZERO_NONE_OR_NIU)
         ambiguity.append(
             any(
                 slot_codes[n][i] not in (None, 0) and slot_kinds[n][i] == "zero"
@@ -522,9 +613,9 @@ def _retirement_distribution(raw, ages):
     universes = [True if a >= 15 else None for a in ages]
     labels, canonical, _, _ = _classify(
         totals,
+        np.where(np.isnan(totals), money.CodebookStatus.MISSING_NULL, total_status),
         universes,
         list(zip(codes, statuses, strict=True)),
-        niu_codes=(),
         net_measure=False,
     )
     out["retirement_distribution_source_total"] = totals
@@ -557,8 +648,8 @@ def _retirement_distribution(raw, ages):
         },
         unflagged=True,
     )
-    out["retirement_distribution_slot_amounts_have_published_flag"] = pd.array(
-        [False] * rows, dtype="boolean"
+    out["retirement_distribution_route_has_published_flag"] = pd.array(
+        [r == "age58_and_over" for r in route], dtype="boolean"
     )
     return out
 
@@ -572,9 +663,9 @@ def _net_property(raw, ages):
     )
     labels, canonical, kinds, sources = _classify(
         raw["amounts"]["RNT_VAL"],
+        raw["statuses"]["RNT_VAL"],
         universe,
         list(zip(codes, statuses, strict=True)),
-        niu_codes=(),
         net_measure=True,
     )
     out = frame
@@ -627,9 +718,9 @@ def _farm(raw, ages):
     out = pd.concat([out, frame], axis=1)
     labels, canonical, kinds, sources = _classify(
         raw["amounts"]["FRSE_VAL"],
+        raw["statuses"]["FRSE_VAL"],
         universe,
         list(zip(codes, statuses, strict=True)),
-        niu_codes=(),
         net_measure=True,
     )
     out["farm_source_total"] = sources
@@ -665,9 +756,9 @@ def _other_income(raw, ages):
     )
     labels, canonical, kinds, sources = _classify(
         raw["amounts"]["OI_VAL"],
+        raw["statuses"]["OI_VAL"],
         universe,
         list(zip(codes, statuses, strict=True)),
-        niu_codes=(),
         net_measure=False,
     )
     out = pd.concat([frame, category], axis=1)
@@ -745,7 +836,7 @@ def _read_capture(path, *, rows):
                 min(pair) > 0 and pair not in coordinates and key not in keys,
                 "DUPLICATE_OR_INVALID_COORDINATE",
             )
-            for name, pattern in _AMOUNT_PATTERNS.items():
+            for name, pattern in amount_patterns().items():
                 require(
                     record[name] == "" or pattern.fullmatch(record[name]) is not None,
                     "AMOUNT_TOKEN:" + name,
@@ -772,13 +863,14 @@ def amount_observations(field, positions, literals):
     a missing field would still be represented correctly if that scope grows.
     """
     require(type(field) is money.MoneyField, "MONEY_FIELD_TYPE")
-    require(field.name in AMOUNT_ENTRIES, "MONEY_FIELD_NAME")
+    require(field.name in AMOUNT_FIELDS, "MONEY_FIELD_NAME")
     positions = np.asarray(positions)
     require(
         positions.dtype == np.dtype("int64") and positions.ndim == 1, "MONEY_POSITIONS"
     )
     tokens = tuple(literals)
-    pattern = _AMOUNT_PATTERNS[field.name]
+    entry = printed_amount_entries()[field.name]
+    pattern = amount_patterns()[field.name]
     require(
         len(tokens) == len(positions)
         and all(type(t) is str and (t == "" or pattern.fullmatch(t)) for t in tokens),
@@ -790,32 +882,45 @@ def amount_observations(field, positions, literals):
         "CURRENT_AMOUNT_SOURCE_VALIDITY",
     )
     amounts = field.amounts[positions].copy()
+    statuses = field.statuses[positions].copy()
     literal_values = np.asarray([float(t) if t else np.nan for t in tokens])
+    minimum, maximum = entry.encoded_minimum, entry.encoded_maximum
+    niu_codes = entry.nonmoney_codes
+    niu = statuses == money.CodebookStatus.DECLARED_NIU
+    require(not (niu & ~valid).any(), "NIU_WITHOUT_VALIDITY")
+    # A printed NIU code is stored as a normalized zero under DECLARED_NIU. Its
+    # literal must still be one of that entry's printed non-dollar codes.
     require(
-        np.array_equal(amounts[valid], literal_values[valid]),
+        np.array_equal(amounts[valid & niu], np.zeros(int((valid & niu).sum())))
+        and all(v in niu_codes for v in literal_values[valid & niu]),
+        "CURRENT_AMOUNT_NIU_IDENTITY",
+    )
+    direct = valid & ~niu
+    require(
+        np.array_equal(amounts[direct], literal_values[direct]),
         "CURRENT_AMOUNT_SOURCE_IDENTITY",
     )
     amounts[~valid] = np.nan
-    _, _, minimum, maximum, *_ = AMOUNT_ENTRIES[field.name]
-    inside = amounts[valid]
+    inside = amounts[direct]
     require(
         ((inside >= minimum) & (inside <= maximum)).all()
         and (inside == np.floor(inside)).all(),
         "AMOUNT_PRINTED_DOMAIN:" + field.name,
     )
-    return amounts
+    return amounts, statuses
 
 
 def _domain_agreement(ready):
     """Bind printed entries to the live current-money domain contract."""
     domains = {d.name: d for d in ready.bindings.spec.fields}
-    for name, entry in AMOUNT_ENTRIES.items():
+    for name, entry in printed_amount_entries().items():
         domain = domains.get(name)
         require(domain is not None, "MONEY_DOMAIN_MISSING:" + name)
         require(
             domain.entity == "person"
-            and domain.minimum == entry[2]
-            and domain.maximum == entry[3],
+            and domain.minimum == entry.encoded_minimum
+            and domain.maximum == entry.encoded_maximum
+            and domain.zero_semantics == entry.zero_semantics,
             "MONEY_DOMAIN_DISAGREEMENT:" + name,
         )
 
@@ -837,7 +942,11 @@ def project_income_routing(raw, ages):
         and ((ages >= 0) & (ages <= 99) & (ages == np.floor(ages))).all(),
         "AGE_DOMAIN",
     )
-    require(set(raw["amounts"]) == set(AMOUNT_ENTRIES), "AMOUNT_ARRAYS")
+    require(
+        set(raw["amounts"]) == set(AMOUNT_FIELDS)
+        and set(raw["statuses"]) == set(AMOUNT_FIELDS),
+        "AMOUNT_ARRAYS",
+    )
     require(
         set(raw["allocations"]) == set(ALLOCATION_ENTRIES)
         and all(
@@ -848,11 +957,15 @@ def project_income_routing(raw, ages):
     )
     for name, values in raw["amounts"].items():
         values = np.asarray(values)
+        statuses = np.asarray(raw["statuses"][name])
         require(
             values.dtype == np.dtype("float64")
             and values.ndim == 1
             and len(values) == len(ages)
-            and not np.isinf(values).any(),
+            and not np.isinf(values).any()
+            and statuses.dtype == np.dtype("u1")
+            and len(statuses) == len(ages)
+            and np.isin(statuses, [int(c) for c in money.CodebookStatus]).all(),
             "AMOUNT_ARRAY_CONTRACT:" + name,
         )
     parts = [
@@ -878,11 +991,15 @@ def _raw_arrays(ordered, ready, positions):
             [c for c, _ in pairs],
             [s for _, s in pairs],
         )
-    amounts = {
+    observed = {
         name: amount_observations(ready.field(name), positions, ordered[name])
-        for name in AMOUNT_ENTRIES
+        for name in AMOUNT_FIELDS
     }
-    raw = {"amounts": amounts, "allocations": allocations}
+    raw = {
+        "amounts": {k: v[0] for k, v in observed.items()},
+        "statuses": {k: v[1] for k, v in observed.items()},
+        "allocations": allocations,
+    }
     for name in (*RECEIPT_ENTRIES, *ACCOUNT_ENTRIES, "OI_OFF"):
         raw[name] = ordered[name].tolist()
     return raw
@@ -973,7 +1090,7 @@ def qualify_current_asec_income_routing(preparation):
     basis.index = pd.Index(
         np.asarray(parent.scope.person_ids)[positions], name="native_person_id"
     )
-    for name in AMOUNT_ENTRIES:
+    for name in AMOUNT_FIELDS:
         field = ready.field(name)
         basis["amount_status_" + name] = field.statuses[positions]
         basis["amount_validity_" + name] = field.validity[positions]
@@ -998,7 +1115,26 @@ def qualify_current_asec_income_routing(preparation):
         "dictionary": {
             "url": DICTIONARY_URL,
             "sha256": DICTIONARY_SHA256,
-            "amount_entries": {k: list(v) for k, v in AMOUNT_ENTRIES.items()},
+            "amount_entries_source": {
+                "resource": DOMAINS_RESOURCE,
+                "sha256": DOMAINS_SHA256,
+                "income_year": CURRENT_INCOME_YEAR,
+            },
+            "amount_entries": {
+                name: {
+                    "printed_length": e.printed_length,
+                    "printed_position": e.printed_position,
+                    "printed_page": e.printed_page,
+                    "pdf_page_1based": e.pdf_page_1based,
+                    "encoded_range_inclusive": [e.encoded_minimum, e.encoded_maximum],
+                    "universe_as_printed": e.universe_as_printed,
+                    "values_as_printed": e.values_as_printed,
+                    "negative_dollars_permitted": e.negative_dollars_permitted,
+                    "declared_negative_nonmoney_codes": list(e.nonmoney_codes),
+                    "zero_semantics": e.zero_semantics,
+                }
+                for name, e in printed_amount_entries().items()
+            },
             "receipt_entries": {k: list(v) for k, v in RECEIPT_ENTRIES.items()},
             "account_entries": {k: list(v) for k, v in ACCOUNT_ENTRIES.items()},
             "other_income_category_entry": list(OTHER_INCOME_CATEGORY_ENTRY),
@@ -1006,6 +1142,15 @@ def qualify_current_asec_income_routing(preparation):
                 k: [*v[:5], list(v[5])] for k, v in ALLOCATION_ENTRIES.items()
             },
             "fields_without_published_allocation_flag": list(UNFLAGGED_FIELDS),
+            "declared_niu_normalized_to_zero": [
+                name
+                for name, entry in printed_amount_entries().items()
+                if entry.nonmoney_codes
+            ],
+            "published_allocation_flag_by_field": dict(
+                PUBLISHED_ALLOCATION_FLAG_BY_FIELD
+            ),
+            "ambiguous_allocation_flag_coverage": dict(AMBIGUOUS_FLAG_COVERAGE),
             "printed_universe_questions": {
                 "DST_VAL1": "printed universe is DST_SC1 = 1 although the label names "
                 "the source-1 distribution amount; retained verbatim",
@@ -1025,6 +1170,11 @@ def qualify_current_asec_income_routing(preparation):
         "source_member_sha256": digest,
         "read_columns": list(READ_COLUMNS),
         "complete_current_source_rows": rows,
+        "joined_person_years": [CURRENT_INCOME_YEAR],
+        "restatement_note": (
+            "the money owner restates non-2024 cohorts to the pinned price basis, "
+            "so the literal identity join is only taken on the 2024 rows"
+        ),
         "selected_rows": len(out),
         "acs_channel_rows": int(channel.eq("acs").sum()),
         "families": list(FAMILIES),
