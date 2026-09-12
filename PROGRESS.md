@@ -1,3 +1,90 @@
+# Grouped solver x calibration target snapshots integration - 2026-09-12
+
+Historical note, 12 September 2026: this grouped-lane journal was subsequently
+integrated with PR #914's corrected iteration identities and the actual fiscal
+host observer. Its 443-test evidence and statements that host wiring is absent
+describe that earlier lane. Current source and acceptance are recorded in
+[the fiscal-host evidence](experiments/fiscal-target-snapshot-host-20260912.md).
+
+Lane: `microcosm-grouped-target-snapshot-integration-20260912`, branch
+`grouped-target-snapshot-integration-20260912`. Base: fresh `origin/main`
+`116d46ee9dc2aafdc68259b7c06e4c3462522e8b` (unmoved; it is exactly the shared
+base both reviewed heads were cut from). Integrates the exact reviewed heads
+`536f1ceefcdafda3cc619c14b4da18e012a7be57` (G, US grouped/fixed-zero Adam) and
+`b43369dc49e175803f62020cc1e72fa53926aed8` (S, calibration target snapshots,
+PR #914) against the read-only checklist
+`grouped-snapshot-integration-review.md`.
+
+Everything below this section is prior-lane history and was accurate when
+written; see "Root journals are history, not state" in `CLAUDE.md`.
+
+## State
+
+Complete and local. Four commits: the merge, the grouped instrumentation, the
+identity recomputation, and the cross-product controls. Nothing pushed, no PR,
+no release action. Root reviews and integrates.
+
+Scope is the shared solver seam only. `graph_fiscal_dense_calibration.py` still
+calls `calibrate` without an observer, so this branch emits no snapshot for the
+real US fiscal path; that host wiring is a separate step, and no observer
+registry, `Node.params` callback or replay-reruns-the-optimizer claim was
+invented here. See
+[the lane experiment](experiments/grouped-target-snapshot-integration-20260912.md)
+for scope, evidence and residual risks.
+
+## Done
+
+- Fetched `origin/main`; confirmed it is still `116d46ee9`, so no main drift
+  had to be preserved. Recorded as the integration base.
+- Created this worktree on a new branch from that base; fast-forwarded to G,
+  then merged S. Verified all four pinned source hashes
+  (`solve.py` and `calibrate/__init__.py` on both heads) match
+  `grouped-snapshot-integration-review-pins.json` byte for byte before merging.
+- `calibrate/__init__.py` auto-merged as a true union: `GroupedUpperBounds`
+  export retained alongside every snapshot export.
+- `solve.py`: the single textual conflict was the `calibrate()` signature;
+  resolved as a union of S's `target_snapshots` and G's
+  `grouped_upper_bounds` / `grouped_preserve_zeros` /
+  `_post_projection_observer`.
+- `test_us_multispine_pool_tool.py`: resolved semantically. G's unrelated US
+  integration delta (schema_version 2 PUMA-ladder fixture with joint
+  PUMA/tract/CD overlap arrays and per-layer `source` labels) merged cleanly
+  and is retained; the only textual conflict was the `spec_sha256` pin.
+- The five source-derived identity conflicts
+  (`inventory_coverage.py` EXPECTED_HASHES, `us-f0-coverage.json`,
+  `test_spec_engine_loader.py` golden, the multispine `spec_sha256`, and the
+  calibrate parity `pins.json`) carry a placeholder in this merge commit. None
+  of them is an ours/theirs decision: both sides' values describe their own
+  tree, and neither describes the merged one. They are recomputed against the
+  final merged sources in a later commit on this branch.
+
+## Done (continued)
+
+- Instrumented `_optimize_grouped`: the grouped early return in `_optimize`
+  bypassed every hook S added, so grouped runs emitted only a closing snapshot.
+  The in-loop emission sits after the progress callback and before `backward()`
+  and reads the exact float32 estimate tensor the epoch's loss was computed
+  from. Returned weights, trajectory and RNG state are bit-identical with the
+  observer on and off, and no evaluation is added.
+- Separated retain-best detection from the receipt for grouped runs, so a later
+  change that populated a grouped receipt cannot make the reused final emitter
+  claim a retained best. The receipt stays empty.
+- Recomputed six source-derived identity artifacts against this checkout (the
+  five conflicted ones plus the country-bundle digests, which were not
+  conflicted because only G had touched them but which move for the same
+  reason). No value equals either branch's. The simulate and fit.qrf pins were
+  deliberately left alone.
+- Added the checklist's cross product to the three existing grouped test files
+  rather than a new one, so every case reuses fixtures already there.
+
+## Next
+
+Root's independent review and integration. Open follow-ups, none owned here:
+the host observer seam for the US fiscal dense calibration path, a country-scale
+cadence choice backed by a real measurement, and the dashboard consumer.
+
+---
+
 # #893 reconciliation to main's amended graph interface (amendments 19 and 20)
 
 Lane: `microcosm-us-launch-verified-lanes-20260910` (the live integration

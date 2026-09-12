@@ -23,7 +23,13 @@ from dataclasses import dataclass, replace
 import numpy as np
 import pandas as pd
 
-from microcosm.calibrate import TargetSet, calibrate, diagnostics_payload, group_bounds
+from microcosm.calibrate import (
+    TargetSet,
+    TargetSnapshotObserver,
+    calibrate,
+    diagnostics_payload,
+    group_bounds,
+)
 from microcosm.calibrate import kernels as calibration_kernels
 from microcosm.calibrate import target as target_module
 from microcosm.frame import WeightKind, Weights
@@ -350,7 +356,14 @@ def _artifact(context, name, type_, output):
 
 
 class FiscalDenseCalibrationKernel(KernelBase):
-    """Use the existing solver and independently check the compiled measurement."""
+    """Use the existing solver and independently check the compiled measurement.
+
+    ``target_snapshots`` is optional host-owned instrumentation, held only on
+    this kernel instance. Observer configuration is absent from the graph and
+    cache identity. Sinks finish before the existing final measurement, ID and
+    weight checks; their exceptions propagate. A required cache hit does not
+    execute this kernel or emit optimizer snapshots.
+    """
 
     ref = "us.fiscal_dense_calibration@1"
     capabilities = Capabilities(
@@ -361,6 +374,13 @@ class FiscalDenseCalibrationKernel(KernelBase):
         consumes_se=False,
         dependencies=("numpy", "pandas", "scipy", "torch"),
     )
+
+    def __init__(self, *, target_snapshots: TargetSnapshotObserver | None = None):
+        if target_snapshots is not None and not isinstance(
+            target_snapshots, TargetSnapshotObserver
+        ):
+            raise TypeError("target_snapshots must be a TargetSnapshotObserver or None")
+        self._target_snapshots = target_snapshots
 
     def implementation_hash(self):
         return _sha(
@@ -465,6 +485,7 @@ class FiscalDenseCalibrationKernel(KernelBase):
             l2_anchor="initial",
             grouped_upper_bounds=bounds.grouped,
             grouped_preserve_zeros=True,
+            target_snapshots=self._target_snapshots,
         )
         _require(
             not result.skipped
