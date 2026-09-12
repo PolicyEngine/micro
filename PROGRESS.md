@@ -7,9 +7,8 @@ prior-lane history; see "Root journals are history, not state" in
 
 ## State
 
-Implementation landed on `amend-typed-artifacts`; verification in progress.
-Nothing pushed, no PR, no branches created. Eight commits on top of
-`origin/main` at `3094bfe84`.
+Landed and reviewed on `amend-typed-artifacts`; final whole-workspace run in
+progress. Nothing pushed, no PR, no branches created, `uv.lock` untouched.
 
 ## Scope (what is in, and what is deliberately out)
 
@@ -65,10 +64,30 @@ Out, because it is not needed for artifacts (each is its own lane):
   --check` 42156/42156 + 41/41, `tools/graph_acceptance_burndown.py
   --verify` ok, `ruff check` and `ruff format --check` clean.
 
+- Ran a five-dimension adversarial review of the extraction against the
+  integration branch (fidelity/minimality, executor paths, identity and
+  store, manifest provenance, charter/lock/changelog), each finding put to
+  two skeptics. Nine findings; seven real and fixed here:
+  `3a0726f93` (a corrupt typed manifest surfaced as `NodeRejectedError`
+  rather than `StoreCorruptError`), `9ebb60e4b` (`ArtifactValue.key`
+  described as a content identity it is not; relock), `402d9a631` (a
+  malformed `gate_ancestry` regressed to a bare `TypeError` on manifests
+  with no artifacts at all; charter graph list corrected; the F2 sentence
+  split into its two mechanisms), `5c4a8efde` (the artifact miss decision
+  moved back inside the recompute fallback), `9018c4420` (the
+  identity-preservation claim corrected, and payloads read only on the path
+  that runs a kernel). Two were the documented decisions and stand.
+- Added coverage the review motivated: manifest ancestry authentication,
+  the F2-over-bytes path, cross-version edges under all three resume
+  policies, every artifact declaration field being normative, A3 through a
+  byte edge, and a cache hit that reads no payload.
+
 ## Next
 
-- Whole-workspace `uv run pytest` (running) and the adversarial review of
-  the extraction; then the lane report in `out.md`.
+- Whole-workspace `uv run pytest` (running); then the lane report in
+  `out.md`. Amendment text, lock, changelog fragment and exports are done.
+- For Max: the gate-artifact-output refusal (see the amendment entry) is
+  the one interim ruling this lane made on his behalf.
 
 ---
 
