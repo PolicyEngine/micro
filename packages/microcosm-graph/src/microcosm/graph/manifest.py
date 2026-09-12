@@ -1285,11 +1285,18 @@ def _validate_typed_ancestry(nodes: Mapping[str, NodeReceipt]) -> None:
 
     for node_id, node in nodes.items():
         ancestors = visit(node_id, frozenset())
-        if _capability_role(node) is KernelRole.RELEASE:
-            artifact_gates = {
-                parent
-                for parent in ancestors
-                if _capability_role(nodes[parent]) is KernelRole.GATE
-            }
-            if not artifact_gates.issubset(set(node.receipt.get("gate_ancestry", ()))):
-                raise ValueError("Release omitted a typed artifact gate ancestor.")
+        if _capability_role(node) is not KernelRole.RELEASE:
+            continue
+        artifact_gates = {
+            parent
+            for parent in ancestors
+            if _capability_role(nodes[parent]) is KernelRole.GATE
+        }
+        # Only look at `gate_ancestry` when a byte edge actually reached a
+        # gate. Otherwise `RunManifest.tier` keeps sole ownership of that
+        # field's validation and its precise diagnostic (a malformed value
+        # must not surface here as a bare TypeError).
+        if artifact_gates and not artifact_gates.issubset(
+            set(node.receipt.get("gate_ancestry", ()))
+        ):
+            raise ValueError("Release omitted a typed artifact gate ancestor.")

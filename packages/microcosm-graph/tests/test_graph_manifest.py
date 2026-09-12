@@ -861,3 +861,30 @@ def test_a_laundered_artifact_scope_loads_as_store_corrupt(tmp_path: Path) -> No
     store = graph_api.ContentStore(tmp_path / "store")
     with pytest.raises(graph_api.StoreCorruptError, match="may not read"):
         RunManifest.load(path, store)
+
+
+def test_a_manifest_without_typed_edges_keeps_its_gate_ancestry_diagnostic() -> None:
+    """Amendment 19 must not change a manifest that declares no byte edges.
+
+    A malformed ``gate_ancestry`` is reported by ``tier`` with the node and
+    the offending value, exactly as before; the typed-ancestry check has
+    nothing to say about a manifest with no typed artifacts.
+    """
+    release = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="release@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=_capabilities(KernelRole.RELEASE),
+        receipt={"tier": "evidence", "outcome": "fail", "gate_ancestry": 5},
+    )
+    manifest = RunManifest(
+        country="toy",
+        nodes={"release": release},
+        started_at="t0",
+        finished_at="t1",
+        host="h",
+    )
+    with pytest.raises(ValueError, match="invalid gate ancestry 5"):
+        assert manifest.tier is None

@@ -331,11 +331,17 @@ Amendments so far (each re-locked):
     cache record (its schema moves to 2 only for a node that declares
     artifacts) and in `NodeReceipt.typed_artifacts`; a run manifest
     carrying any typed edge serializes at schema 3 and authenticates every
-    edge on load, including that a release's `gate_ancestry` covers gates
-    reached only through bytes, so F2 cannot be routed around. `keys.py`
-    exposes `opaque_artifact_key` under the domain the executor already
-    used for undeclared opaque outputs, so declaring a type gives an
-    existing output the identity it always had.
+    edge on load. F2 is held by two separate mechanisms. In a run, a byte
+    edge joins the same predecessor set as a cell edge, so the executor's
+    tier derivation walks it and a gate reachable only through bytes is in
+    the release's `gate_ancestry`. On load, the manifest additionally
+    refuses a release whose `gate_ancestry` omits a gate in its typed
+    ancestry — which binds only on a manifest produced elsewhere, since a
+    gate in this codebase cannot be an artifact producer (see the refusal
+    below), and is there so a foreign manifest cannot claim otherwise.
+    `keys.py` exposes `opaque_artifact_key` under the domain the executor
+    already used for undeclared opaque outputs, so declaring a type gives
+    an existing output the identity it always had.
 
     One shape is refused rather than modelled: a **gate kernel may not
     declare a typed artifact output**. A gate whose kernel raises becomes a
@@ -353,12 +359,14 @@ Amendments so far (each re-locked):
     term is added only when it declares an input — so a node that declares
     no artifacts projects, keys, and serializes exactly as it did before.
     Measured rather than asserted: the whole `microcosm-graph` acceptance
-    suite is green with no re-pin, and every node key of six graphs — the
-    four toy acceptance graphs and both real country graphs, `uk_spine_graph`
-    (41 nodes) and `us_post_transfer_graph` (8 nodes), 74 node keys in all —
-    is byte-identical when computed against `origin/main`'s sources and
-    against this amendment's. Keys move only for a node that declares an
-    artifact edge, of which there are none on `main`.
+    suite is green with no re-pin, and every node key of six graphs is
+    byte-identical when computed against `origin/main`'s sources and against
+    this amendment's — `_toy.small_graph()` (5 nodes),
+    `_toy.chained_graph()` (5), `_toy.chained_graph(leaves=("leaf_a",))`
+    (6), `_toy.full_graph()` (9), `uk_spine_graph(load_country_spec("uk"))`
+    (41) and `us_post_transfer_graph()` (8), 74 node keys in all. Keys move
+    only for a node that declares an artifact edge, of which there are none
+    on `main`.
     Raised by the US launch integration branch
     (`microcosm-us-launch-integration-20260909`), which extended both
     frozen files without an amendment; extracted and adopted 2026-09-11.
