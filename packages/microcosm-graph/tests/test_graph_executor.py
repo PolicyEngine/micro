@@ -41,6 +41,7 @@ from microcosm.graph.decl import (
 )
 from microcosm.graph.errors import NodeRejectedError
 from microcosm.graph.executor import NodeRejected, run_graph
+from microcosm.graph.explain import explain_html
 from microcosm.graph.kernel import (
     ArtifactValue,
     Capabilities,
@@ -3807,12 +3808,27 @@ def test_a_gate_that_declares_evidence_and_raises_leaves_its_consumers_unreached
     assert restored.nodes["use"].receipt == use.receipt
     assert restored.tier == "evidence"
 
+    def assert_explained(outcome: RunManifest, cache: str) -> None:
+        rendered = explain_html(compile_graph(graph), outcome)
+        for node_id in ("use", "after", "release"):
+            role = "release" if node_id == "release" else "compute"
+            assert (
+                f'aria-label="{node_id}; {node_id}@1; {role}; none; '
+                f'{cache} · unreached"'
+            ) in rendered
+        assert rendered.count('execution-unreached" data-node-detail=') == 3
+        assert f'status-{cache} gate-fail execution-gate_exception"' in rendered
+        assert f"{cache} · gate fail · exception" in rendered
+
+    assert_explained(manifest, "miss")
+
     for resume in ("auto", "require"):
         again = _gate_artifact_registry(raising=True)
         replay = _run(graph, source, store, again, resume=resume)
         assert all(receipt.hit for receipt in replay.nodes.values())
         assert replay.key == manifest.key
         assert sum(_calls(again).values()) == 0
+        assert_explained(replay, "hit")
 
 
 def test_unreached_propagates_through_a_structural_node_and_its_version(
