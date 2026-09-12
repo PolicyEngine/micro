@@ -128,6 +128,12 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # select or validate origin rows and to bind original identities;
         # none routes a PUF-detail imputation by spine.
         "current_asec_demographics.py",  # ASEC rows -> sex/household state.
+        # Source-owned pension/annuity, retirement distribution, net property,
+        # farm and other-income reporting and routing per row. Selects the ASEC
+        # channel and binds original identities exactly as the Social Security
+        # qualifier beside it does; it routes no PUF-detail imputation and
+        # models nothing.
+        "current_asec_income_routing_source.py",
         "current_social_security_source.py",  # Source-owned SS totals per row.
         "current_survey_geography.py",  # Origin roster and draw keys.
         "current_survey_predictors.py",  # Source-qualified predictor prep.
@@ -438,6 +444,9 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "cps_carried_current.py",
         # Current survey source projection for ASEC sex and household state
         "current_asec_demographics.py",
+        # Current ASEC pension/annuity, retirement distribution, net property,
+        # farm and other-income reporting and routing projection
+        "current_asec_income_routing_source.py",
         # Current survey Social Security totals, reason literals and unknown shares
         "current_social_security_source.py",
         # Qualified observed geography and stable household draw keys for both
