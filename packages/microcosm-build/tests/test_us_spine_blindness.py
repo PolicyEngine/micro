@@ -142,6 +142,8 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "current_asec_child_support_source.py",  # Paid/received support observations.
         "current_asec_dividend_source.py",  # Dividend observations/survivor routes.
         "current_asec_interest_source.py",  # ASEC interest -> original money owner.
+        # Composes qualified original source axes and DESIGN branches; no fit.
+        "current_property_income_sources.py",
         "current_asec_unemployment_source.py",  # UC literal -> original ASEC ids.
         "current_survey_amounts.py",  # Validate origin join; fan out to both clones.
         "current_survey_health_source.py",  # Qualify exact ACS/ASEC source rosters.
@@ -385,6 +387,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_asec_property_basis.py",
         # Qualified UC receipt/amount observations, preserving unknown zeros
         "current_asec_unemployment_source.py",
+        # Qualified original property donor/recipient branch composition
+        "current_property_income_sources.py",
         # Current UC/health amount qualification and exact two-clone attachment
         "current_survey_amounts.py",
         # Pure current-coverage recodes and original-person clone attachment
