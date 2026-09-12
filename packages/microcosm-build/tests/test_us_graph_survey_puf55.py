@@ -7,6 +7,7 @@ PUF CSV construction is reused without running its CREATE fixture beforehand.
 import sys
 from _thread import get_ident
 from contextlib import contextmanager
+from copy import copy
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -19,6 +20,7 @@ from test_us_puf55_survey_recipients import recipient_financial_run  # noqa: F40
 from microcosm.build.us_runtime import graph_survey_puf55 as graph
 from microcosm.graph import StructuralDelta
 from microcosm.graph.keys import opaque_artifact_key
+from microcosm.graph.store import StoreCorrupt
 
 
 @pytest.fixture(scope="module")
@@ -853,3 +855,228 @@ def test_first_numerical_return_cannot_change_selected_candidate(composed, mutat
     assert b.computed is None
     b.pure()
     composed.boundary.pure()
+
+
+@pytest.mark.parametrize(
+    "constructor", [lambda: object(), lambda: graph.SurveyPuf55Run(*([None] * 8))]
+)
+def test_unissued_public_values_cannot_be_checked(constructor):
+    with pytest.raises(ValueError, match="UNISSUED_PUF55_RUN"):
+        graph.check_survey_puf55_run(constructor())
+
+
+def test_public_values_method_does_not_issue_authority():
+    values = graph.SurveyPuf55Run(*([None] * 8))
+    with pytest.raises(ValueError, match="UNISSUED_PUF55_RUN"):
+        values.checked_view()
+
+
+def test_real_cold_and_required_handles_recheck_without_execution(composed):  # noqa: F811
+    entered = []
+
+    def trace(frame, event, arg):
+        if event == "call":
+            entered.append(frame.f_code.co_name)
+
+    with _observe_exact_code_events(
+        trace,
+        starts=(
+            graph.run_graph,
+            graph.attach.Boundary.finalize,
+            graph.attach.Boundary.canonical_donor,
+        ),
+    ):
+        cold = composed.cold.checked_view()
+        warm = graph.check_survey_puf55_run(composed.warm)
+    assert entered == []
+    assert cold.population is composed.cold.population
+    assert warm.population is composed.warm.population
+    assert cold.payload == warm.payload
+    assert cold.digest == warm.digest == graph.codec.sha(cold.payload)
+    document = graph.codec.decode_json(cold.payload)
+    assert document["release_eligible"] is False
+    assert document["population_admission_issued"] is False
+    assert document["node_count"] == 245
+    assert len(document["artifact_payload_sha256"]) > 220
+
+
+@pytest.mark.parametrize("clone", [copy, replace])
+def test_copied_real_run_is_unissued(composed, clone):  # noqa: F811
+    with pytest.raises(ValueError, match="UNISSUED_PUF55_RUN"):
+        graph.check_survey_puf55_run(clone(composed.cold))
+    graph._pure_run(composed.cold, graph._run_entry(composed.cold))
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "financial_run",
+        "population",
+        "manifest",
+        "compiled",
+        "store",
+        "kernels",
+        "sources",
+        "receipt",
+    ],
+)
+def test_retained_public_field_replacement_is_refused(composed, field):  # noqa: F811
+    run = composed.cold
+    original = getattr(run, field)
+    entry = graph._run_entry(run)
+    try:
+        object.__setattr__(run, field, None)
+        with pytest.raises(ValueError, match="PUF55_RUN_BINDINGS_CHANGED"):
+            graph._pure_run(run, entry)
+    finally:
+        object.__setattr__(run, field, original)
+    graph._pure_run(run, entry)
+
+
+@pytest.mark.parametrize("surface", ["amount", "design_anchor", "owner", "mass_ledger"])
+def test_retained_complete_population_mutation_is_refused(composed, surface):  # noqa: F811
+    run, entry = composed.cold, graph._run_entry(composed.cold)
+    population = run.population
+    if surface == "amount":
+        table = population.frame.person
+        name = "age"
+        before = table[name].copy(deep=True)
+        table.loc[table.index[0], name] += 1
+
+        def restore():
+            table[name] = before
+
+    elif surface == "design_anchor":
+        before = population.design_weights
+        changed = {name: vector.copy() for name, vector in before.items()}
+        changed["household"][0] += 1
+        object.__setattr__(population, "design_weights", changed)
+
+        def restore():
+            object.__setattr__(population, "design_weights", before)
+
+    else:
+        name = "owners" if surface == "owner" else "mass_ledger"
+        before = getattr(population, name)
+        assert before
+        changed = dict(before) if surface == "owner" else ()
+        if surface == "owner":
+            changed[next(iter(changed))] = "invented_wrong_writer"
+        object.__setattr__(population, name, changed)
+
+        def restore():
+            object.__setattr__(population, name, before)
+
+    try:
+        with pytest.raises(ValueError, match="PUF55_RUN_POPULATION_CHANGED"):
+            graph._pure_run(run, entry)
+    finally:
+        restore()
+    graph._pure_run(run, entry)
+
+
+def test_compiled_execution_order_mutation_is_refused(composed):  # noqa: F811
+    run, entry = composed.cold, graph._run_entry(composed.cold)
+    original = run.compiled.order
+    try:
+        object.__setattr__(run.compiled, "order", original[::-1])
+        with pytest.raises(ValueError, match="PUF55_RUN_DECLARATION_CHANGED"):
+            graph._pure_run(run, entry)
+    finally:
+        object.__setattr__(run.compiled, "order", original)
+    graph._pure_run(run, entry)
+
+
+def test_attached_manifest_ledger_mutation_is_refused(composed):  # noqa: F811
+    run, entry = composed.cold, graph._run_entry(composed.cold)
+    original = run.manifest.mass_ledgers
+    changed = dict(original)
+    assert changed[run.population.version]
+    changed[run.population.version] = ()
+    try:
+        object.__setattr__(run.manifest, "mass_ledgers", changed)
+        with pytest.raises(ValueError, match="PUF55_RUN_MANIFEST_CHANGED"):
+            graph._pure_run(run, entry)
+    finally:
+        object.__setattr__(run.manifest, "mass_ledgers", original)
+    graph._pure_run(run, entry)
+
+
+@pytest.mark.parametrize("field", ["populations", "mass_ledgers"])
+def test_extra_attached_manifest_version_is_refused(composed, field):  # noqa: F811
+    run, entry = composed.cold, graph._run_entry(composed.cold)
+    original = getattr(run.manifest, field)
+    changed = {**original, "invented_extra_version": next(iter(original.values()))}
+    original_json = run.manifest.to_json()
+    try:
+        object.__setattr__(run.manifest, field, changed)
+        assert run.manifest.to_json() == original_json
+        with pytest.raises(ValueError, match="PUF55_RUN_MANIFEST_ROSTER_CHANGED"):
+            graph._pure_run(run, entry)
+    finally:
+        object.__setattr__(run.manifest, field, original)
+    graph._pure_run(run, entry)
+
+
+def test_reused_artifact_verifier_refuses_actual_store_mutation(composed):  # noqa: F811
+    run, boundary = composed.cold, composed.boundary
+    key = run.manifest.node(graph.attach.ATTACH_NODE).opaque_artifacts["finalization"]
+    path = run.store.object_path(key) / "payload.bin"
+    original = path.read_bytes()
+    try:
+        path.write_bytes(original + b"invented corruption")
+        with pytest.raises(StoreCorrupt):
+            graph.financial._artifacts(
+                run.manifest,
+                run.compiled,
+                run.store,
+                run.kernels,
+                dict(boundary.keys),
+                dict(boundary.implementations),
+            )
+    finally:
+        path.write_bytes(original)
+    graph._pure_run(run, graph._run_entry(run))
+
+
+def test_changed_original_donor_revokes_actual_run(composed):  # noqa: F811
+    run = composed.cold
+    path = next(iter(composed.paths.values()))
+    original = path.read_bytes()
+    try:
+        path.write_bytes(original + b"\n")
+        with pytest.raises(ValueError):
+            graph.check_survey_puf55_run(run)
+    finally:
+        path.write_bytes(original)
+    with pytest.raises(ValueError, match="UNISSUED_PUF55_RUN"):
+        graph.check_survey_puf55_run(run)
+
+
+def test_late_io_output_mutation_revokes_actual_run(composed):  # noqa: F811
+    run = composed.warm
+    table = run.population.frame.person
+    before = table.age.copy(deep=True)
+    entry = graph._run_entry(run)
+    mutated = False
+
+    def trace(frame, event, arg):
+        nonlocal mutated
+        if (
+            event == "return"
+            and arg is not None
+            and frame.f_locals.get("manifest") is run.manifest
+        ):
+            table.loc[table.index[0], "age"] += 1
+            mutated = True
+
+    try:
+        with _observe_exact_code_events(trace, returns=(graph.financial._artifacts,)):
+            with pytest.raises(ValueError, match="PUF55_RUN_POPULATION_CHANGED"):
+                graph.check_survey_puf55_run(run)
+    finally:
+        table["age"] = before
+    assert mutated
+    assert graph._ISSUED_RUNS.get(id(run)) is not entry
+    with pytest.raises(ValueError, match="UNISSUED_PUF55_RUN"):
+        graph.check_survey_puf55_run(run)

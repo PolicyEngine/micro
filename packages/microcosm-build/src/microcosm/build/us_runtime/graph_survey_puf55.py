@@ -8,6 +8,7 @@ Required replay is a separate explicit call over the same source paths/store.
 
 from __future__ import annotations
 
+import weakref
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -23,17 +24,20 @@ from microcosm.graph import (
     run_graph,
 )
 from microcosm.graph.executor import _all_node_keys, _source_paths_and_keys
+from microcosm.graph.serialize import graph_to_json
 
 from . import graph_puf55_route_attachment as attach
 
 require = attach.require
 financial, recipient, canonical = attach.financial, attach.recipient, attach.canonical
 physical, codec, population_ops = attach.physical, attach.codec, attach.population_ops
+RUN_PROTOCOL = "microcosm.us.survey-puf55-checked-run.v1"
+_ISSUED_RUNS = {}
 
 
 @dataclass(frozen=True)
 class SurveyPuf55Run:
-    """Checked result values, not financial/weight/release admission evidence."""
+    """Actual result handle; constructor/copies do not issue run authority."""
 
     financial_run: financial.AtomicSurveyFinancialRunValues
     population: population_ops.Population
@@ -43,6 +47,176 @@ class SurveyPuf55Run:
     kernels: KernelRegistry
     sources: tuple[tuple[str, Path], ...]
     receipt: bytes
+
+    def checked_view(self):
+        """Recheck this retained handle without fitting or graph execution."""
+        return check_survey_puf55_run(self)
+
+
+@dataclass(frozen=True)
+class CheckedSurveyPuf55Run:
+    """Descriptive values; only the original run retains in-process authority.
+
+    A downstream owner must check that run immediately before consumption and
+    after its last relevant I/O, before returning or exporting a successor.
+    Reconstructing this view from JSON or copying it cannot authorize a run.
+    Neither this view nor the run grants calibration or release admission.
+    """
+
+    payload: bytes
+    digest: str
+    population: population_ops.Population
+
+
+@dataclass(frozen=True)
+class _RunState:
+    boundary: attach.Boundary
+    population: population_ops.Population
+    population_stamp: str
+    expected: population_ops.Population
+    expected_stamp: str
+    manifest: object
+    manifest_bytes: str
+    manifest_populations: tuple
+    receipt: bytes
+    artifact_hashes: tuple
+
+
+def _run_entry(run):
+    entry = _ISSUED_RUNS.get(id(run))
+    require(
+        type(run) is SurveyPuf55Run and entry is not None and entry[0]() is run,
+        "UNISSUED_PUF55_RUN",
+    )
+    return entry
+
+
+def _forget_run(run, entry):
+    if _ISSUED_RUNS.get(id(run)) is entry:
+        _ISSUED_RUNS.pop(id(run))
+
+
+def _run_document(state):
+    """Describe checked ancestry without granting authority to portable bytes."""
+    boundary = state.boundary
+    return codec.encode_json(
+        {
+            "protocol": RUN_PROTOCOL,
+            "graph_sha256": codec.sha(boundary.declaration.encode()),
+            "manifest_key": state.manifest.key,
+            "financial_run_sha256": codec.sha(boundary.entry[1]),
+            "receipt_sha256": codec.sha(state.receipt),
+            "node_count": len(boundary.compiled.order),
+            "node_keys": dict(boundary.keys),
+            "source_keys": dict(boundary.source_keys),
+            "artifact_payload_sha256": [list(row) for row in state.artifact_hashes],
+            "population_version": state.population.version,
+            "population_physical_sha256": state.population_stamp,
+            "source_admission_issued": False,
+            "population_admission_issued": False,
+            "release_eligible": False,
+        }
+    )
+
+
+def _pure_run(run, entry):
+    """Check the retained output after all external reads have completed."""
+    require(_run_entry(run) is entry, "FINAL_PUF55_RUN_ISSUANCE")
+    state, boundary = entry[2], entry[2].boundary
+    require(
+        run.financial_run is boundary.run
+        and run.population is state.population
+        and run.manifest is state.manifest
+        and run.compiled is boundary.compiled
+        and run.store is boundary.store
+        and run.kernels is boundary.kernels
+        and run.sources is boundary.paths
+        and run.receipt == state.receipt,
+        "PUF55_RUN_BINDINGS_CHANGED",
+    )
+    require(
+        physical._population_stamp(run.population) == state.population_stamp
+        and physical._population_stamp(state.expected) == state.expected_stamp,
+        "PUF55_RUN_POPULATION_CHANGED",
+    )
+    require(
+        set(run.manifest.populations)
+        == set(run.manifest.mass_ledgers)
+        == set(run.compiled.versions.values()),
+        "PUF55_RUN_MANIFEST_ROSTER_CHANGED",
+    )
+    require(
+        run.manifest.to_json() == state.manifest_bytes
+        and _heterogeneous_manifest_seals(run.manifest, run.compiled)
+        == state.manifest_populations,
+        "PUF55_RUN_MANIFEST_CHANGED",
+    )
+    boundary.pure()
+    require(
+        graph_to_json(run.compiled.graph) == boundary.declaration
+        and run.compiled == compile_graph(run.compiled.graph),
+        "PUF55_RUN_DECLARATION_CHANGED",
+    )
+    physical.replay.same_replayed_population(state.expected, run.population)
+    require(_run_document(state) == entry[1], "PUF55_RUN_DOCUMENT_CHANGED")
+    require(_run_entry(run) is entry, "FINAL_PUF55_RUN_ISSUANCE")
+
+
+def check_survey_puf55_run(run):
+    """Requalify actual source/store ancestry, then seal the complete output.
+
+    Does not fit, execute a graph, decode model pickles, or reconstruct the PUF
+    donor. The actual execution already verified those exact artifact bytes.
+    A failed check revokes this handle; restoring its fields cannot reissue it.
+    Downstream owners must recheck before consumption and after their last
+    relevant I/O before returning/exporting a successor. A successful check is
+    a point-in-time claim, not a lease permitting future unchecked mutation.
+    """
+    entry = _run_entry(run)
+    try:
+        _pure_run(run, entry)
+        state, boundary = entry[2], entry[2].boundary
+        boundary.borrow()
+        loaded = financial._artifacts(
+            run.manifest,
+            boundary.compiled,
+            boundary.store,
+            boundary.kernels,
+            dict(boundary.keys),
+            dict(boundary.implementations),
+        )
+        boundary.borrow()
+        require(
+            tuple(sorted((n, a, codec.sha(p)) for (n, a), p in loaded.items()))
+            == state.artifact_hashes,
+            "PUF55_RUN_ARTIFACT_CHANGED",
+        )
+        result = CheckedSurveyPuf55Run(entry[1], codec.sha(entry[1]), run.population)
+        _pure_run(run, entry)
+        return result
+    except BaseException:
+        _forget_run(run, entry)
+        raise
+
+
+def _issue_run(output, state):
+    """Retain only a fully verified execution, with no new baseline reads."""
+    identifier = id(output)
+    require(identifier not in _ISSUED_RUNS, "PUF55_RUN_REISSUANCE")
+
+    def forget(reference):
+        entry = _ISSUED_RUNS.get(identifier)
+        if entry is not None and entry[0] is reference:
+            _ISSUED_RUNS.pop(identifier)
+
+    entry = (weakref.ref(output, forget), _run_document(state), state)
+    _ISSUED_RUNS[identifier] = entry
+    try:
+        _pure_run(output, entry)
+    except BaseException:
+        _forget_run(output, entry)
+        raise
+    return entry
 
 
 def _registry(existing, donor):
@@ -446,4 +620,26 @@ def run_survey_puf55(
         "FINAL_OUTPUT_CHANGED",
     )
     physical.replay.same_replayed_population(expected, population)
+    state = _RunState(
+        boundary,
+        population,
+        stamps[attach.ATTACH_NODE],
+        expected,
+        expected_stamp,
+        manifest,
+        manifest_bytes,
+        full_seals,
+        receipt,
+        artifact_hashes,
+    )
+    # Baselines were captured before the preceding last-I/O fence. The entry
+    # retains the final output, not all 245 executor-observed snapshots.
+    try:
+        entry = _issue_run(output, state)
+        _pure_run(output, entry)
+    except BaseException:
+        candidate = _ISSUED_RUNS.get(id(output))
+        if candidate is not None and candidate[0]() is output:
+            _forget_run(output, candidate)
+        raise
     return output
