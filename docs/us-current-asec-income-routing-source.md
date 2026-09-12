@@ -62,6 +62,12 @@ around its own I/O, exactly as the accepted unemployment qualifier requires.
 - `OI_OFF` code 20 is the reported alimony category. Nothing maps any other
   code — including 19, `anything else` — onto alimony or onto a miscellaneous
   residual; `other_income_residual_rule_applied` is constant `False`.
+  `other_income_routing_status` separates `reported_category` from
+  `receipt_without_category`, `category_without_receipt`,
+  `unresolved_receipt_routing`, `missing_category_literal`,
+  `unrecognized_category_literal` and `niu_category`, and
+  `other_income_is_reported_alimony` is set only on a `reported_category` row,
+  so an unreadable receipt literal never yields a reported alimony receipt.
 - ACS-channel people are not projected at all. `acs_components_modeled` is
   `False` in the evidence and the projection covers only ASEC-channel rows.
 

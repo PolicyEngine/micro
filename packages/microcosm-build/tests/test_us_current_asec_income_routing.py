@@ -797,3 +797,49 @@ def test_both_distribution_recipiency_literals_are_retained_with_the_route():
         "known_nonreceipt",
     ]
     assert declined.retirement_distribution_known_amount.tolist() == [0.0, 0.0]
+
+
+@pytest.mark.parametrize(
+    "receipt,category,routing,alimony",
+    [
+        ("1", "20", "reported_category", True),
+        ("1", "19", "reported_category", False),
+        ("1", "0", "receipt_without_category", False),
+        ("2", "20", "category_without_receipt", False),
+        ("0", "20", "category_without_receipt", False),
+        ("2", "0", "niu_category", False),
+        ("", "20", "unresolved_receipt_routing", False),
+        ("9", "20", "unresolved_receipt_routing", False),
+        ("1", "", "missing_category_literal", False),
+        ("1", "21", "unrecognized_category_literal", False),
+        ("1", "NA", "unrecognized_category_literal", False),
+    ],
+)
+def test_other_income_routing_never_invents_a_reported_category(
+    receipt, category, routing, alimony
+):
+    n = 1
+    raw = {
+        "amounts": {name: np.zeros(n) for name in owner.AMOUNT_FIELDS},
+        "statuses": {
+            name: np.full(n, int(owner.money.CodebookStatus.ZERO_NONE_OR_NIU), "u1")
+            for name in owner.AMOUNT_FIELDS
+        },
+        "allocations": {
+            name: ([0] * n, ["in_printed_range"] * n)
+            for name in owner.ALLOCATION_ENTRIES
+        },
+    }
+    for name in (*owner.RECEIPT_ENTRIES, *owner.ACCOUNT_ENTRIES, "OI_OFF"):
+        raw[name] = ["0"] * n
+    raw["amounts"]["OI_VAL"] = np.array([1500.0])
+    raw["statuses"]["OI_VAL"] = np.full(
+        n, int(owner.money.CodebookStatus.AMOUNT_NONZERO), "u1"
+    )
+    raw["OI_YN"], raw["OI_OFF"] = [receipt], [category]
+    out = owner.project_income_routing(raw, np.array([45.0]))
+    assert out.other_income_routing_status.iloc[0] == routing
+    assert bool(out.other_income_is_reported_alimony.iloc[0]) is alimony
+    assert out.other_income_source_total.iloc[0] == 1500.0
+    # The reported category never becomes a residual assignment.
+    assert not bool(out.other_income_residual_rule_applied.iloc[0])

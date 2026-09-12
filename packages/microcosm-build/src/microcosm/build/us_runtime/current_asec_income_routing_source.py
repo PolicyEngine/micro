@@ -800,6 +800,10 @@ def _other_income(raw, ages):
             routing.append("missing_category_literal")
         elif code is None:
             routing.append("unrecognized_category_literal")
+        elif codes[i] is None:
+            # The category is printed but the receipt literal cannot be read, so
+            # the pair is unresolved and the category is not a reported receipt.
+            routing.append("unresolved_receipt_routing")
         elif codes[i] == 1 and code == 0:
             routing.append("receipt_without_category")
         elif codes[i] in (0, 2) and code != 0:
