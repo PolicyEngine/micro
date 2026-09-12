@@ -33,6 +33,13 @@ remain distinguishable by ordered position. Honest nonfinite intermediate
 estimates are represented by nulls and counts. Intermediate float32 estimates
 and final float64 estimates are labeled with their actual iterate semantics.
 Budget probes and subsequent selection/refit phases share one emission sequence.
+`epoch` counts completed optimizer updates: zero is the starting state. An
+in-loop estimate precedes that iteration's update; its selected counterpart uses
+the same convention. Cadence counts loss evaluations starting at one, so an
+every-25 cadence can emit epoch 24. The selected budget-search snapshot retains
+the winning probe's identity, even when another probe ran afterward. If computing
+a relative error overflows, the error is null and `non_finite_rows` counts it;
+finite operands remain visible.
 
 Metadata accepts bounded flat scalar mappings and checked string identifiers;
 it does not accept nested payloads or record vectors. `best_retained` must be a
@@ -45,6 +52,9 @@ The local writer atomically replaces `latest.json`. History chunks become
 visible only after their complete bytes are written and synced, and an existing
 chunk cannot be overwritten. Retention and dropped-history counts are explicit.
 Use a fresh run directory unless intentionally adopting existing history.
+Atomic history publication requires a filesystem that supports hard links and
+directory synchronization. Unsupported filesystem errors propagate to the caller;
+the writer does not expose partially written history as a fallback.
 
 This implements the solver and local storage portion of
 [issue 908](https://github.com/PolicyEngine/microcosm/issues/908). Country-host
@@ -58,3 +68,12 @@ including passive solver parity tests. Independent review closed the metadata,
 detachment, partial-publication and codec findings. See the
 [invented benchmark evidence](../experiments/908-target-snapshot-bench-receipts.md)
 for overhead measurements; those are not native US or UK benchmarks.
+
+Fable's later PR review identified a mixed epoch convention, a missing winning
+budget-probe label and a relative-error overflow case. Four new counterexamples
+failed first; all 56 snapshot tests and all 311 calibration tests then passed
+after those corrections. The 26 affected build identity and graph parity checks
+also passed after recalculating the calibration source pins; fit and simulation
+pins were preserved. These changes affect diagnostics only. The public writer still validates each incoming
+payload because callers can supply serialized snapshots independently of an
+observer.

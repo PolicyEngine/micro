@@ -10,6 +10,7 @@ optimizer results with the observer off and on.
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 from datetime import datetime
@@ -342,7 +343,7 @@ def test_every_epoch_emits_one_snapshot_per_epoch_plus_the_selected_one():
     seen, observer = _collect(cadence=TargetSnapshotCadence(every=EVERY_EPOCH))
     calibrate(_frame(), _targets(), epochs=6, seed=0, target_snapshots=observer)
     epochs = [s["epoch"] for s in seen if s["iterate"] != ITERATE_SELECTED]
-    assert epochs == [1, 2, 3, 4, 5, 6]
+    assert epochs == [0, 1, 2, 3, 4, 5]
     selected = [s for s in seen if s["iterate"] == ITERATE_SELECTED]
     assert len(selected) == 1
     for snapshot in seen:
@@ -356,11 +357,11 @@ def test_bounded_cadence_emits_fewer_snapshots_than_every_epoch():
     calibrate(_frame(), _targets(), epochs=40, seed=0, target_snapshots=sparse_observer)
     assert len(sparse) < len(dense)
     assert [s["epoch"] for s in sparse if s["iterate"] != ITERATE_SELECTED] == [
-        1,
-        10,
-        20,
-        30,
-        40,
+        0,
+        9,
+        19,
+        29,
+        39,
     ]
 
 
@@ -587,6 +588,73 @@ def test_the_selected_snapshot_names_the_epoch_it_actually_selected():
     receipt = result.options["iterate_selection_receipt"]
     selected = [s for s in seen if s["iterate"] == ITERATE_SELECTED][-1]
     assert selected["epoch"] == receipt["selected_epoch"]
+
+
+def test_retained_and_selected_snapshots_use_completed_update_identity():
+    seen, observer = _collect(cadence=TargetSnapshotCadence(every=EVERY_EPOCH))
+    result = calibrate(
+        _frame(),
+        _targets(),
+        epochs=30,
+        seed=0,
+        learning_rate=0.1,
+        target_snapshots=observer,
+    )
+    receipt = result.options["iterate_selection_receipt"]
+    assert receipt["selected_epoch"] < 30  # Exercise an earlier retained state.
+    retained = [s for s in seen if s["iterate"] == ITERATE_BEST_RETAINED][-1]
+    selected = seen[-1]
+    assert retained["epoch"] == selected["epoch"]
+    assert retained["best_retained"]["epoch"] == selected["best_retained"]["epoch"]
+    assert retained["loss"] == receipt["selected_loss_float32"]
+
+
+def test_selected_budget_snapshot_identifies_the_winning_probe():
+    seen, observer = _collect(cadence=TargetSnapshotCadence(every=EVERY_EPOCH))
+    result = calibrate(
+        _frame(),
+        _targets(),
+        epochs=8,
+        seed=0,
+        target_records=2,
+        budget_iters=2,
+        target_snapshots=observer,
+    )
+    selected = seen[-1]
+    assert selected["iterate"] == ITERATE_SELECTED
+    assert selected["search"] is not None
+    receipt = result.options["budget_search"]
+    assert selected["search"] == {
+        "budget_iteration": receipt["selected_budget_iteration"],
+        "budget_iters": receipt["budget_iters"],
+        "l0_lambda": receipt["selected_l0_lambda"],
+    }
+    matching = [s for s in seen[:-1] if s["search"] == selected["search"]]
+    assert matching
+
+
+@pytest.mark.parametrize("estimate,target", [(1.0, 5e-324), (1e308, -1e308)])
+def test_overflowing_relative_error_remains_a_counted_null_diagnostic(estimate, target):
+    _, observer = _collect()
+    snapshot = observer.bind(names=("tiny",), targets=np.array([target])).snapshot(
+        np.array([estimate]),
+        epoch=0,
+        epochs=1,
+        iterate=ITERATE_CURRENT,
+    )
+    assert snapshot["targets"][0] == {
+        "index": 0,
+        "name": "tiny",
+        "target": target,
+        "estimate": estimate,
+        "relative_error": None,
+    }
+    assert snapshot["non_finite_rows"] == 1
+    validate_target_snapshot(snapshot)
+    broken = copy.deepcopy(snapshot)
+    broken["targets"][0]["relative_error"] = 0.0
+    with pytest.raises(TargetSnapshotError, match="relative_error"):
+        validate_target_snapshot(broken)
 
 
 def test_a_store_refuses_to_share_a_directory_with_another_run():

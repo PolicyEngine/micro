@@ -295,7 +295,7 @@ def signed_relative_error(estimate: float | None, target: float | None) -> float
         return None
     if target == 0.0:
         return estimate - target
-    result = estimate - target if target == 0.0 else (estimate - target) / target
+    result = (estimate - target) / target
     return _finite_or_none(result)
 
 
@@ -750,7 +750,8 @@ class BoundTargetSnapshots:
             zip(self.names, self.targets, strict=True)
         ):
             estimate = _finite_or_none(values[index])
-            if estimate is None or target is None:
+            error = signed_relative_error(estimate, target)
+            if error is None:
                 non_finite += 1
             rows.append(
                 {
@@ -758,7 +759,7 @@ class BoundTargetSnapshots:
                     "name": name,
                     "target": target,
                     "estimate": estimate,
-                    "relative_error": signed_relative_error(estimate, target),
+                    "relative_error": error,
                 }
             )
         self.counter[0] += 1
@@ -919,19 +920,19 @@ def validate_target_snapshot(payload: Mapping[str, object]) -> None:
         stored = _strict_number(
             row["relative_error"], what=f"relative_error for {name!r}"
         )
-        if estimate is None or target is None:
+        expected = signed_relative_error(estimate, target)
+        if expected is None:
             observed_non_finite += 1
             if stored is not None:
                 raise TargetSnapshotError(
-                    f"relative_error for {name!r} must be null when its estimate "
-                    "or target is."
+                    f"relative_error for {name!r} must be null when its operands "
+                    "or computed error are not finite."
                 )
         else:
-            expected = signed_relative_error(estimate, target)
-            if stored is None or expected is None:
+            if stored is None:
                 raise TargetSnapshotError(
-                    f"relative_error for {name!r} must be present when both its "
-                    "estimate and target are."
+                    f"relative_error for {name!r} must be present when its "
+                    "computed error is finite."
                 )
             if not math.isclose(
                 stored, expected, rel_tol=_RELATIVE_ERROR_RTOL, abs_tol=0.0
@@ -950,7 +951,7 @@ def validate_target_snapshot(payload: Mapping[str, object]) -> None:
     if observed_non_finite != non_finite_rows:
         raise TargetSnapshotError(
             f"non_finite_rows says {non_finite_rows} but {observed_non_finite} rows "
-            "carry a null estimate or target."
+            "carry a null estimate, target or computed error."
         )
     digest = target_identity_digest(names, values)
     if payload["targets_sha256"] != digest:

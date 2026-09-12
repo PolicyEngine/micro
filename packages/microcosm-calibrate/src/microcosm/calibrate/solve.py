@@ -930,7 +930,9 @@ def _optimize(
             retained = retain_best and best_log_w is not None
             snapshots.emit(
                 estimate.detach().numpy(),
-                epoch=epoch + 1,
+                # Number of completed updates, matching the selection receipt.
+                # Cadence still uses the 1-based evaluation ordinal above.
+                epoch=epoch,
                 epochs=epochs,
                 iterate=(
                     ITERATE_BEST_RETAINED
@@ -941,7 +943,7 @@ def _optimize(
                 loss=trajectory[epoch],
                 best_retained={
                     "available": bool(retain_best),
-                    "epoch": (best_epoch + 1) if retained else None,
+                    "epoch": best_epoch if retained else None,
                     "loss": best_loss if retained else None,
                 },
             )
@@ -1113,7 +1115,7 @@ def _optimize_proximal(
             # closing state), so every in-loop snapshot here is `current`.
             snapshots.emit(
                 estimate.detach().numpy(),
-                epoch=epoch + 1,
+                epoch=epoch,
                 epochs=epochs,
                 iterate=ITERATE_CURRENT,
                 precision="float32",
@@ -1369,6 +1371,7 @@ def _search_l0_lambda_for_budget(
     # (0 for a feasible/unconstrained probe, 1 for an infeasible one; distance
     # to the budget): feasible probes always beat infeasible ones.
     best_key: tuple[int, int] | None = None
+    best_evaluation: int | None = None
     probes: list[dict[str, object]] = []
     # Sentinel: a probe whose penalty over-pruned past the cap-feasible floor
     # (the conserve+cap projection raised). It is *more* pruning than feasible,
@@ -1381,7 +1384,7 @@ def _search_l0_lambda_for_budget(
     _steer_stop = "stop"
 
     def consider(lam: float) -> tuple[int, str]:
-        nonlocal best, best_key
+        nonlocal best, best_key, best_evaluation
         try:
             weights, trajectory, n_nonzero, gate_open_probabilities = evaluate(lam)
         except ValueError as exc:
@@ -1446,6 +1449,7 @@ def _search_l0_lambda_for_budget(
                 gate_open_probabilities,
             )
             best_key = key
+            best_evaluation = evaluation
         return n_nonzero, verdict
 
     def steer(n_nonzero: int, verdict: str) -> str:
@@ -1512,6 +1516,7 @@ def _search_l0_lambda_for_budget(
                     "acceptable_within_tolerance" if settled() else "budget_exhausted"
                 ),
                 "selected_l0_lambda": None if best is None else float(best[2]),
+                "selected_budget_iteration": best_evaluation,
                 "selected_measure": None if best is None else int(best[3]),
                 "selected_feasible": (
                     None
@@ -1531,6 +1536,7 @@ def _search_l0_lambda_for_budget(
                 "evaluations": int(evaluation),
                 "probes": probes,
                 "selected_l0_lambda": None if best is None else float(best[2]),
+                "selected_budget_iteration": best_evaluation,
                 "selected_measure": None if best is None else int(best[3]),
                 "selected_feasible": (
                     None
@@ -2173,7 +2179,14 @@ def calibrate(
             and isinstance(selected_epoch, int)
             and selected_epoch < epochs
         )
-        snapshots.emit(
+        selected_snapshots = snapshots
+        if budget_search is not None:
+            selected_snapshots = snapshots.with_search(
+                budget_iteration=budget_search["selected_budget_iteration"],
+                budget_iters=budget_search["budget_iters"],
+                l0_lambda=budget_search["selected_l0_lambda"],
+            )
+        selected_snapshots.emit(
             final_estimates,
             # The epoch whose iterate was actually selected, not the last one
             # executed: a retained-best run returns an earlier iterate, and
