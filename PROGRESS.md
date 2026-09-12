@@ -1,3 +1,36 @@
+# #893 reconciliation to main's amended graph interface (amendments 19 and 20)
+
+Lane: `microcosm-us-launch-verified-lanes-20260910` (the live integration
+worktree for PR #893, branch `microcosm-us-launch-integration-20260909`).
+Started 2026-09-12 at `069d5ed9a`. Everything below the `---` rule at the end
+of this section is prior-lane history; see "Root journals are history, not
+state" in `CLAUDE.md`.
+
+## State
+
+In progress. Baseline before any change: `packages/microcosm-graph/tests`
+5 failed / 362 passed (exit 1) — exactly the five the brief names.
+
+## Done
+
+- Read `CLAUDE.md`, the charter's "Interface freeze" at the amendment-20 head
+  (`23ba24770`), PR #893's body, and the Amendment 19 lane's "Scope" list on
+  main. Diffed the graph package against `23ba24770` file by file and located
+  every consumer of each not-yet-amended piece outside the graph package.
+- `uv sync --all-packages --locked --extra us --extra uk` exit 0.
+
+## Next
+
+- `git merge origin/main`, then `git merge origin/amend-keyed-seed-and-uniform-draws`
+  (`23ba24770`), resolving every graph/fit/charter file to main's bytes.
+- Re-apply, as separate named commits, only the not-yet-amended pieces the US
+  runtime on this branch consumes; drop the rest and say so in `out.md`.
+- Run the graph and fit packages, the spine-blindness file, the spec-engine
+  check, `ci_test_groups --verify`, ruff, then the touched US suites.
+- Write the layer map and the draft amendment entries to `out.md`.
+
+---
+
 # F1 portable worker identity — CI crawl fix
 
 ## State
