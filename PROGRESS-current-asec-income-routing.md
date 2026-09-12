@@ -49,6 +49,48 @@ issuer, no engine execution, no native cell writes, no release claim.
       resolving an unknown slot account into a known non-IRA zero each turn the
       suite red; reverting each returns it green.
 
+## Second review round: corrections after adversarial review
+
+An independent five-lens adversarial review of the finished lane (source
+fidelity, projection semantics, owner pattern, tests, repository fit) found a
+further set of defects, every one of which is fixed on this branch:
+
+1. **Fail-closed roster (CI-breaking).** `test_us_spine_blindness.py` globs
+   every `us_runtime` module and fails closed on an unregistered one. The
+   qualifier is now classified there and listed among the reviewed source-spine
+   provenance owners. Three of that file's tests remain red for four modules
+   already unclassified at the reviewed base `d5cbe60b2` —
+   `graph_fiscal_dense_calibration.py`, `graph_fiscal_measurement.py`,
+   `graph_puf55_route_attachment.py`, `graph_survey_puf55.py` — which this lane
+   neither owns nor touched. **Root should route those to their owners.**
+2. **Recipient zeros were completed on an unprinted rationale.** `RNT_VAL` and
+   `FRSE_VAL` print the same `0 = none or niu` label the gross entries print, so
+   a signed net measure's recipient zero is no longer a known amount. Only
+   `ANN_VAL`, whose printed zero is `valid_zero_dollars`, resolves; that test is
+   read from the pinned domains artifact rather than decided in code.
+3. **Off-route distribution evidence yielded an affirmative zero.** Off-route
+   dollars or an answered off-route recipiency now contradict the row, and an
+   applicable slot declaring an account whose amount is a "none or niu" zero
+   leaves both the total and the regular-IRA share unresolved.
+4. **Other-income routing ignored the printed receipt universe**, so an
+   out-of-universe row read as reported alimony.
+5. **Allocation origins asserted publisher-confirmed non-allocation** from flags
+   whose printed universes are conditional and unevaluated.
+6. **The printed zero receipt label was collapsed** to one shared `niu_or_none`
+   across nine entries that print three different labels.
+7. **`asec_literals` escaped with no digest**, outside the final identity check.
+8. **`I_FRMYN` prints an empty `Values:` block**; its codes were described as
+   following `I_ANNVAL`. **`FARM_AMOUNT_SCOPE` dropped its composite clause.**
+   The claim that every other family prints a 15+ floor was false — the farm
+   family prints none.
+9. **The doc called `TAXABLE_PENSION_FRACTION` archived**; it is live in
+   `cps_carried_current.py` under the prepared-ASEC stage, so a second split
+   attached here would double-count.
+10. Printed entry tables are `NamedTuple`s now, the account code domain is
+    compared against `retirement_distributions._VALID_ACCOUNT_CODES` rather than
+    a re-typed literal, and `project_income_routing` validates its routing token
+    arrays.
+
 ## Corrections made after independent review of the first draft
 
 1. The money owner normalizes `ANN_VAL`'s printed `-1` to a stored zero and
