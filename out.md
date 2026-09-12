@@ -209,9 +209,10 @@ $ PYTHONPATH=$SCRATCH/mainsrc/packages/microcosm-graph/src \
     uv run --no-sync python measure_keys.py                     # origin/main
 ```
 
-Both exited 0. The main run loaded `decl.py` with sha256
-`635fef92c599c298e7f19ca0badfa85aa040bf8e81eafed59f37c48db1fcff06` —
-`origin/main`'s locked hash — confirming the shadow took effect.
+Both exited 0. The runs loaded different `decl.py` bytes, confirming the shadow
+took effect: `ed0a859a…` (this branch's locked hash) against
+`635fef92…` (`origin/main`'s). The measurement was repeated at the final tree
+after the audit fixes, with the same result.
 
 | Graph | Nodes | Keys identical | Projections identical |
 | --- | ---: | --- | --- |
@@ -253,12 +254,11 @@ both say this explicitly.
 
 ## 5. Commands run, with direct exit codes
 
-Every command was run from the worktree with `uv run --no-sync`, in this
-session, after `uv sync --all-packages --locked --extra us --extra uk` (exit 0
-in the landing session; the environment was reused unchanged).
-
-Every gate below was re-run at the final `HEAD` (`0c22b9d30`), after the audit
-fixes, not carried over from the landing session.
+Every command was run from the worktree with `uv run --no-sync`, after
+`uv sync --all-packages --locked --extra us --extra uk` (exit 0 in the landing
+session; the environment was reused unchanged). **Every row below was re-run at
+the final tree, after the audit fixes** — none is carried over from the landing
+session, and none predates the last source change.
 
 | Command | Exit | Result |
 | --- | ---: | --- |
