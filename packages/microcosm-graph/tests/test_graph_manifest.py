@@ -828,3 +828,36 @@ def test_a_release_may_not_omit_a_gate_reached_only_through_bytes() -> None:
             finished_at="t1",
             host="h",
         )
+
+
+def test_a_laundered_artifact_scope_loads_as_store_corrupt(tmp_path: Path) -> None:
+    """Amendment 19: a corrupt manifest surfaces as StoreCorruptError, not a
+    node rejection, however its typed provenance was tampered with."""
+    producer, consumer = _typed_pair()
+    manifest = RunManifest(
+        country="toy",
+        nodes={"fit": producer, "draw": consumer},
+        started_at="t0",
+        finished_at="t1",
+        host="h",
+    )
+    path = tmp_path / "manifest.json"
+    manifest.save(path)
+    document = json.loads(path.read_text())
+    scope = {
+        "numeric": "platform_bitwise",
+        "tolerance": None,
+        "platform": "arm64/darwin/py3.14",
+    }
+    # A platform-bitwise producer whose bitwise consumer reads its bytes. The
+    # producer's own records stay self-consistent and both copies of every
+    # receipt agree, so only the cross-edge scope rule can catch it.
+    for nodes in (document["nodes"], document["content_addressed"]["nodes"]):
+        nodes["fit"]["capabilities"]["numeric"] = "platform_bitwise"
+        nodes["fit"]["typed_artifacts"]["outputs"]["forest"]["numerics"] = scope
+        nodes["draw"]["typed_artifacts"]["inputs"]["donor"]["numerics"] = scope
+    path.write_text(json.dumps(document))
+
+    store = graph_api.ContentStore(tmp_path / "store")
+    with pytest.raises(graph_api.StoreCorruptError, match="may not read"):
+        RunManifest.load(path, store)

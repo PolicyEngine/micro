@@ -1257,7 +1257,17 @@ def _validate_typed_ancestry(nodes: Mapping[str, NodeReceipt]) -> None:
                     f"Node {node_id!r} typed artifact does not match its producer "
                     "output."
                 )
-            require_compatible_scope(value.numerics, node.capabilities)
+            try:
+                require_compatible_scope(value.numerics, node.capabilities)
+            except NodeRejectedError as error:
+                # Inside a manifest this is malformed provenance, not a live
+                # node rejection: `RunManifest.load` converts ValueError into
+                # StoreCorruptError, and a corrupt manifest must surface as
+                # StoreCorruptError like every other one.
+                raise ValueError(
+                    f"Node {node_id!r} typed artifact carries a numeric scope its "
+                    f"consumer may not read: {error}"
+                ) from error
             edges[node_id].add(producer_id)
 
     memo: dict[str, frozenset[str]] = {}
