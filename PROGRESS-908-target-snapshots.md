@@ -3,6 +3,12 @@
 Lane journal for branch `calibration-target-snapshots-908-20260912`.
 Journals are history, not state (see CLAUDE.md): check git/GitHub for current truth.
 
+Historical note, 12 September 2026: the initial implementation below was
+subsequently merged onto main `116d46ee9` and repaired through `b8380c475`.
+Its original review and source-pin claims describe earlier revisions.
+[The maintained guide](docs/calibration-target-snapshots.md) records current
+component scope; country integration and issue 908 remain incomplete.
+
 ## State
 
 Bounded first slice implemented, tested and committed on this branch. Not

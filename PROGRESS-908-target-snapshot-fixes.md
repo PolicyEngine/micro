@@ -3,6 +3,12 @@
 Lane journal for branch `calibration-target-snapshots-908-fixes-20260912`.
 Journals are history, not state (see CLAUDE.md): check git/GitHub for current truth.
 
+Historical note, 12 September 2026: this journal records the earlier repair
+lane. The lane closed at `9a325c8b0`; root independently repaired the remaining
+strict-null codec case in `b8380c475`, with 52 tests passing. Current scope and
+remaining integration work are in [the maintained guide](docs/calibration-target-snapshots.md).
+The earlier work-in-progress and not-pushed statements below are historical.
+
 ## State
 
 Merged the completed slice (`bae1887ff`) onto `origin/main` `116d46ee9`, resolved
