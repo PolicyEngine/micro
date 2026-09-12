@@ -369,8 +369,11 @@ Amendments so far (each re-locked):
     `_toy.chained_graph()` (5), `_toy.chained_graph(leaves=("leaf_a",))`
     (6), `_toy.full_graph()` (9), `uk_spine_graph(load_country_spec("uk"))`
     (41) and `us_post_transfer_graph()` (8), 74 node keys in all. Keys move
-    only for a node that declares an artifact edge, of which there are none
-    on `main`.
+    for a node that declares an artifact edge and, by A3, for every
+    descendant of either end — the consumer's cell readers, and any
+    structural node whose base version contains the producer or consumer,
+    since its key binds every member's key. No graph on `main` declares an
+    edge, so no key there moves.
     Raised by the US launch integration branch
     (`microcosm-us-launch-integration-20260909`), which extended both
     frozen files without an amendment; extracted and adopted 2026-09-11.

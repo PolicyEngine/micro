@@ -186,7 +186,9 @@ literally true."*
 ## 4. The node-key answer, measured
 
 **No node key moves for any graph that declares no artifact edge — and there
-are none on `main`. Keys move only for the two ends of a declared edge.**
+are none on `main`. Where an edge is declared, keys move for its two ends and,
+by A3, for every descendant of either end (the consumer's cell readers and any
+structural node whose base version contains the producer or consumer).**
 
 `Node.artifact_inputs` and `Node.artifact_outputs` are normative fields with
 defaults, which for amendments 11 and 13's sibling field `entrants` meant every

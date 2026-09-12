@@ -1294,9 +1294,18 @@ def _validate_typed_ancestry(nodes: Mapping[str, NodeReceipt]) -> None:
         }
         # Only look at `gate_ancestry` when a byte edge actually reached a
         # gate. Otherwise `RunManifest.tier` keeps sole ownership of that
-        # field's validation and its precise diagnostic (a malformed value
-        # must not surface here as a bare TypeError).
-        if artifact_gates and not artifact_gates.issubset(
-            set(node.receipt.get("gate_ancestry", ()))
+        # field's validation and its precise diagnostic. When a byte edge did
+        # reach a gate, the shape is checked here first, with the same
+        # diagnostic `tier` gives, so a malformed value from a foreign
+        # manifest never surfaces as a bare TypeError from `set()`.
+        if not artifact_gates:
+            continue
+        gate_ancestry = node.receipt.get("gate_ancestry", ())
+        if not isinstance(gate_ancestry, tuple) or any(
+            not isinstance(gate_id, str) or not gate_id for gate_id in gate_ancestry
         ):
+            raise ValueError(
+                f"release node {node_id!r} has invalid gate ancestry {gate_ancestry!r}"
+            )
+        if not artifact_gates.issubset(set(gate_ancestry)):
             raise ValueError("Release omitted a typed artifact gate ancestor.")
