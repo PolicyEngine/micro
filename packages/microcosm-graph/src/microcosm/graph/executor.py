@@ -2048,7 +2048,11 @@ def run_graph(
         tolerance_writers = _tolerance_writer_payload(input_writers)
 
         typed = contracts[node_id]
-        artifact_values: dict[str, ArtifactValue] = {}
+        # Authenticate every declared byte edge against the producer's receipt
+        # and its descriptor now, without reading a payload: identity is all
+        # this check needs, and a node that hits its cached record never runs a
+        # kernel, so its inputs' bytes would be read for nothing (a fitted
+        # model is not small).
         for binding in node.artifact_inputs:
             entry = typed["inputs"][binding.name]
             producer_receipt = receipts[binding.producer]
@@ -2057,9 +2061,7 @@ def run_graph(
                     f"Node {node.id!r} artifact producer receipt disagrees with its "
                     "declaration."
                 )
-            artifact_values[binding.name] = value_from_descriptor(
-                store.load_bytes(entry["key"]), entry
-            )
+            value_from_descriptor(b"", entry)
 
         hit = False
         replace_stale_record = False
@@ -2095,6 +2097,13 @@ def run_graph(
                     raise
 
         if result is None:
+            artifact_values: dict[str, ArtifactValue] = {
+                binding.name: value_from_descriptor(
+                    store.load_bytes(typed["inputs"][binding.name]["key"]),
+                    typed["inputs"][binding.name],
+                )
+                for binding in node.artifact_inputs
+            }
             context = _project_context(
                 node,
                 incumbent,

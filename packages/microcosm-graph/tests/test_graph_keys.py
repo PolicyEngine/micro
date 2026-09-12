@@ -408,6 +408,11 @@ def test_a_declared_artifact_edge_enters_both_ends_of_the_key() -> None:
     assert declared["draw"] != undeclared["draw"]
     _, again = _all_keys(_artifact_graph())
     assert again == declared
+    # And so the output's own store identity moves with its producer: typing
+    # existing bytes does not preserve the identity they were filed under.
+    assert opaque_artifact_key(declared["fit"], "forest") != opaque_artifact_key(
+        undeclared["fit"], "forest"
+    )
 
 
 def test_a_node_declaring_no_artifacts_keeps_its_pre_amendment_projection() -> None:

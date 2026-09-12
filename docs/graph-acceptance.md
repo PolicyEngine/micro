@@ -339,9 +339,13 @@ Amendments so far (each re-locked):
     ancestry — which binds only on a manifest produced elsewhere, since a
     gate in this codebase cannot be an artifact producer (see the refusal
     below), and is there so a foreign manifest cannot claim otherwise.
-    `keys.py` exposes `opaque_artifact_key` under the domain the executor
-    already used for undeclared opaque outputs, so declaring a type gives
-    an existing output the identity it always had.
+    `keys.py` exposes `opaque_artifact_key` under the domain and formula the
+    executor already used for undeclared opaque outputs, so typed and
+    undeclared bytes share one derivation and the amendment introduces no
+    second identity scheme. A given output does **not** keep its identity
+    when a type is declared for it: `artifact_outputs` is normative, so the
+    declaration moves the producing node's key and the output's identity
+    moves with it, like any other normative declaration.
 
     One shape is refused rather than modelled: a **gate kernel may not
     declare a typed artifact output**. A gate whose kernel raises becomes a

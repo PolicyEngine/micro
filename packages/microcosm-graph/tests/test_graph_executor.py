@@ -3820,3 +3820,48 @@ def test_a_cached_record_missing_a_declared_artifact_is_a_miss(tmp_path: Path) -
     assert second.nodes["fit"].opaque_artifacts["forest"] == opaque_artifact_key(
         key, "forest"
     )
+
+
+def test_a_cache_hit_authenticates_its_artifact_edges_without_reading_them(
+    tmp_path: Path,
+) -> None:
+    """Amendment 19: identity is checked from receipts; bytes are read to run.
+
+    A node that hits its cached record never runs a kernel, so its declared
+    inputs' payloads are not read — but the producer receipt and the
+    descriptor are still authenticated.
+    """
+
+    class _CountingStore(ContentStore):
+        loads: list[str] = []
+
+        def load_bytes(self, key: str) -> bytes:
+            type(self).loads.append(key)
+            return super().load_bytes(key)
+
+    source = _source_path(tmp_path / "src")
+    _CountingStore.loads = []
+    store = _CountingStore(tmp_path / "store")
+    cold = _run(_artifact_graph(), source, store, _artifact_registry())
+    artifact = cold.nodes["fit"].opaque_artifacts["forest"]
+    assert artifact in _CountingStore.loads  # the consumer ran, so it read them
+
+    _CountingStore.loads = []
+    warm = _run(_artifact_graph(), source, store, _artifact_registry())
+    assert all(receipt.hit for receipt in warm.nodes.values())
+    # The producer's own restore still reads its stored artifacts; no consumer
+    # read happens on top of that.
+    assert _CountingStore.loads.count(artifact) == 1
+
+    # Tampering with the producer's recorded identity is still caught on a
+    # hit, without any payload being read for the consumer.
+    _CountingStore.loads = []
+    graph = _artifact_graph()
+    record_key = graph_executor._cache_record_key(cold.nodes["fit"].key)
+    record = store.load_json(record_key)
+    record["typed_artifacts"]["outputs"]["forest"]["key"] = "0" * 64
+    store.put_json(
+        record_key, record, node_key=cold.nodes["fit"].key, verify_existing=False
+    )
+    with pytest.raises(StoreCorrupt, match="typed artifact contracts disagree"):
+        _run(graph, source, store, _artifact_registry())

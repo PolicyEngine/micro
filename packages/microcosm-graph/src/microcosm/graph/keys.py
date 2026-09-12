@@ -92,9 +92,12 @@ def artifact_key(node_key: str, entity: str, column: str) -> str:
 def opaque_artifact_key(node_key: str, name: str) -> str:
     """Identity of an opaque or typed byte output of a node (amendment 19).
 
-    The domain is the one the executor already used for undeclared opaque
-    artifacts, so declaring a type gives an existing output the same
-    identity it always had.
+    Typed and undeclared outputs share one derivation — the domain and
+    formula the executor already used for undeclared opaque artifacts — so
+    amendment 19 introduces no second identity scheme. It does not follow
+    that an existing output keeps its identity when a type is declared for
+    it: ``artifact_outputs`` is normative, so declaring one moves the
+    producing node's key, and this identity moves with it.
     """
 
     return _hash_parts("node-artifact", node_key, name)
