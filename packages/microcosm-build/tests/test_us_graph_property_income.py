@@ -15,8 +15,7 @@ from microcosm.build.us_runtime.graph_property_income import (
     PropertyIncomeTrainKernel,
     property_income_nodes,
 )
-from microcosm.fit import QRF
-from microcosm.fit import graph_legacy_train
+from microcosm.fit import QRF, graph_legacy_train
 from microcosm.fit.graph_legacy_qrf import LegacyQRFApplyKernel
 from microcosm.fit.graph_signed_reconciliation import SignedReconciliationKernel
 from microcosm.fit.signed_reconciliation import reconcile_signed_total
