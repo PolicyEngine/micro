@@ -450,6 +450,11 @@ and tests returns nothing), and found no dangling dependency and no scope leak.
 
 ## 8. Interim rulings and anything needing Max
 
+> Historicized 2026-09-12: this report was written before the branch was pushed
+> as PR #911 (2026-09-11). The lock-enforcement test it names below merged as
+> #910 on 2026-09-11, so "no automated enforcement" and "unmerged sibling
+> branch" describe the state at writing time, not now.
+
 **One interim ruling this lane made.** A **gate kernel may not declare a typed
 artifact output**, refused outright in `run_graph` before any node executes. A
 gate whose kernel raises becomes a `fail` verdict and the run continues

@@ -12,6 +12,12 @@ whole-workspace run is the last command outstanding; every gate the brief names
 has been re-run green in this session. Nothing pushed, no PR, no branches
 created, `uv.lock` untouched.
 
+> Historicized 2026-09-12: the branch was pushed as PR #911 on 2026-09-11 and
+> peer-gated; the whole-workspace run above was superseded by the PR's CI. The
+> interface lock is now enforced — `graph-interface-lock-test` merged as #910
+> on 2026-09-11 and this branch passes it. The paragraphs below are the lane's
+> record as written, not current state.
+
 ## Scope (what is in, and what is deliberately out)
 
 In, from `git diff origin/main origin/microcosm-us-launch-integration-20260909
@@ -152,11 +158,11 @@ from the landing session's notes.
   import `microcosm.graph` directly or through the seven source modules that do
   (81) — is green at exit 0. The lane report is in `out.md`.
 - For Max, in `out.md` §8: the gate-artifact-output refusal is the one interim
-  ruling this lane made on his behalf; the interface lock has **no automated
-  enforcement** (the charter's freeze is a human gate, which is how the
-  integration branch changed both frozen files unnoticed) and the unmerged
-  sibling branch `graph-interface-lock-test` (`8bd6e05ec`) already adds the
-  test — this branch passes it as it stands, exit 0; plus the pre-existing
+  ruling this lane made on his behalf; the interface lock had **no automated
+  enforcement** when this was written (the charter's freeze was a human gate,
+  which is how the integration branch changed both frozen files unnoticed) —
+  the sibling branch `graph-interface-lock-test` (`8bd6e05ec`) added the test
+  and merged as #910 on 2026-09-11; this branch passes it, exit 0; plus the pre-existing
   `ruff format` drift and the stale local `_buildh-runtime` feed.
 
 ---
