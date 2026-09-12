@@ -17,7 +17,7 @@ fragment, and sorted exports.
 
 ## 1. Commits
 
-Twenty-three commits, `3094bfe84..HEAD`, oldest first. The red commits are
+Twenty-six commits, `3094bfe84..HEAD`, oldest first. The red commits are
 marked; each is followed by the commit that makes it green.
 
 | SHA | Subject |
@@ -45,12 +45,17 @@ marked; each is followed by the commit that makes it green.
 | `9018c4420` | Typed bytes keep the derivation, not the identity; read payloads only to run |
 | `79ef58e9b` | Record the adversarial review and what it changed |
 | `df04a9375` | Re-verify the Amendment 19 lane end to end, independently of the landing |
+| `315119e65` | Write the Amendment 19 lane report |
+| `e3f69a4c4` | Exercise every refusal a foreign typed descriptor can trip |
+| `0c22b9d30` | Correct the red-commit count: 1cce8eceb was 8 of 8, not 7 |
 
 ---
 
 ## 2. Diff summary, per file
 
-`git diff --stat origin/main...HEAD` — 21 files, +2173 / −12.
+`git diff --stat origin/main...HEAD` — 22 files, +2784 / −121. (The 121
+deletions are almost entirely this file: `out.md` still held an unrelated
+earlier lane's report and was replaced.)
 
 ### The two frozen files
 
@@ -98,7 +103,7 @@ identical domain and formula (`sha256_domain("node-artifact", …)`), so typed
 and undeclared bytes share one derivation; and a `typed_artifacts` term added
 to `node_key` **only** when the node declares an input.
 
-**`executor.py`** (+115 / −3) — `_opaque_artifact_key` now delegates to
+**`executor.py`** (+121 / −3) — `_opaque_artifact_key` now delegates to
 `graph_keys.opaque_artifact_key`; `_context_digest` folds each artifact's
 alias, identities, type, scope and payload in (so B4's mutation check covers
 artifacts); `_project_context` takes and passes `artifacts`; `_validate_result`
@@ -137,13 +142,13 @@ and the explorer's receipt payload carries `typed_artifacts` when present.
 - `docs/graph-acceptance.md` (+85) — amendment entry 19.
 - `docs/graph-interface.lock` (±2) — both hashes re-recorded.
 - `changelog.d/amend-typed-artifacts.added.md` (new, 3 lines).
-- `packages/microcosm-graph/tests/` (+1178 / −3) — 33 new tests across seven
+- `packages/microcosm-graph/tests/` (+1346 / −3) — 36 new tests across seven
   files, of which exactly one line is in the frozen acceptance suite.
 
 ### What was deliberately left on the integration branch
 
 The branch's `packages/microcosm-graph/src` diff against main is +2165 across
-17 files; this extraction is +812 across 10. Excluded entirely, each its own
+17 files; this extraction is +818 across 10. Excluded entirely, each its own
 lane: `SeedSource.KEYED` and `randomness.py`; `availability.py` and the
 execution-state / `unreached` / `blocked_by` / `gate_exception` machinery with
 its manifest schema 4; `attachments.py`, `_PopulationRetention` and lazy
@@ -252,11 +257,15 @@ Every command was run from the worktree with `uv run --no-sync`, in this
 session, after `uv sync --all-packages --locked --extra us --extra uk` (exit 0
 in the landing session; the environment was reused unchanged).
 
+Every gate below was re-run at the final `HEAD` (`0c22b9d30`), after the audit
+fixes, not carried over from the landing session.
+
 | Command | Exit | Result |
 | --- | ---: | --- |
-| `pytest packages/microcosm-graph/tests` | **0** | 370 passed |
+| `pytest packages/microcosm-graph/tests` | **0** | **373 passed** |
 | `pytest packages/microcosm-graph/tests -k acceptance` | **0** | 113 passed, 257 deselected |
 | `pytest .../test_graph_kernel_contract.py` | **0** | 15 passed |
+| `pytest` (every graph-dependent test outside the graph package) | **0** | **81 passed** |
 | `pytest` (KernelContext consumers, 5 files) | **0** | 36 passed |
 | `python tools/ci_test_groups.py --verify` | **0** | `verification=ok`, 388 tracked test files |
 | `python tools/spec_engine_coverage.py --check` | **0** | 42156/42156 configuration fields; 41/41 inventory checks |
@@ -266,11 +275,20 @@ in the landing session; the environment was reused unchanged).
 | `shasum -a 256` on the two frozen files | **0** | both match `docs/graph-interface.lock` |
 | `git diff --stat origin/main...HEAD -- uv.lock` | **0** | empty |
 
-The consumer run was
+**The graph-dependent closure.** Rather than trusting that a change confined to
+`packages/microcosm-graph/src` cannot reach elsewhere, the set was computed:
+seven source modules outside the graph package import `microcosm.graph`
+(`microcosm.build.{uk,us}_runtime.{graph,graph_kernels}`,
+`microcosm.{calibrate,fit,frame}.kernels`), and 29 test files reach the graph
+package directly or through one of those seven. Running all 29 — the whole
+graph package plus the 8 outside it — is green: **373 + 81 passed, both exit
+0.** That is every test in the workspace this change could affect.
+
+**The `KernelContext` consumers.** The narrower run the brief asks for is
 `packages/microcosm-{calibrate,fit,frame}/tests/test_kernels.py` plus
-`packages/microcosm-build/tests/test_{us,uk}_graph.py`. A grep of
-`KernelContext(` across `packages/`, `tools/` and `examples/` finds 17 sites;
-the five outside `packages/microcosm-graph/tests` are the three
+`packages/microcosm-build/tests/test_{us,uk}_graph.py` — 36 passed, exit 0. A
+grep of `KernelContext(` across `packages/`, `tools/` and `examples/` finds 17
+sites; the five outside `packages/microcosm-graph/tests` are the three
 `test_kernels.py` fixtures and the executor's own two constructions, and
 **every one of them passes keyword arguments** — no consumer constructs
 `KernelContext` positionally, so the new field's placement could not break one.
@@ -310,7 +328,89 @@ Four pieces of evidence:
 
 ---
 
-## 6. Charter mechanics, item by item
+## 6. The adversarial audit of the landed work
+
+The landing session ran a five-dimension adversarial review of the extraction
+itself; seven of its nine findings were real and are among the commits in §1.
+This session ran a *second*, independent audit of the finished result: five
+auditors (extraction fidelity and minimality; charter mechanics; contract-test
+coverage and red-first discipline; executor correctness; are the prose claims
+true), each finding then put to two skeptics instructed to refute by default
+and to reproduce rather than reason.
+
+**Nine findings raised. One survived both skeptics.**
+
+### The one that survived
+
+**The red commit `1cce8eceb` records "7 of 8 fail"; all 8 failed.** Two
+skeptics independently reconstructed the tree at that commit and ran its own
+test file against its own sources; I then reproduced it a third time:
+`git archive 1cce8eceb | tar -x`, `PYTHONPATH` over that tree's six shard
+`src` directories (confirmed by `microcosm.graph.executor` resolving into the
+extract and `microcosm.graph.artifact_edges` having no spec there, so the
+executor support genuinely had not landed yet), then the commit's own
+`test_graph_executor.py`: **8 failed, 63 passed**, the 8 being exactly the
+amendment-19 tests it added.
+
+Red-first discipline holds — the commit was *redder* than claimed — but the
+tally in its message is wrong. `0c22b9d30` corrects the journal and says why
+the commit message stays as it is: rewriting landed history to fix a tally
+would be worse than recording the correction.
+
+### What the audit changed anyway
+
+One refuted finding still pointed at something worth fixing. A line trace of
+the whole graph suite (`sys.settrace` pinned to the module) showed **eleven
+non-docstring statements of `artifact_edges.py` never executed** — all of them
+on the surface that parses provenance written elsewhere:
+`value_from_descriptor`'s four refusals, `scope_from_payload`'s malformed-scope
+and malformed-tolerance refusals plus its `Tolerance` reconstruction, and
+`require_compatible_scope`'s platform-plus-tolerance refusal.
+
+The skeptics were right that the brief did not ask for this and that no latent
+bug hid behind those lines — but the amendment says a manifest "authenticates
+every edge on load", and those arms are what make that true against a foreign
+manifest. `e3f69a4c4` adds three tests driving all of them through the public
+`NodeReceipt` / `RunManifest` surface. The same trace now reports **zero**
+unexercised statements in the module.
+
+The same finding's sharpest claim — that `run_graph`'s consumer-side
+producer-receipt comparison (`executor.py:2059`) is never exercised — I
+measured directly and confirmed in part: line 2059 runs on every
+artifact-consuming node, but its `raise` arm never does. Both skeptics refuted
+the finding correctly: the charter claims the *ordering of a check*, which does
+execute. The arm is unreachable by construction — a producer that hit its
+record had that identity checked by `_require_record_shape`, and one that ran
+got it from `_write_node` under the same derivation — so `e3f69a4c4` marks it
+with the comment convention `executor.py` already uses for such guards
+(`# generated records cannot reach this branch`) rather than chasing it with a
+test that cannot be written honestly. The misleading inline comment in
+`test_a_cache_hit_authenticates_its_artifact_edges_without_reading_them`, which
+implied the receipt comparison was the guard firing, now names the guard that
+actually fires.
+
+### The seven refuted, and why
+
+| Finding | Why it was refuted |
+| --- | --- |
+| The node-key note says "six graphs" but `chained_graph()` with default args *is* `small_graph()` | True but not a defect: the text claims no distinctness, and the two are separate constructions whose keys were separately computed. A wording preference. |
+| `PROGRESS.md` said "`ruff format --check` clean" | A skeptic extracted `origin/main` and got an identical set of 81 unformatted files, so the condition is pre-existing; and the journal already discloses the full precision forty lines below. |
+| "Schema moves to 2 only for a node that declares artifacts" has no test | Both skeptics measured it rather than reading it: a plain node's record is written and accepted at schema 1, an artifact-declaring node's at 2. Code-true and checkable. |
+| `explain.py`'s typed-artifact payload has no test | A skeptic executed the branch by hand (it emits `typed_artifacts` correctly) and found the identical untested-conditional pattern already on `origin/main` from `8549530c2`. |
+| Two guards inside the required contract areas survive deletion | Reproduced by mutation — and the amendment-17 precedent the brief told this lane to mirror has exactly the same property on `origin/main`. |
+| The producer-receipt refusal is never exercised | See above: the claim conflated "the raise arm is not taken" with "the check is not exercised". |
+| A recomputed producer could hand a consumer an orphaned earlier payload | Real property of the store's write-once semantics (`_put` with `verify_existing=True` returns the existing object without comparing), but **byte-identical to `origin/main`** — this lane changed no `verify_existing` line — and reachable only if a kernel violates the determinism contract that makes same-node-key-same-bytes hold, in which case columns, frames and weights diverge the same way. |
+
+The fidelity dimension returned **zero** findings: it classified all 3,193
+diff lines of the integration branch's graph-src change, confirmed every
+artifact-needed hunk landed and every excluded hunk is genuinely absent
+(`grep` for `KEYED`, `keyed_uniform`, `population_retention`,
+`_LazyPopulations`, `_stream_file`, `SourceBytesCodec` across the landed source
+and tests returns nothing), and found no dangling dependency and no scope leak.
+
+---
+
+## 7. Charter mechanics, item by item
 
 1. **Amendment entry 19** — `docs/graph-acceptance.md`, +85 lines, in the house
    style of entries 1–18: what the gap was (byte dependencies had no channel
@@ -346,7 +446,7 @@ Four pieces of evidence:
 
 ---
 
-## 7. Interim rulings and anything needing Max
+## 8. Interim rulings and anything needing Max
 
 **One interim ruling this lane made.** A **gate kernel may not declare a typed
 artifact output**, refused outright in `run_graph` before any node executes. A
@@ -376,7 +476,7 @@ passes unchanged at 42156/42156 and 41/41, so no drift arose to report.
 
 ---
 
-## 8. Deliberately not done
+## 9. Deliberately not done
 
 No push, no PR, no branch created, no stash used, no `uv.lock` edit, no spec
 re-pin, no artifact build, no release, no publication, and no acceptance-test
