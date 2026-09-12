@@ -93,9 +93,12 @@ assumption: the atomic host first materializes CREATE and ALLOCATION, so those
 two nodes legitimately hit when its expanded graph runs in the same store.
 Requiring every prefix node to miss rejects that valid execution. The refusal
 record does not identify its precise assertion frame, so this diagnosis does
-not establish completed native financial acceptance. A narrowly corrected v3
-harness and invented assertion controls are in preparation; no retry pass or
-native PUF result is claimed.
+not establish completed native financial acceptance. The corrected v3 harness
+passes two actual invented financial cold/replay controls and thirteen bounded
+source and diagnostic controls. After independent review of its exact packet,
+one fresh native run started with unchanged calculation source, native inputs
+and resource limits. Its result is pending; no retry pass or native PUF result
+is claimed.
 
 The maintained financial graph now retains an eighth field: the tax-exempt
 interest remainder of its existing observed or modeled total. The split remains
