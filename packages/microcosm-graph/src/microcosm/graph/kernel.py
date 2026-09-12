@@ -59,9 +59,10 @@ import pandas as pd
 
 from microcosm.frame import Frame, Weights
 
-from .decl import Node, Param, StructuralDelta
+from .decl import ArtifactType, Node, Param, StructuralDelta
 
 __all__ = [
+    "ArtifactValue",
     "Capabilities",
     "Determinism",
     "Kernel",
@@ -271,6 +272,55 @@ class NumericScope:
 
 
 @dataclass(frozen=True)
+class ArtifactValue:
+    """Verified immutable bytes and the executor's typed producer provenance.
+
+    A consumer reads one of these per declared :class:`~.decl.ArtifactInput`
+    alias. The executor has already checked that the bytes are the ones the
+    named producer stored under that output name, so ``key`` and
+    ``producer_key`` are the identities a receipt can be audited against.
+    Validating the payload against its nominal ``type`` is the consumer's
+    own job: the graph carries a name and version, not a parser (amendment
+    19).
+
+    Attributes:
+        payload: The stored bytes, immutable.
+        type: The nominal contract the producer declared.
+        key: The artifact's store identity, derived from the producing
+            node's key and the output name (``opaque_artifact_key``). It is
+            not a hash of ``payload``: the store validates the bytes filed
+            under it against their own recorded SHA-256 on every load
+            (charter E1), and the executor checks this key against the
+            producer's receipt before handing the value over.
+        producer_key: The node key of the node that produced it.
+        numerics: The producer's :class:`NumericScope`, so a gate reading an
+            artifact holds it to the same contract as a cell (amendment 17).
+    """
+
+    payload: bytes
+    type: ArtifactType
+    key: str
+    producer_key: str
+    numerics: NumericScope
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.payload, bytes):
+            raise TypeError("ArtifactValue.payload must be immutable bytes.")
+        if not isinstance(self.type, ArtifactType) or not isinstance(
+            self.numerics, NumericScope
+        ):
+            raise TypeError("ArtifactValue requires an ArtifactType and NumericScope.")
+        for name in ("key", "producer_key"):
+            value = getattr(self, name)
+            if (
+                not isinstance(value, str)
+                or len(value) != 64
+                or any(c not in "0123456789abcdef" for c in value)
+            ):
+                raise ValueError(f"ArtifactValue.{name} must be a SHA-256 identity.")
+
+
+@dataclass(frozen=True)
 class KernelContext:
     """Everything a kernel may read. Nothing here is writable.
 
@@ -290,6 +340,12 @@ class KernelContext:
             kernel may use.
         sources: Source name to a content-verified path, for declared
             sources only.
+        artifacts: Declared artifact alias to its :class:`ArtifactValue`,
+            for the node's ``artifact_inputs`` only. Immutable typed bytes
+            the executor has already matched to their producer; a consumer
+            validates the versioned payload before using it, because a
+            nominal type does not itself verify serialized data (amendment
+            19).
         tolerances: ``(entity, column)`` of each declared input column to
             the :class:`Tolerance` its owning kernel declared, or ``None``
             for a bitwise owner. A gate compares against these.
@@ -307,8 +363,22 @@ class KernelContext:
     params: Mapping[str, Param]
     rng: np.random.Generator
     sources: Mapping[str, Path] = field(default_factory=dict)
+    artifacts: Mapping[str, ArtifactValue] = field(default_factory=dict)
     tolerances: Mapping[tuple[str, str], Tolerance | None] = field(default_factory=dict)
     numerics: Mapping[tuple[str, str], NumericScope] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        values = dict(self.artifacts)
+        if any(
+            not isinstance(name, str)
+            or not name
+            or not isinstance(value, ArtifactValue)
+            for name, value in values.items()
+        ):
+            raise TypeError(
+                "KernelContext.artifacts must map non-empty aliases to ArtifactValue."
+            )
+        object.__setattr__(self, "artifacts", MappingProxyType(values))
 
 
 @dataclass(frozen=True)

@@ -1,3 +1,172 @@
+# Amendment 19 — typed opaque artifacts on the graph interface
+
+Lane: `amend-typed-artifacts`, off `origin/main` at `3094bfe84`. Started
+2026-09-11. Everything below the `---` rule at the end of this section is
+prior-lane history; see "Root journals are history, not state" in
+`CLAUDE.md`.
+
+## State
+
+Landed, reviewed, and re-verified from scratch on `amend-typed-artifacts`. The
+whole-workspace run is the last command outstanding; every gate the brief names
+has been re-run green in this session. Nothing pushed, no PR, no branches
+created, `uv.lock` untouched.
+
+> Historicized 2026-09-12: the branch was pushed as PR #911 on 2026-09-11 and
+> peer-gated; the whole-workspace run above was superseded by the PR's CI. The
+> interface lock is now enforced — `graph-interface-lock-test` merged as #910
+> on 2026-09-11 and this branch passes it. The paragraphs below are the lane's
+> record as written, not current state.
+
+## Scope (what is in, and what is deliberately out)
+
+In, from `git diff origin/main origin/microcosm-us-launch-integration-20260909
+-- packages/microcosm-graph/src`:
+
+- `decl.py`: `ArtifactType`, `ArtifactOutput`, `ArtifactInput`,
+  `Node.artifact_inputs` / `Node.artifact_outputs`, their validation, their
+  elision from the canonical projection when empty, and the artifact-edge
+  arm of `compile_graph`.
+- `kernel.py`: `ArtifactValue` and `KernelContext.artifacts`.
+- `artifact_edges.py` (new): numeric scope payloads, scope compatibility,
+  typed descriptors, `typed_contracts`, `value_from_descriptor`.
+- `keys.py`: `opaque_artifact_key` and the `typed_artifacts` term in
+  `node_key`.
+- `serialize.py`, `view.py`, `manifest.py`, `executor.py`: the minimal
+  support for the executor to honour declared artifact inputs/outputs.
+
+Out, because it is not needed for artifacts (each is its own lane):
+
+- `SeedSource.KEYED` and `randomness.py` (`keyed_uniform`).
+- `availability.py` / execution state / `unreached` / `blocked_by` /
+  `gate_exception` propagation, and manifest schema 4.
+- `attachments.py`, `_PopulationRetention`, lazy populations,
+  `_population_observer`.
+- `store.py` Frame-metadata storage (`microcosm-graph-frame-v2`) and the
+  non-finite JSON decode hooks.
+- `keys.py` `_stream_file` chunked source hashing.
+- `codecs.py` `SourceBytesCodec` / `load_source_bytes`; `schema.py`.
+- The `_write_node` per-coordinate memory refactor.
+
+## Done
+
+- Read `CLAUDE.md`, `docs/graph-acceptance.md`, `DESIGN.md`, and the
+  amendment-17 precedent (`cdbf71888`, `80b63ba14`, `ed36f6cb3`).
+- Measured the branch diff per file and fixed the in/out boundary above.
+- `uv sync --all-packages --locked --extra us --extra uk` → exit 0.
+- Captured the baseline node keys of the three toy acceptance graphs before
+  touching any source, so the node-key answer is measured, not asserted.
+- `68a6ecc4b` (red, exit 2, 4 collection errors) → `e591c52d7`: the frozen
+  declaration interface, `compile_graph`'s artifact edge, the elided
+  canonical projection, `opaque_artifact_key`, serialization, and the view.
+- `a2b6dfb0b`: the acceptance suite's B2 `KernelContext` field set, as its
+  own commit, matching `80b63ba14`.
+- `1cce8eceb` (red, **8 of 8 failing** — the commit message and an earlier
+  version of this line both say 7, which is wrong; see the correction under
+  "Re-verification") → `15f9d2c67`: `artifact_edges.py` and
+  the executor, cache record, and manifest support.
+- `38b9a9e4d`: amendment 19 in the charter, the relock, the changelog
+  fragment. `8c2e7faab`: the graph explorer's receipt payload.
+- Node keys re-measured after the change: byte-identical for all 20 nodes
+  of the three toy graphs.
+- `packages/microcosm-graph/tests` 359 passed, exit 0.
+  `tools/ci_test_groups.py --verify` ok, `tools/spec_engine_coverage.py
+  --check` 42156/42156 + 41/41, `tools/graph_acceptance_burndown.py
+  --verify` ok, `ruff check` and `ruff format --check` clean.
+
+- Ran a five-dimension adversarial review of the extraction against the
+  integration branch (fidelity/minimality, executor paths, identity and
+  store, manifest provenance, charter/lock/changelog), each finding put to
+  two skeptics. Nine findings; seven real and fixed here:
+  `3a0726f93` (a corrupt typed manifest surfaced as `NodeRejectedError`
+  rather than `StoreCorruptError`), `9ebb60e4b` (`ArtifactValue.key`
+  described as a content identity it is not; relock), `402d9a631` (a
+  malformed `gate_ancestry` regressed to a bare `TypeError` on manifests
+  with no artifacts at all; charter graph list corrected; the F2 sentence
+  split into its two mechanisms), `5c4a8efde` (the artifact miss decision
+  moved back inside the recompute fallback), `9018c4420` (the
+  identity-preservation claim corrected, and payloads read only on the path
+  that runs a kernel). Two were the documented decisions and stand.
+- Added coverage the review motivated: manifest ancestry authentication,
+  the F2-over-bytes path, cross-version edges under all three resume
+  policies, every artifact declaration field being normative, A3 through a
+  byte edge, and a cache hit that reads no payload.
+
+## Re-verification, 2026-09-11 (independent of the landing session)
+
+Everything below was re-run from a clean read of the tree, not carried over
+from the landing session's notes.
+
+- The node-key answer re-measured with a script that varies only the
+  graph-kernel code: `microcosm.graph` resolved once from this branch and once
+  from `origin/main`'s sources (shadowed through `PYTHONPATH`, confirmed by the
+  loaded `decl.py` hash `635fef92...` on the main run), with `microcosm.build`
+  identical in both. Six graphs, 5+5+6+9+41+8 = 74 nodes: **all 74 node keys and
+  all 74 canonical projections byte-identical.** The amendment's per-graph counts
+  are each correct.
+- `docs/graph-interface.lock` re-checked against `shasum -a 256` of the two
+  frozen files: both match.
+- Re-run green: `packages/microcosm-graph/tests` 370 passed exit 0; the
+  acceptance subset 113 passed exit 0; `test_graph_kernel_contract.py` 15 passed
+  exit 0; the `KernelContext(` consumers (calibrate/fit/frame `test_kernels.py`
+  plus `test_us_graph.py`, `test_uk_graph.py`) 36 passed exit 0.
+  `tools/ci_test_groups.py --verify` ok, `tools/spec_engine_coverage.py --check`
+  42156/42156 + 41/41, `tools/graph_acceptance_burndown.py --verify` ok,
+  `ruff check .` clean — all exit 0.
+- No consumer constructs `KernelContext` positionally: all five non-test sites
+  use keyword arguments, so the new field's placement could not have broken one.
+- `ruff format --check .` exits 1 on 81 pre-existing files, none of them touched
+  by this lane (all 17 changed Python files pass `ruff format --check`
+  individually). CI's lint lane runs only `ruff check .`, so this is repo drift,
+  not a gate this lane moved.
+- The red commit `1cce8eceb` records "Red: 7 of 8 fail against the executor as
+  it stands", and this journal repeated it. **It was 8 of 8.** Measured by
+  extracting the whole tree at `1cce8eceb` (`git archive | tar -x`), pointing
+  `PYTHONPATH` at that tree's six shard `src` directories (confirmed:
+  `microcosm.graph.executor` resolves into the extract, and
+  `microcosm.graph.artifact_edges` has no spec there, so the executor support
+  genuinely had not landed), and running the commit's own
+  `test_graph_executor.py` against its own sources: **8 failed, 63 passed**, the
+  8 being exactly the amendment-19 tests the commit added. Red-first discipline
+  holds — the commit was redder than claimed — but the count in its message is
+  wrong and stays wrong, because rewriting landed history to fix a tally would
+  be worse than recording the correction here.
+- An adversarial audit line-traced the new module: eleven non-docstring
+  statements of `artifact_edges.py` never executed in the whole graph suite, all
+  on the foreign-provenance parsing surface. Closed in `e3f69a4c4` with three
+  tests through the public `NodeReceipt`/`RunManifest` surface; the trace now
+  reports zero. The same trace showed `run_graph`'s consumer-side receipt
+  comparison is unreachable as a refusal — both skeptics confirmed the charter's
+  wording claims only the check's ordering, which does execute — so the branch
+  is now commented the way this file already marks such guards, rather than
+  chased with a test that cannot be written honestly.
+- `packages/microcosm-build/tests/test_release_target_parity.py` fails two
+  tests locally. **Not this lane, and not CI**: both are guarded by
+  `_feed_or_skip` on a 131 MB pinned feed that lives *outside the repository*
+  (`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl`,
+  dated 2026-07-23), so CI skips them; the local artifact predates #855's
+  hierarchy-label requirement. The same two fail identically with `origin/main`'s
+  graph sources swapped in, and `ledger_targets.py` imports no
+  `microcosm.graph`. This is the US twin of the UK instance the #791 lane already
+  recorded in `experiments/791-household-composition-receipts.md:111`.
+
+## Next
+
+- Whole-workspace `uv run pytest` is the only command still running. Every gate
+  the brief names is green at `HEAD`, and the complete set of tests this change
+  can reach — the graph package (373) plus the 8 test files outside it that
+  import `microcosm.graph` directly or through the seven source modules that do
+  (81) — is green at exit 0. The lane report is in `out.md`.
+- For Max, in `out.md` §8: the gate-artifact-output refusal is the one interim
+  ruling this lane made on his behalf; the interface lock had **no automated
+  enforcement** when this was written (the charter's freeze was a human gate,
+  which is how the integration branch changed both frozen files unnoticed) —
+  the sibling branch `graph-interface-lock-test` (`8bd6e05ec`) added the test
+  and merged as #910 on 2026-09-11; this branch passes it, exit 0; plus the pre-existing
+  `ruff format` drift and the stale local `_buildh-runtime` feed.
+
+---
+
 # Issue #907 — population `_storage_parts` hashes object dtype by pointer
 
 Lane: `fix-907-population-stamp-object-storage`, branched from
