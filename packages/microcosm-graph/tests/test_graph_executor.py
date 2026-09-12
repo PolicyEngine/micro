@@ -3831,6 +3831,76 @@ def test_a_gate_that_declares_evidence_and_raises_leaves_its_consumers_unreached
         assert_explained(replay, "hit")
 
 
+def test_unreached_gate_cannot_certify_a_downstream_release(tmp_path: Path) -> None:
+    base = _gate_artifact_graph(release_behind=True, answer="certified")
+    second_gate = Node(
+        "second_gate",
+        "second_gate@1",
+        inputs=(Slice("person", ("used",)),),
+        outputs=(Owned("household", "second_verdict", "string"),),
+        population="survey",
+    )
+    release = replace(
+        base.node("release"), inputs=(Slice("household", ("second_verdict",)),)
+    )
+    graph = Graph(
+        "toy",
+        (SOURCE,),
+        (CREATE, base.node("gate"), base.node("use"), second_gate, release),
+    )
+
+    def forbidden_gate(context: KernelContext) -> KernelResult:
+        raise AssertionError("An unreached gate must not run")
+
+    def registry_with_second_gate() -> KernelRegistry:
+        registry = _gate_artifact_registry(raising=True)
+        registry.register(
+            _Kernel(
+                "second_gate@1",
+                Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE),
+                forbidden_gate,
+            )
+        )
+        return registry
+
+    source = _source_path(tmp_path / "src")
+    store = ContentStore(tmp_path / "store")
+    cold_key = None
+    for resume in ("auto", "require"):
+        registry = registry_with_second_gate()
+        manifest = _run(graph, source, store, registry, resume=resume)
+        gate = manifest.nodes["second_gate"]
+        assert gate.receipt["outcome"] == "unreached"
+        assert gate.receipt["execution"] == {
+            "schema": EXECUTION_SCHEMA,
+            "state": "unreached",
+            "blocked_by": {"use": manifest.nodes["use"].key},
+        }
+        assert not gate.artifacts and gate.frame_key is None
+        assert not gate.opaque_artifacts
+        assert "second_verdict" not in manifest.population("survey").household
+        assert manifest.nodes["release"].receipt["execution"]["blocked_by"] == {
+            "second_gate": gate.key
+        }
+        assert manifest.nodes["release"].receipt["tier"] == "evidence"
+        assert manifest.tier == "evidence"
+        calls = _calls(registry)
+        assert calls["second_gate@1"] == calls["release@1"] == 0
+        restored = RunManifest.from_json(manifest.to_json())
+        assert restored.nodes["second_gate"].receipt == gate.receipt
+        assert restored.key == manifest.key and restored.tier == "evidence"
+        rendered = explain_html(compile_graph(graph), manifest)
+        cache = "hit" if resume == "require" else "miss"
+        assert f"{cache} · gate unreached · unreached" in rendered
+        if resume == "require":
+            assert manifest.key == cold_key
+            assert all(node.hit for node in manifest.nodes.values())
+            assert sum(calls.values()) == 0
+        else:
+            cold_key = manifest.key
+            assert calls["gate@1"] == 1
+
+
 def test_unreached_propagates_through_a_structural_node_and_its_version(
     tmp_path: Path,
 ) -> None:
