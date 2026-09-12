@@ -3789,3 +3789,34 @@ def test_an_artifact_edge_crosses_population_versions_and_resume_policies(
     assert not any(receipt.hit for receipt in forbidden.nodes.values())
     assert forbidden.nodes["draw"].key == cold.nodes["draw"].key
     assert forbidden.nodes["draw"].typed_artifacts == cold.nodes["draw"].typed_artifacts
+
+
+def test_a_cached_record_missing_a_declared_artifact_is_a_miss(tmp_path: Path) -> None:
+    """Amendment 19: the miss decision lives inside the recompute fallback.
+
+    Dropping the producer's stored artifact entry makes its cached record a
+    miss, so ``auto`` re-executes the kernel and rewrites the bytes, and
+    ``require`` reports the miss rather than a corrupt store.
+    """
+    store = ContentStore(tmp_path / "store")
+    source = _source_path(tmp_path / "src")
+    first = _run(_artifact_graph(), source, store, _artifact_registry())
+    key = first.nodes["fit"].key
+    record_key = graph_executor._cache_record_key(key)
+    record = store.load_json(record_key)
+    record["opaque"] = [
+        entry for entry in record["opaque"] if entry["name"] != "forest"
+    ]
+    store.put_json(record_key, record, node_key=key, verify_existing=False)
+
+    with pytest.raises(StoreMiss, match="cache misses before execution: 'fit'"):
+        _run(_artifact_graph(), source, store, _artifact_registry(), resume="require")
+
+    recovered = _artifact_registry()
+    second = _run(_artifact_graph(), source, store, recovered)
+    assert not second.nodes["fit"].hit
+    assert _calls(recovered)["fit@1"] == 1
+    assert second.nodes["fit"].key == key
+    assert second.nodes["fit"].opaque_artifacts["forest"] == opaque_artifact_key(
+        key, "forest"
+    )

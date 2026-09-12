@@ -1148,7 +1148,12 @@ def _validate_result(
         artifacts[name] = payload
     for output in node.artifact_outputs:
         if output.name not in artifacts:
-            error = StoreMiss if cache_hit else NodeRejected
+            # A cached record that lacks a declared artifact is a miss, but
+            # that decision belongs to `_require_record_shape`, which runs
+            # inside the miss-to-recompute fallback. By the time a restored
+            # result reaches here the record has already been accepted, so a
+            # still-absent artifact is corruption, not a miss.
+            error = StoreCorrupt if cache_hit else NodeRejected
             raise error(
                 f"Node {node.id!r} is missing declared artifact {output.name!r}."
             )
