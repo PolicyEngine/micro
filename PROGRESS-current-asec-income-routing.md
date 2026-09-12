@@ -33,14 +33,46 @@ issuer, no engine execution, no native cell writes, no release claim.
       verbatim Universe and Values) from the verified dictionary, and
       cross-checked each against `asec_current_money_domains_v1.json`: exact match
       on position, length, universe and values for all nine money fields.
-- [ ] Module `current_asec_income_routing_source.py`
-- [ ] Tests `test_us_current_asec_income_routing.py`
-- [ ] Source contract note + changelog fragment
-- [ ] Ruff, CI inventory `--verify`, bounded pytest
+- [x] Module
+      `packages/microcosm-build/src/microcosm/build/us_runtime/current_asec_income_routing_source.py`
+      (commit 12ac3a75b, corrected in aa7bde7d4 and 7e2c7e77b).
+- [x] Tests `packages/microcosm-build/tests/test_us_current_asec_income_routing.py`
+      — 64 passing, no engine, no PUF fixture.
+- [x] Source contract note `docs/us-current-asec-income-routing-source.md`
+      plus `changelog.d/us-current-asec-income-routing-source.added.md`.
+- [x] `ruff check .` and `ruff format --check` clean;
+      `tools/ci_test_groups.py --verify` reports `verification=ok` and the new
+      file lands in `[fast] rest` and `[engine] us-am`, not `[defaulted]`.
+- [x] Mutation-checked the regressions: default-zero completion of an ambiguous
+      recipient zero, reading NIU from the raw number instead of the parent
+      status axis, collapsing receipt-with-net-zero into known nonreceipt, and
+      resolving an unknown slot account into a known non-IRA zero each turn the
+      suite red; reverting each returns it green.
+
+## Corrections made after independent review of the first draft
+
+1. The money owner normalizes `ANN_VAL`'s printed `-1` to a stored zero and
+   records `DECLARED_NIU` (`asec_current_money.py:974-977`). The first draft
+   re-derived NIU from the stored number, which would have read that cell as a
+   zero dollar annuity and also failed the literal-identity join. The amount
+   reading now comes from the parent's status axis.
+2. The nine printed money entries were retyped by hand; they are already
+   attested per vintage in `asec_current_money_domains_v1.json`. They are now
+   read from that packaged artifact under `money.RESOURCE_PINS[0]`.
+3. The published-allocation roster wrongly listed `DST_VAL1`, `DST_VAL2`,
+   `DST_YN`, `DST_SC1`, `DST_SC2` and `FRMOTR` as unflagged; all six are
+   flagged. `OI_YN` is unflagged and was missing from the list.
+4. Three printed universes were transcribed with ASCII `>=` where the
+   dictionary prints U+2265; they now carry the printed character.
 
 ## Next
 
-Write the qualifier and its invented-source tests; run red-then-green.
+Root review and integration into `graph_us_survey_enrichment`. The open
+decisions are listed under "Remaining work" in the contract note: canonical
+attachment and clone policy for these PUF-overlapping leaves, the ACS clone0
+conditional model and its reconciliation against the ACS aggregate anchors, the
+unobserved pension and distribution tax composition, the net property
+decomposition, and any other-income residual rule.
 
 ## Verified source literals (2025 dictionary, pages 43-49 + allocation pages)
 
