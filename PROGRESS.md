@@ -8,26 +8,53 @@ state" in `CLAUDE.md`.
 
 ## State
 
-In progress. Baseline before any change: `packages/microcosm-graph/tests`
-5 failed / 362 passed (exit 1) — exactly the five the brief names.
+Merges done, four graph pieces re-applied, graph package green (518 passed),
+fit green (191), spec check / groups verify / ruff clean. Build-side consumer
+suites running at the time of this entry; final results in `out.md` §5 and
+`experiments/893-reconciliation-amendments-19-20-20260912.md`. Nothing
+pushed, no PR, no new branch, `uv.lock` untouched.
 
 ## Done
 
-- Read `CLAUDE.md`, the charter's "Interface freeze" at the amendment-20 head
-  (`23ba24770`), PR #893's body, and the Amendment 19 lane's "Scope" list on
-  main. Diffed the graph package against `23ba24770` file by file and located
-  every consumer of each not-yet-amended piece outside the graph package.
-- `uv sync --all-packages --locked --extra us --extra uk` exit 0.
+- Read `CLAUDE.md`, the charter's "Interface freeze" at `23ba24770`, PR
+  #893's body, the Amendment 19 lane's "Scope" list; diffed the graph package
+  against `23ba24770` per file; AST-scanned every non-graph consumer.
+- `uv sync --all-packages --locked --extra us --extra uk` exit 0. Baseline
+  graph suite: 5 failed / 362 passed (the five the brief names).
+- `3010b7788` merge `origin/main`: graph package, fit sources, lock and
+  charter resolved to main's bytes; branch-only `attachments.py`,
+  `availability.py`, `schema.py` and the two branch-only graph tests removed
+  in the merge, to return only where consumed.
+- `051357909` merge `23ba24770` (amendment 20, merged from the branch head
+  because #912 was still on CI; the dispatcher re-runs `git merge origin/main`
+  after it lands — expected no-op for graph/fit/lock/charter).
+- `dc621c14c` seed digests re-pinned (the branch's `acs_transfer` and
+  `housing_inputs` plus amendment 20's `fit.qrf` move them); coverage report
+  regenerated; `--check` exit 0.
+- `cff8fbf32` calibrate/simulate H1 pins re-recorded (the branch's solver and
+  `Frame.__reduce__` changes move them); parity files 27 passed.
+- Pieces re-applied on main's files, each with graph-level tests the branch
+  never had: `752ab840f` raw-byte codec (13 US consumers; 8 codec tests),
+  `db1b7821a` Frame-metadata store (3 named consumers; 274 passed across the
+  store/population/executor/manifest files), `d1019762b` execution states
+  (the post-clone geography gate's typed artifact; replaces the amendment-19
+  gate refusal and its test; whole graph package 518 passed), `a16eeacf8`
+  population observer (4 consumers; 94 passed on the executor + B/F files).
+- Dropped for lack of a consumer: lazy retention (`attachments.py`, layer
+  08), `schema.py`, `keys._stream_file`, the `_write_node` refactor.
+- Layer map computed from `git log --name-only` attribution plus an AST
+  import scan with hard / name-hard / soft link classes; written to `out.md`.
 
 ## Next
 
-- `git merge origin/main`, then `git merge origin/amend-keyed-seed-and-uniform-draws`
-  (`23ba24770`), resolving every graph/fit/charter file to main's bytes.
-- Re-apply, as separate named commits, only the not-yet-amended pieces the US
-  runtime on this branch consumes; drop the rest and say so in `out.md`.
-- Run the graph and fit packages, the spine-blindness file, the spec-engine
-  check, `ci_test_groups --verify`, ruff, then the touched US suites.
-- Write the layer map and the draft amendment entries to `out.md`.
+- Record the build-side consumer results in `out.md` §5, commit the
+  `experiments/` copy of the report, leave `out.md` uncommitted (it is
+  another lane's tracked report; see the memory note).
+- For Max: piece C supersedes amendment 19's gate refusal (`out.md` §8.1);
+  the dropped lazy retention / `_stream_file` / `_write_node` pieces (§8.2–3).
+
+---
+
 # Amendment 19 — typed opaque artifacts on the graph interface
 
 Lane: `amend-typed-artifacts`, off `origin/main` at `3094bfe84`. Started
