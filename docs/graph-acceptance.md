@@ -292,9 +292,67 @@ Amendments so far (each re-locked):
     `hit` forced to false) and `load_certified` refuses it. Raised by the
     #847 gate review; adopted 2026-09-03.
 
+19. **Typed opaque artifacts.** A build has byte dependencies that are not
+    cells — a fitted forest, a transfer matrix, a prepared table another
+    node reads whole. Until now the only channel was
+    `KernelResult.artifacts`: undeclared bytes, invisible to the compiler,
+    outside every key, and unreadable by any other node, so the real edge
+    was carried out of band. `decl.py` gains `ArtifactType` (a nominal
+    `name` and positive `schema_version`; the graph never parses the
+    payload), `ArtifactOutput` (a named, typed subset of the bytes a kernel
+    already returns) and `ArtifactInput` (a consumer-local alias naming a
+    producer, its output, and the exact type), plus `Node.artifact_inputs`
+    and `Node.artifact_outputs`. `kernel.py` gains `ArtifactValue` —
+    immutable bytes with the artifact's content identity, its producer's
+    node key, and the producer's `NumericScope` — and
+    `KernelContext.artifacts`, one value per declared alias. It rides
+    before `tolerances`, so amendment 17's statement that `numerics` rides
+    at the end of the context stays literally true; the acceptance suite's
+    B2 field set gains it in its own commit. Undeclared diagnostic bytes
+    remain legal and stay unaddressable.
+
+    `compile_graph` resolves every edge and refuses an unknown producer, an
+    undeclared output, a type the producer does not declare, and
+    self-dependence; the producer becomes a predecessor, so an artifact
+    cycle is refused by the same depth computation as a cell cycle and C3's
+    "declared predecessors only" now covers bytes as well as columns. The
+    executor loads each declared input from the store after checking the
+    producer receipt's identity, hands over verified values, and folds the
+    payload and its provenance into the input context digest, so B4's
+    mutation check covers artifacts. A kernel that omits a declared output
+    is rejected; a cached record that lacks one is a miss. Bytes carry
+    their producer's numeric class across the edge and may not launder it:
+    a `platform_bitwise` or `tolerance_bound` payload requires a consumer
+    of the same class (amendments 16 and 17), because opaque bytes have no
+    per-cell coordinates to scope. The typed contract is pinned in the
+    cache record (its schema moves to 2 only for a node that declares
+    artifacts) and in `NodeReceipt.typed_artifacts`; a run manifest
+    carrying any typed edge serializes at schema 3 and authenticates every
+    edge on load, including that a release's `gate_ancestry` covers gates
+    reached only through bytes, so F2 cannot be routed around. `keys.py`
+    exposes `opaque_artifact_key` under the domain the executor already
+    used for undeclared opaque outputs, so declaring a type gives an
+    existing output the identity it always had.
+
+    **Node keys do not move.** Unlike amendments 11's `entrants` and 12's
+    `mass_partition`, the two new fields are normative but elided from the
+    canonical projection when empty, and a consumer's `typed_artifacts`
+    term is added only when it declares an input — so a node that declares
+    no artifacts projects, keys, and serializes exactly as it did before.
+    Measured rather than asserted: the whole `microcosm-graph` acceptance
+    suite is green with no re-pin, and the node keys of every node of the
+    three toy acceptance graphs (`small`, `chained`, `full`; 20 nodes) are
+    byte-identical before and after the change. Keys move only for a node
+    that declares an artifact edge, of which there are none on `main`.
+    Raised by the US launch integration branch
+    (`microcosm-us-launch-integration-20260909`), which extended both
+    frozen files without an amendment; extracted and adopted 2026-09-11.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.
+Amendment 19 elides its two fields when they are empty instead, so keys
+move only for the nodes that use them.
 
 ## Ownership
 
