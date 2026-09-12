@@ -14,6 +14,12 @@ from typing import TYPE_CHECKING, ClassVar, Self
 from microcosm.frame import Frame
 
 from .artifact_edges import require_compatible_scope, value_from_descriptor
+from .availability import (
+    execution_state,
+    has_execution,
+    unavailable_artifacts,
+    validate_execution,
+)
 from .canonical import canonical_json, sha256_domain
 from .decl import GATE_OUTCOMES, StructuralDelta
 from .errors import NodeRejectedError, StoreCorruptError
@@ -36,6 +42,7 @@ __all__ = ["Decision", "NodeReceipt", "PopulationView", "RunManifest"]
 
 _SCHEMA_VERSION = 2
 _TYPED_SCHEMA_VERSION = 3
+_EXCEPTION_SCHEMA_VERSION = 4
 _LEGACY_SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
@@ -300,6 +307,21 @@ class NodeReceipt:
                 raise TypeError("NodeReceipt.opaque_artifacts values must be strings")
             opaque_artifacts[name] = key
         object.__setattr__(self, "opaque_artifacts", MappingProxyType(opaque_artifacts))
+
+        if has_execution(self.receipt):
+            if self.legacy_capabilities:
+                raise ValueError("Legacy receipts cannot carry executor outcomes.")
+            validate_execution(
+                self.receipt,
+                self.capabilities,
+                self.typed_artifacts.get("outputs", {}),
+                self.opaque_artifacts,
+                has_products=bool(
+                    self.artifacts
+                    or self.frame_key is not None
+                    or self.weight_key is not None
+                ),
+            )
 
         wall_time = float(self.wall_time)
         if not math.isfinite(wall_time) or wall_time < 0:
@@ -621,7 +643,9 @@ class RunManifest:
         """Serialize the complete portable provenance as canonical JSON."""
 
         payload = {
-            "schema_version": _TYPED_SCHEMA_VERSION
+            "schema_version": _EXCEPTION_SCHEMA_VERSION
+            if any(execution_state(node.receipt) for node in self.nodes.values())
+            else _TYPED_SCHEMA_VERSION
             if any(node.typed_artifacts for node in self.nodes.values())
             else _SCHEMA_VERSION,
             "key": self.key,
@@ -665,6 +689,7 @@ class RunManifest:
             _LEGACY_SCHEMA_VERSION,
             _SCHEMA_VERSION,
             _TYPED_SCHEMA_VERSION,
+            _EXCEPTION_SCHEMA_VERSION,
         }:
             raise ValueError(f"unsupported manifest schema version {schema_version!r}")
 
@@ -693,6 +718,10 @@ class RunManifest:
             node.typed_artifacts for node in nodes.values()
         ):
             raise ValueError("Schema-v3 manifest must carry typed artifact provenance.")
+        if schema_version == _EXCEPTION_SCHEMA_VERSION and not any(
+            execution_state(node.receipt) for node in nodes.values()
+        ):
+            raise ValueError("Schema-v4 manifest must carry executor outcomes.")
         body = raw.get("content_addressed")
         if not isinstance(body, Mapping):
             raise ValueError("manifest content-addressed body must be an object")
@@ -1127,8 +1156,17 @@ def _node_receipt_from_payload(value: object, *, schema_version: int) -> NodeRec
     weight_key = value.get("weight_key")
     opaque_artifacts = value.get("opaque_artifacts", {})
     typed_artifacts = value.get("typed_artifacts", {})
-    if "typed_artifacts" in value and schema_version != _TYPED_SCHEMA_VERSION:
-        raise ValueError("Typed artifact provenance requires manifest schema 3.")
+    if (
+        isinstance(receipt, Mapping)
+        and has_execution(receipt)
+        and schema_version != _EXCEPTION_SCHEMA_VERSION
+    ):
+        raise ValueError("Executor exceptional outcomes require manifest schema 4.")
+    if "typed_artifacts" in value and schema_version not in {
+        _TYPED_SCHEMA_VERSION,
+        _EXCEPTION_SCHEMA_VERSION,
+    }:
+        raise ValueError("Typed artifact provenance requires manifest schema 3 or 4.")
     capabilities_payload = value.get("capabilities")
     if schema_version == _LEGACY_SCHEMA_VERSION:
         # Every schema-v1 receipt is legacy: v1 never recorded a tolerance, so
@@ -1228,7 +1266,16 @@ def _validate_typed_ancestry(nodes: Mapping[str, NodeReceipt]) -> None:
                 entry["producer"] != node_id
                 or entry["artifact"] != name
                 or value.producer_key != node.key
-                or node.opaque_artifacts.get(name) != value.key
+                or (
+                    # A gate exception recorded the output as unavailable, so
+                    # no stored identity exists for it; every other output
+                    # must resolve to its stored bytes.
+                    name
+                    not in unavailable_artifacts(
+                        node.receipt, node.typed_artifacts["outputs"]
+                    )
+                    and node.opaque_artifacts.get(name) != value.key
+                )
             ):
                 raise ValueError(
                     f"Node {node_id!r} typed artifact output provenance mismatch."
@@ -1268,7 +1315,42 @@ def _validate_typed_ancestry(nodes: Mapping[str, NodeReceipt]) -> None:
                     f"Node {node_id!r} typed artifact carries a numeric scope its "
                     f"consumer may not read: {error}"
                 ) from error
+            if entry["artifact"] in unavailable_artifacts(
+                producer.receipt, producer.typed_artifacts.get("outputs", {})
+            ) and (
+                execution_state(node.receipt) != "unreached"
+                or producer_id not in node.receipt["execution"]["blocked_by"]
+            ):
+                raise ValueError(
+                    f"Node {node_id!r} consumes an unavailable artifact but is not "
+                    "unreached by its producer."
+                )
             edges[node_id].add(producer_id)
+
+    for node_id, node in nodes.items():
+        if execution_state(node.receipt) != "unreached":
+            continue
+        for parent_id, parent_key in node.receipt["execution"]["blocked_by"].items():
+            parent = nodes.get(parent_id)
+            if parent is None or parent.key != parent_key:
+                raise ValueError(
+                    f"Node {node_id!r} unreached blocker {parent_id!r} is missing or "
+                    "has a different key."
+                )
+            if execution_state(parent.receipt) not in {"gate_exception", "unreached"}:
+                raise ValueError(
+                    f"Node {node_id!r} unreached blocker {parent_id!r} has no "
+                    "unavailable outputs."
+                )
+            if execution_state(parent.receipt) == "gate_exception" and not any(
+                entry["producer"] == parent_id
+                for entry in node.typed_artifacts.get("inputs", {}).values()
+            ):
+                raise ValueError(
+                    f"Node {node_id!r} names a gate exception blocker that is not "
+                    "one of its declared typed inputs."
+                )
+            edges[node_id].add(parent_id)
 
     memo: dict[str, frozenset[str]] = {}
 
