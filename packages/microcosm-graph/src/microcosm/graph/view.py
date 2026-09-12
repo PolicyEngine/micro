@@ -91,7 +91,8 @@ def describe(
         lines.append(
             "Artifact inputs: "
             + "; ".join(
-                f"{item.name} <- {item.producer}.{item.artifact} ({item.type.name}@{item.type.schema_version})"
+                f"{item.name} <- {item.producer}.{item.artifact} "
+                f"({item.type.name}@{item.type.schema_version})"
                 for item in node.artifact_inputs
             )
         )

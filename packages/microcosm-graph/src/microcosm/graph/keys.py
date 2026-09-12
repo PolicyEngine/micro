@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import platform as _platform
 import sys
 from collections.abc import Mapping
@@ -29,35 +28,6 @@ def _hash_parts(domain: str, *parts: object) -> str:
     return sha256_domain(domain, canonical_json(parts))
 
 
-def _stream_file(path: Path, digest: object, *, prefix_length: bool = False) -> int:
-    """Append bounded byte chunks and refuse a detected concurrent change."""
-
-    def identity(stat: os.stat_result) -> tuple[int, ...]:
-        return (
-            stat.st_dev,
-            stat.st_ino,
-            stat.st_size,
-            stat.st_mtime_ns,
-            stat.st_ctime_ns,
-        )
-
-    size = 0
-    with path.open("rb") as stream:
-        before = os.fstat(stream.fileno())
-        if prefix_length:
-            digest.update(before.st_size.to_bytes(8, "little"))
-        while chunk := stream.read(1024 * 1024):
-            digest.update(chunk)
-            size += len(chunk)
-        if (
-            size != before.st_size
-            or identity(before) != identity(os.fstat(stream.fileno()))
-            or identity(before) != identity(path.stat())
-        ):
-            raise OSError(f"Source file changed while hashing: {path}")
-    return size
-
-
 def _directory_identity(path: Path) -> tuple[str, int]:
     """Hash a directory as a deterministic sequence of relative file bytes.
 
@@ -72,9 +42,12 @@ def _directory_identity(path: Path) -> tuple[str, int]:
     files = sorted(candidate for candidate in path.rglob("*") if candidate.is_file())
     for candidate in files:
         relative = candidate.relative_to(path).as_posix().encode("utf-8")
+        content = candidate.read_bytes()
         digest.update(len(relative).to_bytes(8, "little"))
         digest.update(relative)
-        size += _stream_file(candidate, digest, prefix_length=True)
+        digest.update(len(content).to_bytes(8, "little"))
+        digest.update(content)
+        size += len(content)
     return digest.hexdigest(), size
 
 
@@ -88,9 +61,9 @@ def source_content_key(name: str, path: str | Path) -> str:
 
     source_path = Path(path)
     if source_path.is_file():
-        digest = hashlib.sha256()
-        size = _stream_file(source_path, digest)
-        content_hash = digest.hexdigest()
+        content = source_path.read_bytes()
+        content_hash = hashlib.sha256(content).hexdigest()
+        size = len(content)
     elif source_path.is_dir():
         content_hash, size = _directory_identity(source_path)
     else:
@@ -117,7 +90,16 @@ def artifact_key(node_key: str, entity: str, column: str) -> str:
 
 
 def opaque_artifact_key(node_key: str, name: str) -> str:
-    """Identity of an opaque or typed byte output (legacy domain preserved)."""
+    """Identity of an opaque or typed byte output of a node (amendment 19).
+
+    Typed and undeclared outputs share one derivation — the domain and
+    formula the executor already used for undeclared opaque artifacts — so
+    amendment 19 introduces no second identity scheme. It does not follow
+    that an existing output keeps its identity when a type is declared for
+    it: ``artifact_outputs`` is normative, so declaring one moves the
+    producing node's key, and this identity moves with it.
+    """
+
     return _hash_parts("node-artifact", node_key, name)
 
 
@@ -273,6 +255,10 @@ def node_key(
         if kernel_capabilities.numeric is Numeric.PLATFORM_BITWISE
         else ()
     )
+    # A declared artifact edge binds the consumer to the producer's exact
+    # bytes: the producer's node key resolves to the artifact identity the
+    # executor will load (amendment 19). A node declaring none adds no term,
+    # so its key is unchanged.
     typed_inputs = (
         (
             {

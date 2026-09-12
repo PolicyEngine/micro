@@ -152,7 +152,6 @@ class SeedSource(StrEnum):
 
     EXECUTOR = "executor"  # ``KernelContext.rng``, derived from the node key
     PARAM = "param"  # a literal ``seed`` parameter (legacy parity kernels)
-    KEYED = "keyed"  # normative stream params and stable draw coordinates
     NONE = "none"
 
 
@@ -274,7 +273,29 @@ class NumericScope:
 
 @dataclass(frozen=True)
 class ArtifactValue:
-    """Verified immutable bytes and the executor's typed producer provenance."""
+    """Verified immutable bytes and the executor's typed producer provenance.
+
+    A consumer reads one of these per declared :class:`~.decl.ArtifactInput`
+    alias. The executor has already checked that the bytes are the ones the
+    named producer stored under that output name, so ``key`` and
+    ``producer_key`` are the identities a receipt can be audited against.
+    Validating the payload against its nominal ``type`` is the consumer's
+    own job: the graph carries a name and version, not a parser (amendment
+    19).
+
+    Attributes:
+        payload: The stored bytes, immutable.
+        type: The nominal contract the producer declared.
+        key: The artifact's store identity, derived from the producing
+            node's key and the output name (``opaque_artifact_key``). It is
+            not a hash of ``payload``: the store validates the bytes filed
+            under it against their own recorded SHA-256 on every load
+            (charter E1), and the executor checks this key against the
+            producer's receipt before handing the value over.
+        producer_key: The node key of the node that produced it.
+        numerics: The producer's :class:`NumericScope`, so a gate reading an
+            artifact holds it to the same contract as a cell (amendment 17).
+    """
 
     payload: bytes
     type: ArtifactType
@@ -315,14 +336,16 @@ class KernelContext:
             in the node's inputs or outputs.
         strata: Read-only per-person strata of the population version.
         params: The node's parameters.
-        rng: The default generator seeded from the node key. KEYED kernels
-            instead use normative stream params and stable coordinates through
-            keyed_uniform; PARAM kernels use their declared literal seed.
-        artifacts: Immutable typed bytes for declared artifact aliases only.
-            Consumers validate versioned payloads before using them; nominal
-            types do not themselves verify arbitrary serialized data.
+        rng: A generator seeded from the node key. The only randomness a
+            kernel may use.
         sources: Source name to a content-verified path, for declared
             sources only.
+        artifacts: Declared artifact alias to its :class:`ArtifactValue`,
+            for the node's ``artifact_inputs`` only. Immutable typed bytes
+            the executor has already matched to their producer; a consumer
+            validates the versioned payload before using it, because a
+            nominal type does not itself verify serialized data (amendment
+            19).
         tolerances: ``(entity, column)`` of each declared input column to
             the :class:`Tolerance` its owning kernel declared, or ``None``
             for a bitwise owner. A gate compares against these.
@@ -340,9 +363,9 @@ class KernelContext:
     params: Mapping[str, Param]
     rng: np.random.Generator
     sources: Mapping[str, Path] = field(default_factory=dict)
+    artifacts: Mapping[str, ArtifactValue] = field(default_factory=dict)
     tolerances: Mapping[tuple[str, str], Tolerance | None] = field(default_factory=dict)
     numerics: Mapping[tuple[str, str], NumericScope] = field(default_factory=dict)
-    artifacts: Mapping[str, ArtifactValue] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         values = dict(self.artifacts)

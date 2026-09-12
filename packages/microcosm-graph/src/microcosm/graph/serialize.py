@@ -93,6 +93,8 @@ def _partition_from_payload(value: object, label: str) -> tuple[str, str] | None
 
 def _node_payload(node: Node) -> dict[str, object]:
     return {
+        # Elided when empty, so a graph declaring no artifact edges
+        # serializes exactly as it did before amendment 19.
         **(
             {
                 "artifact_inputs": [
@@ -100,10 +102,7 @@ def _node_payload(node: Node) -> dict[str, object]:
                         "name": item.name,
                         "producer": item.producer,
                         "artifact": item.artifact,
-                        "type": {
-                            "name": item.type.name,
-                            "schema_version": item.type.schema_version,
-                        },
+                        "type": _artifact_type_payload(item.type),
                     }
                     for item in node.artifact_inputs
                 ]
@@ -116,10 +115,7 @@ def _node_payload(node: Node) -> dict[str, object]:
                 "artifact_outputs": [
                     {
                         "name": item.name,
-                        "type": {
-                            "name": item.type.name,
-                            "schema_version": item.type.schema_version,
-                        },
+                        "type": _artifact_type_payload(item.type),
                     }
                     for item in node.artifact_outputs
                 ]
@@ -354,6 +350,10 @@ def _exact_fields(
 
 def _reject_json_constant(value: str) -> object:
     raise ValueError(f"graph JSON contains non-finite constant {value}")
+
+
+def _artifact_type_payload(type_: ArtifactType) -> dict[str, object]:
+    return {"name": type_.name, "schema_version": type_.schema_version}
 
 
 def _artifact_from_payload(

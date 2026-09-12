@@ -48,9 +48,9 @@ from enum import StrEnum
 from types import MappingProxyType
 
 __all__ = [
-    "ArtifactType",
     "ArtifactInput",
     "ArtifactOutput",
+    "ArtifactType",
     "DESCRIPTIVE_FIELDS",
     "DTYPES",
     "GATE_OUTCOMES",
@@ -180,7 +180,17 @@ class SourceRef:
 
 @dataclass(frozen=True)
 class ArtifactType:
-    """Nominal, versioned byte-payload contract; consumers validate the payload."""
+    """A nominal, versioned contract over an opaque byte payload.
+
+    The graph never parses the bytes: it carries the name and version a
+    producer declared and refuses an edge whose consumer expected another
+    pair. Validating the payload itself is the consumer's job (amendment
+    19).
+
+    Attributes:
+        name: The contract's name, e.g. ``"qrf.forest"``.
+        schema_version: A positive integer; a payload change bumps it.
+    """
 
     name: str
     schema_version: int
@@ -193,7 +203,16 @@ class ArtifactType:
 
 @dataclass(frozen=True)
 class ArtifactOutput:
-    """A named, typed subset of a kernel's existing opaque byte outputs."""
+    """A named, typed subset of a kernel's opaque byte outputs.
+
+    The bytes still arrive in ``KernelResult.artifacts`` under ``name``; the
+    declaration is what makes the output addressable by another node and
+    required of the kernel. Undeclared diagnostic bytes remain legal.
+
+    Attributes:
+        name: The name the kernel returns the bytes under.
+        type: The nominal contract the payload claims to satisfy.
+    """
 
     name: str
     type: ArtifactType
@@ -206,7 +225,19 @@ class ArtifactOutput:
 
 @dataclass(frozen=True)
 class ArtifactInput:
-    """A declared artifact edge, with a consumer-local alias and exact type."""
+    """A declared artifact edge, with a consumer-local alias and exact type.
+
+    The consumer reads the bytes under its own ``name``, so a node is not
+    coupled to what the producer called them. ``compile_graph`` resolves the
+    edge and refuses an unknown producer, an undeclared output, or a type
+    the producer does not declare.
+
+    Attributes:
+        name: The alias the consumer reads in ``KernelContext.artifacts``.
+        producer: The node id that declares the output.
+        artifact: The producer's declared output name.
+        type: The exact :class:`ArtifactType` the producer declares.
+    """
 
     name: str
     producer: str
@@ -324,11 +355,13 @@ class Node:
     Attributes:
         id: Unique within the graph.
         kernel: Kernel reference, e.g. ``"fit.qrf@1"``.
-        artifact_inputs: Typed byte dependencies, including other populations.
-            Each local alias names a declared producer output of exactly the
-            expected nominal type/version.
-        artifact_outputs: Required typed outputs within KernelResult.artifacts;
-            other untyped diagnostic bytes remain legal.
+        artifact_inputs: Typed byte dependencies on other nodes. Each local
+            alias names a declared producer output of exactly the expected
+            nominal type and version; the producer becomes a predecessor
+            without owning any cell of this node (amendment 19).
+        artifact_outputs: Typed byte outputs the kernel must return in
+            ``KernelResult.artifacts``. Other untyped diagnostic bytes
+            remain legal and stay unaddressable.
         inputs: Slices the kernel receives. Their owners are this node's
             predecessors.
         outputs: Cells this node owns. A ``CREATE`` node declares every
@@ -477,7 +510,12 @@ class Node:
                 )
 
     def normative(self) -> dict[str, object]:
-        """The projection that enters the node key (descriptive fields dropped)."""
+        """The projection that enters the node key (descriptive fields dropped).
+
+        The artifact declarations are normative but elided when empty, so a
+        node that declares none projects exactly as it did before amendment
+        19 and its key does not move.
+        """
         return {
             f.name: getattr(self, f.name)
             for f in fields(self)
@@ -747,7 +785,9 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                     f"but the incumbent is declared {base_dtype!r}."
                 )
 
-    # Artifact edges cross population versions, without changing cell ownership.
+    # Artifact edges cross population versions, without changing cell ownership
+    # (amendment 19). They join the same predecessor sets, so the depth
+    # computation below refuses an artifact cycle like any other.
     for node in graph.nodes:
         for binding in node.artifact_inputs:
             if binding.producer == node.id:
@@ -763,11 +803,13 @@ def compile_graph(graph: Graph) -> CompiledGraph:
             output = outputs.get(binding.artifact)
             if output is None:
                 raise GraphError(
-                    f"Node {node.id!r}: producer {producer.id!r} has no declared artifact {binding.artifact!r}."
+                    f"Node {node.id!r}: producer {producer.id!r} has no declared "
+                    f"artifact {binding.artifact!r}."
                 )
             if output.type != binding.type:
                 raise GraphError(
-                    f"Node {node.id!r}: artifact {binding.artifact!r} type does not match its producer."
+                    f"Node {node.id!r}: artifact {binding.artifact!r} type does not "
+                    "match its producer."
                 )
             predecessors[node.id].add(producer.id)
 

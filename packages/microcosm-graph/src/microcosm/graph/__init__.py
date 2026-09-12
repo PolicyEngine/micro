@@ -56,14 +56,8 @@ from .kernel import (
     source_hash,
 )
 from .keys import platform_fingerprint
-from .randomness import keyed_uniform
 
 __all__ = [
-    "ArtifactInput",
-    "ArtifactOutput",
-    "ArtifactType",
-    "ArtifactValue",
-    "keyed_uniform",
     "platform_fingerprint",
     "DESCRIPTIVE_FIELDS",
     "DTYPES",
@@ -72,6 +66,10 @@ __all__ = [
     "PARTITION_DTYPES",
     "ROWS_ALL",
     "WEIGHT_KINDS",
+    "ArtifactInput",
+    "ArtifactOutput",
+    "ArtifactType",
+    "ArtifactValue",
     "Capabilities",
     "CompiledGraph",
     "ContentStore",
@@ -105,7 +103,6 @@ __all__ = [
     "NumericScope",
     "Tolerance",
     "Slice",
-    "SourceBytesCodec",
     "SourceCodec",
     "SourceCodecRegistry",
     "SourceRef",
@@ -124,7 +121,6 @@ __all__ = [
     "graph_from_json",
     "graph_to_json",
     "load_source",
-    "load_source_bytes",
     "run_graph",
     "source_hash",
 ]
@@ -148,11 +144,9 @@ _check_frame_version()
 
 from .codecs import (  # noqa: E402 - check dependency series before runtime import
     SOURCE_CODECS,
-    SourceBytesCodec,
     SourceCodec,
     SourceCodecRegistry,
     load_source,
-    load_source_bytes,
 )
 from .executor import NodeRejected, run_graph  # noqa: E402
 from .explain import explain_html  # noqa: E402
