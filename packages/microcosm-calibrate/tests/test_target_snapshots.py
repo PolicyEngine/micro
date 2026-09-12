@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +32,7 @@ from microcosm.calibrate.target_snapshots import (
     TargetSnapshotError,
     TargetSnapshotObserver,
     TargetSnapshotWriter,
+    iter_history,
     signed_relative_error,
     target_identity_digest,
     validate_target_snapshot,
@@ -192,10 +194,20 @@ def test_validate_rejects_non_finite_and_inconsistent_relative_error():
 
 
 def test_validate_refuses_record_level_identifiers_in_context():
-    _, observer = _collect(context={"household_id": 4})
-    bound = observer.bind(names=("a@2024",), targets=np.array([10.0]))
+    """A record-level identifier is refused even as a bare scalar.
+
+    The closed metadata contract now catches this where the caller set it, at
+    observer construction, rather than at the first mid-run emission.
+    """
     with pytest.raises(TargetSnapshotError, match="aggregate-only"):
-        bound.snapshot(np.array([9.0]), epoch=1, epochs=1, iterate=ITERATE_CURRENT)
+        _collect(context={"household_id": 4})
+    _, observer = _collect()
+    payload = observer.bind(names=("a@2024",), targets=np.array([10.0])).snapshot(
+        np.array([9.0]), epoch=1, epochs=1, iterate=ITERATE_CURRENT
+    )
+    payload["context"] = {"household_id": 4}
+    with pytest.raises(TargetSnapshotError, match="aggregate-only"):
+        validate_target_snapshot(payload)
 
 
 def test_validate_refuses_unknown_top_level_keys():
@@ -679,9 +691,11 @@ def test_the_aggregate_only_scan_covers_the_whole_payload():
     with pytest.raises(TargetSnapshotError, match="aggregate-only"):
         validate_target_snapshot(smuggled)
 
+    # best_retained is a closed triple, so a record-level key has no slot at
+    # all rather than needing the denylist to catch it.
     smuggled = json.loads(json.dumps(payload))
     smuggled["best_retained"]["source_values"] = [1.0, 2.0]
-    with pytest.raises(TargetSnapshotError, match="aggregate-only"):
+    with pytest.raises(TargetSnapshotError, match="unknown keys"):
         validate_target_snapshot(smuggled)
 
     smuggled = json.loads(json.dumps(payload))
@@ -724,3 +738,358 @@ def test_a_closing_state_run_still_reports_no_retained_best_on_selected():
     )
     selected = [s for s in seen if s["iterate"] == ITERATE_SELECTED][-1]
     assert selected["best_retained"]["available"] is False
+
+
+# --------------------------------------------------------------------------
+# Closing the four reviewed findings (#908 independent review, head bae1887ff)
+# --------------------------------------------------------------------------
+
+
+def _payload(**observer_kwargs) -> dict:
+    _, observer = _collect(**observer_kwargs)
+    return observer.bind(names=("a@2024",), targets=np.array([10.0])).snapshot(
+        np.array([9.0]), epoch=1, epochs=1, iterate=ITERATE_CURRENT
+    )
+
+
+# Finding 1 — a closed, typed, bounded aggregate metadata contract.
+
+
+def test_context_refuses_the_record_vectors_the_review_smuggled_through():
+    """The exact counterexample from the review probe, at every location."""
+    vectors = {
+        "household_weights": [10.0, 20.0],
+        "tax_unit_id": [101, 102],
+        "spm_unit_id": [201, 202],
+    }
+    with pytest.raises(TargetSnapshotError):
+        TargetSnapshotObserver(sink=lambda _p: None, run_id="r", context=vectors)
+    _, observer = _collect()
+    bound = observer.bind(names=("a@2024",), targets=np.array([10.0]))
+    with pytest.raises(TargetSnapshotError):
+        bound.with_search(**vectors)
+    payload = _payload()
+    for location in ("context", "search", "selection"):
+        smuggled = json.loads(json.dumps(payload))
+        smuggled[location] = dict(vectors)
+        with pytest.raises(TargetSnapshotError):
+            validate_target_snapshot(smuggled)
+
+
+def test_metadata_refuses_arbitrary_nested_payloads():
+    """A nested mapping is not aggregate metadata, whatever its key names are."""
+    with pytest.raises(TargetSnapshotError):
+        TargetSnapshotObserver(
+            sink=lambda _p: None, run_id="r", context={"display": {"unit": "USD"}}
+        )
+    payload = _payload()
+    for location in ("context", "search", "selection"):
+        nested = json.loads(json.dumps(payload))
+        nested[location] = {"display": {"unit": "USD"}}
+        with pytest.raises(TargetSnapshotError):
+            validate_target_snapshot(nested)
+
+
+def test_identifier_fields_must_be_strings():
+    with pytest.raises(TargetSnapshotError):
+        TargetSnapshotObserver(
+            sink=lambda _p: None, run_id="r", candidate_id={"tax_unit_id": [101, 102]}
+        )
+    with pytest.raises(TargetSnapshotError):
+        TargetSnapshotObserver(sink=lambda _p: None, run_id=7)
+    for broken in ({"unexpected": [1, 2]}, 7, ["a"]):
+        payload = _payload()
+        payload["candidate_id"] = broken
+        with pytest.raises(TargetSnapshotError):
+            validate_target_snapshot(payload)
+
+
+def test_supported_scalar_metadata_survives_and_is_bounded():
+    supported = {
+        "dataset": "invented_2024",
+        "replicate": 3,
+        "tolerance": 0.5,
+        "dense": True,
+        "note": None,
+    }
+    payload = _payload(context=supported)
+    assert payload["context"] == supported
+    with pytest.raises(TargetSnapshotError):
+        TargetSnapshotObserver(
+            sink=lambda _p: None,
+            run_id="r",
+            context={f"k{i}": i for i in range(1000)},
+        )
+    with pytest.raises(TargetSnapshotError):
+        TargetSnapshotObserver(
+            sink=lambda _p: None, run_id="r", context={"note": "x" * 100_000}
+        )
+
+
+def test_the_structured_metadata_solve_emits_round_trips():
+    """The shapes solve.py actually emits stay supported, unchanged."""
+    _, observer = _collect()
+    bound = observer.bind(names=("a@2024",), targets=np.array([10.0])).with_search(
+        budget_iteration=2, budget_iters=8, l0_lambda=0.25
+    )
+    payload = bound.snapshot(
+        np.array([9.0]),
+        epoch=1,
+        epochs=1,
+        iterate=ITERATE_SELECTED,
+        precision="float64",
+        loss=0.5,
+        best_retained={"available": True, "epoch": 1, "loss": 0.4},
+        selection={
+            "rule": "best_feasible_loss",
+            "selected_epoch": 1,
+            "epochs_executed": 1,
+            "epoch_convention": "completed_optimizer_updates; zero is start",
+            "selected_loss_float32": 0.4,
+            "closing_iterate_loss_float32": 0.6,
+        },
+    )
+    assert payload["search"] == {
+        "budget_iteration": 2,
+        "budget_iters": 8,
+        "l0_lambda": 0.25,
+    }
+    assert payload["selection"]["rule"] == "best_feasible_loss"
+    assert payload["best_retained"] == {"available": True, "epoch": 1, "loss": 0.4}
+    validate_target_snapshot(json.loads(json.dumps(payload)))
+
+
+# Finding 2 — a sink must not be able to reach caller metadata or later snapshots.
+
+
+def test_sink_mutation_cannot_reach_caller_metadata_or_the_next_snapshot():
+    context = {"dataset": "invented_2024", "replicate": 1}
+    seen: list[dict] = []
+
+    def mutating(payload):
+        payload["context"]["dataset"] = "changed-by-sink"
+        payload["search"]["budget_iteration"] = -1
+        payload["selection"]["rule"] = "changed-by-sink"
+        payload["best_retained"]["available"] = False
+        payload["targets"][0]["name"] = "changed-by-sink"
+        seen.append(json.loads(json.dumps(payload)))
+
+    observer = TargetSnapshotObserver(sink=mutating, run_id="r", context=context)
+    bound = observer.bind(names=("a@2024",), targets=np.array([10.0])).with_search(
+        budget_iteration=2, budget_iters=8, l0_lambda=0.25
+    )
+    kwargs = dict(
+        epochs=2,
+        iterate=ITERATE_CURRENT,
+        best_retained={"available": True, "epoch": 1, "loss": 0.4},
+        selection={"rule": "best_feasible_loss", "selected_epoch": 1},
+    )
+    bound.emit(np.array([9.0]), epoch=1, **kwargs)
+    second = bound.snapshot(np.array([9.0]), epoch=2, **kwargs)
+
+    assert context == {"dataset": "invented_2024", "replicate": 1}
+    assert second["context"] == {"dataset": "invented_2024", "replicate": 1}
+    assert second["search"]["budget_iteration"] == 2
+    assert second["selection"]["rule"] == "best_feasible_loss"
+    assert second["best_retained"]["available"] is True
+    assert second["targets"][0]["name"] == "a@2024"
+    assert seen[0]["context"]["dataset"] == "changed-by-sink"
+
+
+def test_a_delivered_snapshot_shares_no_mutable_object_with_its_caller():
+    """The detachment guarantee, pinned structurally rather than by example.
+
+    Every supported metadata value is an immutable scalar and every container
+    is freshly built, so a delivered payload has no mutable object in common
+    with the observer, the bound view, the caller's arguments, or the previous
+    snapshot. A future seam that reintroduced an alias would fail here.
+    """
+
+    def mutable_ids(value, seen=None):
+        seen = set() if seen is None else seen
+        if isinstance(value, (dict, list)):
+            seen.add(id(value))
+            items = value.values() if isinstance(value, dict) else value
+            for item in items:
+                mutable_ids(item, seen)
+        return seen
+
+    context = {"dataset": "invented_2024"}
+    best = {"available": True, "epoch": 1, "loss": 0.4}
+    selection = {"rule": "best_feasible_loss"}
+    observer = TargetSnapshotObserver(sink=lambda _p: None, run_id="r", context=context)
+    bound = observer.bind(names=("a@2024",), targets=np.array([10.0])).with_search(
+        budget_iteration=1
+    )
+    kwargs = dict(
+        epochs=2, iterate=ITERATE_CURRENT, best_retained=best, selection=selection
+    )
+    first = bound.snapshot(np.array([9.0]), epoch=1, **kwargs)
+    second = bound.snapshot(np.array([9.0]), epoch=2, **kwargs)
+    caller_side = (
+        mutable_ids(context)
+        | mutable_ids(dict(observer.context))
+        | mutable_ids(best)
+        | mutable_ids(selection)
+        | mutable_ids(dict(bound.search))
+        | mutable_ids(second)
+    )
+    assert not (mutable_ids(first) & caller_side)
+
+
+# Finding 3 — a history chunk becomes visible only once its bytes are complete.
+
+
+def test_a_history_chunk_is_published_only_after_its_bytes_are_complete(
+    tmp_path: Path, monkeypatch
+):
+    from microcosm.calibrate import target_snapshots as module
+
+    writer = TargetSnapshotWriter(tmp_path)
+    real_link = module.os.link
+    published: list[dict] = []
+
+    def observing_link(source, target, *args, **kwargs):
+        # At publication time the bytes must already be complete and the
+        # immutable name must not exist yet.
+        published.append(
+            {
+                "retained_before": writer.retained(),
+                "complete": json.loads(Path(source).read_text(encoding="utf-8")),
+                "target_exists": Path(target).exists(),
+            }
+        )
+        return real_link(source, target, *args, **kwargs)
+
+    monkeypatch.setattr(module.os, "link", observing_link)
+    writer(_payload())
+    assert len(published) == 1, "the chunk was not published through a temporary file"
+    assert published[0]["retained_before"] == ()
+    assert published[0]["target_exists"] is False
+    assert published[0]["complete"]["schema"] == TARGET_SNAPSHOT_SCHEMA
+    assert len(list(iter_history(tmp_path))) == 1
+
+
+def test_a_failed_chunk_write_leaves_no_partial_or_leftover_file(
+    tmp_path: Path, monkeypatch
+):
+    from microcosm.calibrate import target_snapshots as module
+
+    writer = TargetSnapshotWriter(tmp_path)
+    real_fsync = module.os.fsync
+    calls: list[int] = []
+
+    def failing_fsync(fd):
+        calls.append(fd)
+        if len(calls) == 1:
+            raise OSError("invented disk failure mid-chunk")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(module.os, "fsync", failing_fsync)
+    with pytest.raises(OSError):
+        writer(_payload())
+    monkeypatch.undo()
+
+    assert writer.retained() == ()
+    assert list(iter_history(tmp_path)) == []
+    leftovers = sorted(p.name for p in (tmp_path / "history").iterdir())
+    assert leftovers == [], f"failed write left {leftovers} behind"
+
+
+def test_history_publication_still_refuses_to_overwrite_an_existing_chunk(
+    tmp_path: Path,
+):
+    writer = TargetSnapshotWriter(tmp_path)
+    payload = _payload()
+    writer(payload)
+    with pytest.raises(TargetSnapshotError, match="immutable"):
+        writer(payload)
+    assert len(writer.retained()) == 1
+    assert sorted(p.name for p in (tmp_path / "history").iterdir()) == ["00000001.json"]
+
+
+# Finding 4 — the public codec refuses impossible identity and best metadata.
+
+
+def test_codec_refuses_the_impossible_payloads_the_review_reproduced():
+    cases = {
+        "epoch_exceeds_epochs": {"epoch": 99, "epochs": 1},
+        "invalid_timestamp": {"created_at": "not-a-time"},
+        "naive_timestamp": {"created_at": "2026-09-12T00:00:00"},
+        "invalid_best_metadata": {
+            "iterate": ITERATE_BEST_RETAINED,
+            "best_retained": {"available": True, "epoch": -7, "loss": "not-a-number"},
+        },
+        "candidate_id_not_string": {"candidate_id": {"unexpected": [1, 2]}},
+        "best_epoch_exceeds_epochs": {
+            "best_retained": {"available": True, "epoch": 99, "loss": 0.1}
+        },
+        "unavailable_best_carries_an_epoch": {
+            "best_retained": {"available": False, "epoch": 1, "loss": None}
+        },
+        "unavailable_best_carries_a_loss": {
+            "best_retained": {"available": False, "epoch": None, "loss": 0.1}
+        },
+        "best_retained_unknown_key": {
+            "best_retained": {
+                "available": True,
+                "epoch": 1,
+                "loss": 0.1,
+                "extra": "x",
+            }
+        },
+        "non_finite_rows_exceeds_n_targets": {"non_finite_rows": 99},
+    }
+    for name, changes in cases.items():
+        payload = _payload()
+        payload.update(changes)
+        try:
+            validate_target_snapshot(payload)
+        except TargetSnapshotError:
+            continue
+        raise AssertionError(f"the codec accepted an impossible payload: {name}")
+
+
+def test_codec_accepts_the_epochs_the_solver_actually_selects():
+    """A retained-best run returns an earlier iterate; epoch 0 is its floor."""
+    _, observer = _collect()
+    bound = observer.bind(names=("a@2024",), targets=np.array([10.0]))
+    for epoch in (0, 3, 7):
+        payload = bound.snapshot(
+            np.array([9.0]),
+            epoch=epoch,
+            epochs=7,
+            iterate=ITERATE_SELECTED,
+            precision="float64",
+            best_retained={"available": True, "epoch": epoch, "loss": 0.4},
+        )
+        assert payload["epoch"] == epoch
+        validate_target_snapshot(json.loads(json.dumps(payload)))
+
+
+def test_non_finite_diagnostics_stay_null_statuses_rather_than_aborting():
+    """The observer must never be the thing that ends a run that would finish."""
+    _, observer = _collect()
+    bound = observer.bind(names=("a@2024", "b@2024"), targets=np.array([10.0, 0.0]))
+    payload = bound.emit(
+        np.array([float("nan"), 1.0]),
+        epoch=1,
+        epochs=1,
+        iterate=ITERATE_CURRENT,
+        loss=float("inf"),
+        best_retained={"available": True, "epoch": 1, "loss": float("nan")},
+        selection={"rule": "best_feasible_loss", "selected_loss_float32": float("inf")},
+    )
+    assert payload["loss"] is None
+    assert payload["non_finite_rows"] == 1
+    assert payload["best_retained"] == {"available": True, "epoch": 1, "loss": None}
+    assert payload["selection"]["selected_loss_float32"] is None
+    validate_target_snapshot(json.loads(json.dumps(payload)))
+
+
+def test_created_at_is_a_timezone_aware_timestamp():
+    payload = _payload()
+    parsed = datetime.fromisoformat(payload["created_at"])
+    assert parsed.tzinfo is not None
+    naive = _payload(clock=lambda: datetime(2026, 9, 12))  # noqa: DTZ001
+    assert datetime.fromisoformat(naive["created_at"]).tzinfo is not None

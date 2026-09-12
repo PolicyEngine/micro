@@ -12,10 +12,34 @@ Three promises the codec is built to keep.
 
 **Aggregate-only.** A snapshot carries one row per calibration *target* and
 nothing else. There is no weight vector, no record index, and no household,
-person, benefit-unit or source-record identifier; :func:`validate_target_snapshot`
-refuses a payload that carries an unknown top-level key or a record-level key
-name anywhere inside it, so smuggling record data through the ``context`` seam
-fails loudly rather than silently shipping.
+person, benefit-unit or source-record identifier. That is enforced by a closed
+contract rather than by a denylist over arbitrary JSON: the payload's keys are
+a closed set, its identifiers (``run_id``, ``candidate_id``, ``phase``) are
+strings, and *every* metadata seam — ``context``, ``search``, ``selection`` and
+``best_retained`` — is a flat mapping of string keys to JSON **scalars**
+(``str``, ``int``, ``float``, ``bool``, ``null``), bounded in entry count, key
+length and string length (:data:`MAX_METADATA_ENTRIES`,
+:data:`MAX_METADATA_KEY_LENGTH`, :data:`MAX_METADATA_STRING_LENGTH`). A list is
+not a scalar, so a record-level vector has no shape to travel in, at any depth;
+a nested mapping is refused for the same reason. The record-level key-name rule
+(:data:`RECORD_LEVEL_KEY_NAMES`) is kept on top of that, because a *scalar*
+``household_id`` is still record-level identity, and because those are the
+names the version-2 staging content policy refuses on upload (microcosm#896).
+
+The contract is the shape every real caller already emits:
+:mod:`~microcosm.calibrate.solve` emits ``search`` as
+``{budget_iteration, budget_iters, l0_lambda}``, ``selection`` as the iterate
+selection receipt (``rule``, ``selected_epoch``, ``epochs_executed``,
+``epoch_convention``, ``selected_loss_float32``,
+``closing_iterate_loss_float32``) and ``best_retained`` as the closed triple
+``{available, epoch, loss}``. ``context`` is caller-supplied run labelling and
+has no in-tree producer, so it takes the same flat scalar contract rather than
+a wider one invented for a caller that does not exist.
+
+Because every supported metadata value is an immutable scalar, the mapping the
+sink receives is a freshly built container of its own: a sink that mutates a
+delivered ``context``, ``search``, ``selection``, ``best_retained`` or target
+row cannot reach the caller's mapping, the observer, or the next snapshot.
 
 **Honest iterate labelling.** ``current`` means "the weights the optimizer held
 at this epoch". ``best_retained`` means "these values are the incumbent best
@@ -41,9 +65,15 @@ The store keeps a ``latest.json`` replaced atomically (temporary file in the
 same directory, ``fsync``, ``os.replace``, parent ``fsync`` — the idiom
 ``microcosm.build.logbook_adoption.atomic_write_json`` already uses, reproduced
 here because the calibrate shard may not depend on the build shard) so a
-concurrent dashboard read never sees a partially written document, plus
-write-once history chunks under ``history/`` with a bounded retention whose
-drops are recorded rather than silent.
+concurrent dashboard read never sees a partially written document. History
+chunks under ``history/`` are published the same way and for the same reason:
+the bytes go to a hidden temporary file which is written, flushed and
+``fsync``-ed first, and only then does the chunk acquire its immutable
+``history/<sequence>.json`` name, through :func:`os.link` — atomic, and it
+refuses rather than overwrites when that name already exists. So a polling
+reader sees a chunk only once its bytes are complete, and a write that fails
+part-way leaves neither a partial chunk nor a stray temporary behind. Retention
+is bounded and its drops are recorded rather than silent.
 
 This module is a leaf: it imports only the standard library and numpy, so
 :mod:`microcosm.calibrate.solve` can import it without a cycle.
@@ -70,6 +100,10 @@ __all__ = [
     "ITERATE_CURRENT",
     "ITERATE_SELECTED",
     "LATEST_SNAPSHOT_FILENAME",
+    "MAX_METADATA_ENTRIES",
+    "MAX_METADATA_KEY_LENGTH",
+    "MAX_METADATA_STRING_LENGTH",
+    "METADATA_LOCATIONS",
     "RECORD_LEVEL_KEY_NAMES",
     "SNAPSHOT_HISTORY_DIRNAME",
     "SNAPSHOT_HISTORY_INDEX_FILENAME",
@@ -125,6 +159,28 @@ RECORD_LEVEL_KEY_NAMES = frozenset(
         "source_values",
     }
 )
+
+#: Every metadata seam the schema has. The same contract applies to all of
+#: them, so a seam added later is covered by construction rather than by
+#: someone remembering to extend a list.
+METADATA_LOCATIONS = ("context", "search", "selection", "best_retained")
+
+#: Bounds on a metadata mapping. Aggregate metadata labels a run; it is not a
+#: payload channel, and a bound is what makes that difference enforceable.
+MAX_METADATA_ENTRIES = 32
+MAX_METADATA_KEY_LENGTH = 64
+MAX_METADATA_STRING_LENGTH = 256
+
+#: JSON integers stay exactly representable in an IEEE-754 double, so every
+#: consumer (including a browser) reads back what was written.
+_MAX_EXACT_JSON_INTEGER = 2**53
+
+#: The closed shape of ``best_retained``. ``available`` says whether the
+#: optimizer is running a retain-best rule at all; ``epoch``/``loss`` describe
+#: the incumbent when there is one, and are null when there is not (including
+#: on a retaining run that has not recorded one yet, and on a run whose closing
+#: iterate won).
+_BEST_RETAINED_KEYS = frozenset({"available", "epoch", "loss"})
 
 _TOP_LEVEL_KEYS = frozenset(
     {
@@ -276,6 +332,189 @@ def target_identity_digest(
     ).hexdigest()
 
 
+def _identifier(value: object, *, what: str, required: bool) -> str | None:
+    """A string identifier, or ``None`` where one is optional.
+
+    Coercion is deliberately absent: ``str({"tax_unit_id": [101, 102]})``
+    is a perfectly good Python string, and stringifying a mapping is exactly
+    how record-level content reached a supposedly aggregate-only identifier.
+    """
+    if value is None:
+        if required:
+            raise TargetSnapshotError(f"{what} must be a non-empty string.")
+        return None
+    if not isinstance(value, str):
+        raise TargetSnapshotError(
+            f"{what} must be a string, got {type(value).__name__}: {value!r}."
+        )
+    if not value:
+        raise TargetSnapshotError(f"{what} must be a non-empty string.")
+    if len(value) > MAX_METADATA_STRING_LENGTH:
+        raise TargetSnapshotError(
+            f"{what} must be at most {MAX_METADATA_STRING_LENGTH} characters."
+        )
+    return value
+
+
+def _metadata_key(key: object, *, where: str) -> str:
+    if not isinstance(key, str) or not key:
+        raise TargetSnapshotError(
+            f"{where} keys must be non-empty strings, got {key!r}."
+        )
+    if len(key) > MAX_METADATA_KEY_LENGTH:
+        raise TargetSnapshotError(
+            f"{where} key {key!r} exceeds {MAX_METADATA_KEY_LENGTH} characters."
+        )
+    if key.lower() in RECORD_LEVEL_KEY_NAMES:
+        raise TargetSnapshotError(
+            f"{where} carries the record-level key {key!r}; calibration target "
+            "snapshots are aggregate-only."
+        )
+    return key
+
+
+def _metadata_value(value: object, *, where: str, key: str) -> object:
+    """One aggregate metadata value: a JSON scalar, and nothing else.
+
+    A non-finite float becomes ``None`` rather than an error, for the same
+    reason a non-finite estimate does: a diverging run legitimately holds one,
+    JSON cannot carry it, and the observer must never be the thing that ends a
+    calibration an unobserved run would have finished.
+    """
+    if isinstance(value, np.generic):
+        value = value.item()
+    if value is None or isinstance(value, (bool, str)):
+        if isinstance(value, str) and len(value) > MAX_METADATA_STRING_LENGTH:
+            raise TargetSnapshotError(
+                f"{where}[{key!r}] exceeds {MAX_METADATA_STRING_LENGTH} characters; "
+                "aggregate metadata labels a run, it is not a payload channel."
+            )
+        return value
+    if isinstance(value, int):
+        if abs(value) >= _MAX_EXACT_JSON_INTEGER:
+            raise TargetSnapshotError(
+                f"{where}[{key!r}] is not exactly representable as a JSON number."
+            )
+        return value
+    if isinstance(value, float):
+        return _finite_or_none(value)
+    raise TargetSnapshotError(
+        f"{where}[{key!r}] must be a JSON scalar (string, number, boolean or null), "
+        f"got {type(value).__name__}. Calibration target snapshots carry aggregate "
+        "metadata only: no record-level vectors and no nested payloads."
+    )
+
+
+def normalize_metadata(
+    value: object, *, where: str, allow_none: bool = False
+) -> dict[str, object] | None:
+    """Validate ``value`` against the metadata contract and return a fresh copy.
+
+    The returned mapping is newly built and holds only immutable scalars, so
+    the caller's mapping and every later snapshot are detached from whatever a
+    sink does to the one it was handed.
+    """
+    if value is None and allow_none:
+        return None
+    if not isinstance(value, Mapping):
+        raise TargetSnapshotError(
+            f"{where} must be a mapping of aggregate metadata, got "
+            f"{type(value).__name__}."
+        )
+    if len(value) > MAX_METADATA_ENTRIES:
+        raise TargetSnapshotError(
+            f"{where} carries {len(value)} entries; at most {MAX_METADATA_ENTRIES} "
+            "aggregate metadata entries are supported."
+        )
+    normalized: dict[str, object] = {}
+    for key, item in value.items():
+        name = _metadata_key(key, where=where)
+        normalized[name] = _metadata_value(item, where=where, key=name)
+    return normalized
+
+
+def normalize_best_retained(
+    value: object, *, epochs: int | None = None
+) -> dict[str, object]:
+    """The closed ``{available, epoch, loss}`` triple, freshly built."""
+    if value is None:
+        return {"available": False, "epoch": None, "loss": None}
+    if not isinstance(value, Mapping):
+        raise TargetSnapshotError(
+            f"best_retained must be a mapping, got {type(value).__name__}."
+        )
+    unknown = sorted(set(map(str, value)) - _BEST_RETAINED_KEYS)
+    if unknown:
+        raise TargetSnapshotError(f"best_retained carries unknown keys: {unknown}.")
+    if "available" not in value:
+        raise TargetSnapshotError("best_retained must record whether one is available.")
+    available = value["available"]
+    if not isinstance(available, bool):
+        raise TargetSnapshotError("best_retained.available must be a boolean.")
+    epoch = value.get("epoch")
+    if isinstance(epoch, np.generic):
+        epoch = epoch.item()
+    if epoch is not None:
+        if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0:
+            raise TargetSnapshotError(
+                f"best_retained.epoch must be a non-negative integer or null, "
+                f"got {epoch!r}."
+            )
+        if epochs is not None and epoch > epochs:
+            raise TargetSnapshotError(
+                f"best_retained.epoch is {epoch}, past the {epochs} epoch(s) this "
+                "snapshot covers."
+            )
+    loss = value.get("loss")
+    if isinstance(loss, np.generic):
+        loss = loss.item()
+    if loss is not None:
+        if isinstance(loss, bool) or not isinstance(loss, (int, float)):
+            raise TargetSnapshotError(
+                f"best_retained.loss must be a number or null, got {loss!r}."
+            )
+        loss = _finite_or_none(loss)
+    if not available and (epoch is not None or loss is not None):
+        raise TargetSnapshotError(
+            "best_retained says no best iterate is available, so it cannot also "
+            f"describe one (epoch={epoch!r}, loss={loss!r})."
+        )
+    return {"available": available, "epoch": epoch, "loss": loss}
+
+
+def _isoformat_timestamp(moment: object) -> str:
+    """An ISO-8601 timestamp that always carries a timezone.
+
+    A clock that returns a naive datetime is a caller misconfiguration, not a
+    reason to abort a calibration mid-run, so the naive case is read as UTC —
+    which is what :func:`_utc_now`, the only default, produces anyway.
+    """
+    if not isinstance(moment, datetime):
+        raise TargetSnapshotError(
+            f"clock() must return a datetime, got {type(moment).__name__}."
+        )
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment.isoformat()
+
+
+def _validate_timestamp(value: object) -> None:
+    if not isinstance(value, str):
+        raise TargetSnapshotError(
+            f"created_at must be an ISO-8601 string, got {type(value).__name__}."
+        )
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise TargetSnapshotError(
+            f"created_at must be an ISO-8601 timestamp, got {value!r}."
+        ) from error
+    if parsed.tzinfo is None:
+        raise TargetSnapshotError(
+            f"created_at must carry a timezone offset, got {value!r}."
+        )
+
+
 def _reject_record_level_keys(value: object, *, where: str) -> None:
     """Refuse a record-level key name anywhere in ``value``."""
     if isinstance(value, Mapping):
@@ -351,9 +590,34 @@ class TargetSnapshotObserver:
         default_factory=lambda: [0], repr=False, compare=False
     )
 
+    def __post_init__(self) -> None:
+        """Bind the metadata contract where a caller can still fix a breach.
+
+        Failing at construction, rather than at the first emission, keeps a
+        misconfigured observer from aborting a calibration mid-run.
+        """
+        object.__setattr__(
+            self, "run_id", _identifier(self.run_id, what="run_id", required=True)
+        )
+        object.__setattr__(
+            self,
+            "candidate_id",
+            _identifier(self.candidate_id, what="candidate_id", required=False),
+        )
+        object.__setattr__(
+            self, "phase", _identifier(self.phase, what="phase", required=False)
+        )
+        object.__setattr__(
+            self, "context", normalize_metadata(self.context, where="context")
+        )
+        if not callable(self.sink):
+            raise TargetSnapshotError("sink must be callable.")
+        if not callable(self.clock):
+            raise TargetSnapshotError("clock must be callable.")
+
     def with_phase(self, phase: str) -> TargetSnapshotObserver:
         """A view labelling its snapshots ``phase``, sharing this counter."""
-        return replace(self, phase=str(phase))
+        return replace(self, phase=phase)
 
     def bind(
         self,
@@ -396,11 +660,15 @@ class BoundTargetSnapshots:
 
     def with_phase(self, phase: str) -> BoundTargetSnapshots:
         """A view whose snapshots are labelled with ``phase``."""
-        return replace(self, phase=str(phase))
+        return replace(self, phase=_identifier(phase, what="phase", required=True))
 
     def with_search(self, **search: object) -> BoundTargetSnapshots:
-        """A view whose snapshots carry a sparse-selection search identity."""
-        return replace(self, search=dict(search))
+        """A view whose snapshots carry a sparse-selection search identity.
+
+        The search identity takes the same closed metadata contract as every
+        other seam, checked here so a breach surfaces where the caller set it.
+        """
+        return replace(self, search=normalize_metadata(search, where="search"))
 
     @property
     def cadence(self) -> TargetSnapshotCadence:
@@ -457,31 +725,25 @@ class BoundTargetSnapshots:
         payload: dict[str, object] = {
             "schema": TARGET_SNAPSHOT_SCHEMA,
             "schema_version": TARGET_SNAPSHOT_SCHEMA_VERSION,
-            "run_id": str(self.observer.run_id),
-            "candidate_id": (
-                None
-                if self.observer.candidate_id is None
-                else str(self.observer.candidate_id)
-            ),
-            "created_at": self.observer.clock().isoformat(),
+            "run_id": self.observer.run_id,
+            "candidate_id": self.observer.candidate_id,
+            "created_at": _isoformat_timestamp(self.observer.clock()),
             "sequence": self.counter[0],
             "phase": self.phase,
             "epoch": int(epoch),
             "epochs": int(epochs),
-            "search": None if self.search is None else dict(self.search),
+            "search": normalize_metadata(self.search, where="search", allow_none=True),
             "iterate": iterate,
             "precision": precision,
             "loss": _finite_or_none(loss),
             "non_finite_rows": non_finite,
-            "best_retained": (
-                {"available": False, "epoch": None, "loss": None}
-                if best_retained is None
-                else dict(best_retained)
+            "best_retained": normalize_best_retained(best_retained, epochs=int(epochs)),
+            "selection": normalize_metadata(
+                selection, where="selection", allow_none=True
             ),
-            "selection": None if selection is None else dict(selection),
             "targets_sha256": self.digest,
             "n_targets": len(self.names),
-            "context": dict(self.observer.context),
+            "context": normalize_metadata(self.observer.context, where="context"),
             "targets": rows,
         }
         validate_target_snapshot(payload)
@@ -525,13 +787,32 @@ def validate_target_snapshot(payload: Mapping[str, object]) -> None:
         raise TargetSnapshotError(
             f"precision must be one of {_PRECISIONS}, got {payload['precision']!r}."
         )
-    if not isinstance(payload["run_id"], str) or not payload["run_id"]:
-        raise TargetSnapshotError("run_id must be a non-empty string.")
+    _identifier(payload["run_id"], what="run_id", required=True)
+    _identifier(payload["candidate_id"], what="candidate_id", required=False)
+    _identifier(payload["phase"], what="phase", required=False)
+    _validate_timestamp(payload["created_at"])
     for key in ("sequence", "epoch", "epochs", "n_targets"):
         value = payload[key]
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise TargetSnapshotError(f"{key} must be a non-negative integer.")
+    # A snapshot describes an epoch of the stretch it declares. The floor is
+    # zero, not one: the solver's retain-best rule reports the epoch it
+    # actually selected on the `selected` snapshot, and its epoch convention
+    # ("completed_optimizer_updates; zero is start") makes zero reachable.
+    if payload["epoch"] > payload["epochs"]:
+        raise TargetSnapshotError(
+            f"epoch is {payload['epoch']} but the snapshot declares "
+            f"{payload['epochs']} epoch(s)."
+        )
+    if payload["sequence"] < 1:
+        raise TargetSnapshotError("sequence counts emissions and starts at 1.")
+    if payload["n_targets"] < 1:
+        raise TargetSnapshotError("a calibration snapshot needs at least one target.")
     _strict_number(payload["loss"], what="loss")
+    # Every metadata seam, one contract, checked uniformly.
+    normalize_metadata(payload["context"], where="context")
+    normalize_metadata(payload["search"], where="search", allow_none=True)
+    normalize_metadata(payload["selection"], where="selection", allow_none=True)
     non_finite_rows = payload["non_finite_rows"]
     if (
         isinstance(non_finite_rows, bool)
@@ -539,11 +820,26 @@ def validate_target_snapshot(payload: Mapping[str, object]) -> None:
         or non_finite_rows < 0
     ):
         raise TargetSnapshotError("non_finite_rows must be a non-negative integer.")
-    best = payload["best_retained"]
-    if not isinstance(best, Mapping) or "available" not in best:
-        raise TargetSnapshotError("best_retained must record whether one is available.")
-    if not isinstance(best["available"], bool):
-        raise TargetSnapshotError("best_retained.available must be a boolean.")
+    best = normalize_best_retained(
+        payload["best_retained"], epochs=int(payload["epochs"])
+    )
+    if best != dict(payload["best_retained"]):
+        raise TargetSnapshotError(
+            f"best_retained carries values the contract cannot represent: "
+            f"{dict(payload['best_retained'])!r}."
+        )
+    selection = payload["selection"]
+    if payload["iterate"] == ITERATE_SELECTED and isinstance(selection, Mapping):
+        selected_epoch = selection.get("selected_epoch")
+        if (
+            isinstance(selected_epoch, int)
+            and not isinstance(selected_epoch, bool)
+            and selected_epoch != payload["epoch"]
+        ):
+            raise TargetSnapshotError(
+                f"a selected snapshot is stamped epoch {payload['epoch']} but its "
+                f"selection receipt selected epoch {selected_epoch}."
+            )
     if not best["available"] and payload["iterate"] == ITERATE_BEST_RETAINED:
         raise TargetSnapshotError(
             "a snapshot cannot be labelled best_retained on a run that retains no "
@@ -609,6 +905,11 @@ def validate_target_snapshot(payload: Mapping[str, object]) -> None:
                 )
         names.append(name)
         values.append(target)
+    if non_finite_rows > payload["n_targets"]:
+        raise TargetSnapshotError(
+            f"non_finite_rows is {non_finite_rows}, past this snapshot's "
+            f"{payload['n_targets']} target row(s)."
+        )
     if observed_non_finite != non_finite_rows:
         raise TargetSnapshotError(
             f"non_finite_rows says {non_finite_rows} but {observed_non_finite} rows "
@@ -726,19 +1027,36 @@ class TargetSnapshotWriter:
         )
 
     def _write_chunk(self, path: Path, payload: Mapping[str, object]) -> None:
-        """Write a history chunk exactly once; refuse to overwrite one."""
+        """Publish a history chunk atomically, exactly once.
+
+        The bytes are written, flushed and ``fsync``-ed to a hidden temporary
+        file first; only a *complete* file is then given the immutable
+        ``history/<sequence>.json`` name, with :func:`os.link` — which is
+        atomic and, unlike :func:`os.replace`, refuses when that name already
+        exists rather than overwriting it. So a concurrent reader polling the
+        history never opens a chunk mid-write, and a write that fails part-way
+        (a full disk, a crashed process) publishes nothing and leaves no
+        temporary behind. The temporary is hidden and does not end in
+        ``.json``, so neither :meth:`retained` nor :func:`iter_history` can see
+        it even while it exists.
+        """
+        temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
         try:
-            with path.open("x", encoding="utf-8") as stream:
+            with temporary.open("x", encoding="utf-8") as stream:
                 stream.write(
                     json.dumps(payload, indent=1, sort_keys=True, allow_nan=False)
                 )
                 stream.write("\n")
                 stream.flush()
                 os.fsync(stream.fileno())
-        except FileExistsError as error:
-            raise TargetSnapshotError(
-                f"history chunks are immutable; {path.name} already exists."
-            ) from error
+            try:
+                os.link(temporary, path)
+            except FileExistsError as error:
+                raise TargetSnapshotError(
+                    f"history chunks are immutable; {path.name} already exists."
+                ) from error
+        finally:
+            temporary.unlink(missing_ok=True)
         _fsync_parent_directory(path)
 
     def __call__(self, payload: Mapping[str, object]) -> None:
