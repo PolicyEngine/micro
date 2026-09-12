@@ -28,11 +28,49 @@ ref, and am now implementing the four reviewed findings. Not pushed, no PR.
 
 ## Done
 
-- Merged `bae1887ff` into this branch.
+- Merged `bae1887ff` into this branch and recomputed every conflicting
+  identity pin on the merge ref (table below).
+- 14 red regressions in `packages/microcosm-calibrate/tests/test_target_snapshots.py`
+  (9 of them failing on the reviewed head), then the implementation:
+  - **C1** — a closed, typed, bounded aggregate metadata contract
+    (`normalize_metadata`, `normalize_best_retained`, `METADATA_LOCATIONS`,
+    `MAX_METADATA_*`) applied uniformly to `context`, `search`, `selection`
+    and `best_retained`, with string-only identifiers checked rather than
+    coerced. A list is not a scalar, so a record vector has no shape to ride
+    in at any depth. The record-level key-name rule is kept on top, because a
+    *scalar* `household_id` is still record-level identity.
+  - **A1** — every metadata container in a delivered payload is freshly built
+    from immutable scalars, pinned by a structural test asserting the payload
+    shares no mutable object with the caller, the observer, the bound view or
+    the next snapshot.
+  - **A2** — history chunks are written and `fsync`-ed to a hidden temporary
+    and then published atomically with `os.link`, which refuses rather than
+    overwrites an existing immutable chunk. Failed writes clean up their
+    temporary. Atomic `latest.json`, run ownership, duplicate refusal and
+    bounded retention are unchanged.
+  - **A3** — strict public-codec validation of `created_at` (timezone-aware
+    ISO-8601), identifiers, `epoch <= epochs`, `sequence >= 1`,
+    `non_finite_rows <= n_targets`, the closed `best_retained` triple's
+    availability/epoch/loss consistency, and a `selected` snapshot whose epoch
+    contradicts its own selection receipt — paired with normalization at the
+    emitting edge so honest nonfinite values still serialize as explicit nulls
+    and counts and the observer still cannot abort a run.
+- `experiments/908_review_findings_recheck.py` replays the review's own four
+  counterexamples against this branch; receipt in
+  `experiments/908-review-findings-recheck.json`. All four report closed.
+
+## Deliberately narrow choices
+
+- `context` has **no in-tree producer**. Rather than invent a wider shape for a
+  caller that does not exist, it takes the same flat scalar contract as the
+  seams `solve.py` really emits. A caller that needs structure should add a
+  typed seam and extend the contract, in the PR that adds the caller.
+- The metadata bounds (32 entries, 64-character keys, 256-character strings)
+  are the narrowest values that comfortably hold everything `solve.py` emits.
 
 ## Next
 
-- Red regressions for all four findings, then the implementation.
+- Independent re-review by main before integration/PR updates.
 
 ## Identity pins recomputed on the merge ref
 
