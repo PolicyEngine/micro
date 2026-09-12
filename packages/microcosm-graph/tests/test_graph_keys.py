@@ -364,12 +364,18 @@ def test_platform_bitwise_keys_carry_the_platform(
 _FOREST = ArtifactType("qrf.forest", 1)
 
 
-def _artifact_graph(*, declare: bool = True) -> Graph:
+def _artifact_graph(
+    *,
+    declare: bool = True,
+    type_: ArtifactType = _FOREST,
+    alias: str = "donor",
+    output: str = "forest",
+) -> Graph:
     producer = Node(
         "fit",
         "toy.model@1",
         inputs=(Slice("person", ("age",)),),
-        artifact_outputs=(ArtifactOutput("forest", _FOREST),) if declare else (),
+        artifact_outputs=(ArtifactOutput(output, type_),) if declare else (),
     )
     consumer = Node(
         "draw",
@@ -377,7 +383,7 @@ def _artifact_graph(*, declare: bool = True) -> Graph:
         inputs=(Slice("person", ("age",)),),
         outputs=(Owned("person", "drawn", "float64"),),
         artifact_inputs=(
-            (ArtifactInput("donor", "fit", "forest", _FOREST),) if declare else ()
+            (ArtifactInput(alias, "fit", output, type_),) if declare else ()
         ),
     )
     return Graph("toy", (SOURCE,), (CREATE, producer, consumer))
@@ -414,3 +420,20 @@ def test_a_node_declaring_no_artifacts_keeps_its_pre_amendment_projection() -> N
     assert set(declared) - set(compiled.graph.node("draw").normative()) == {
         "artifact_inputs"
     }
+
+
+def test_every_part_of_an_artifact_declaration_is_normative() -> None:
+    """Amendment 19: no field of a declared edge is inert."""
+    _, base = _all_keys(_artifact_graph())
+    _, retyped = _all_keys(_artifact_graph(type_=ArtifactType("qrf.forest", 2)))
+    _, renamed_type = _all_keys(_artifact_graph(type_=ArtifactType("other", 1)))
+    _, realiased = _all_keys(_artifact_graph(alias="teacher"))
+    _, renamed_output = _all_keys(_artifact_graph(output="trees"))
+    # A type or output rename moves both ends; the consumer-local alias moves
+    # only the consumer, because the producer never sees it.
+    for moved in (retyped, renamed_type, renamed_output):
+        assert moved["fit"] != base["fit"]
+        assert moved["draw"] != base["draw"]
+    assert realiased["fit"] == base["fit"]
+    assert realiased["draw"] != base["draw"]
+    assert base["survey"] == realiased["survey"] == retyped["survey"]
