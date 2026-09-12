@@ -9,6 +9,7 @@ than from a position in the executor's generator.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 
 import numpy as np
@@ -263,9 +264,12 @@ def test_keyed_is_part_of_a_node_identity_and_survives_the_manifest() -> None:
 def test_a_keyed_kernel_draws_from_coordinates_not_from_the_context_rng() -> None:
     """The context still offers ``rng``; a keyed kernel simply does not spend it.
 
-    This is the behaviour the member names, exercised end to end at the kernel
-    protocol level: two contexts whose generators are at different positions
-    hand the same coordinates the same draws.
+    Both halves of that sentence are asserted against a toy kernel body, which
+    is as far as this can go: the executor has no ``seed_source`` branch, so
+    there is no production path that treats a KEYED node differently and none
+    is claimed here. What the toy body pins is the shape a keyed kernel has —
+    it leaves the generator where it found it, and two contexts whose
+    generators sit 512 variates apart hand the same coordinates the same draws.
     """
     node = Node("impute", "toy.keyed@1", params={"experiment": "amendment-20"})
 
@@ -294,4 +298,8 @@ def test_a_keyed_kernel_draws_from_coordinates_not_from_the_context_rng() -> Non
 
     early, late = context_at(0), context_at(512)
     assert early.rng.bit_generator.state != late.rng.bit_generator.state
+    # "Does not spend it" is the half a drawing body could violate silently, so
+    # assert it rather than leave it to the closure's own restraint.
+    untouched = copy.deepcopy(early.rng.bit_generator.state)
     assert draw(early).tobytes() == draw(late).tobytes()
+    assert early.rng.bit_generator.state == untouched
