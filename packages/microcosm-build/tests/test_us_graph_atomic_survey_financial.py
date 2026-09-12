@@ -102,7 +102,7 @@ def test_nineteen_node_financial_cold_and_required_replay(known_financial_run):
         )
         assert evidence["release_eligible"] is False
         assert not any("prior" in c for c in values.DEMOGRAPHIC_FEATURES)
-        assert len(values.OUTPUTS) == 7
+        assert len(values.OUTPUTS) == 8
         for entity in before.frame.entities:
             retained = [
                 c

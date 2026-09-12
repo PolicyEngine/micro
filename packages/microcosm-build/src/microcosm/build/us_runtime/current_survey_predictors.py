@@ -37,7 +37,10 @@ DEMOGRAPHIC_FEATURES = (
 )
 TARGETS = ("survey_current_INT_VAL", "survey_current_DIV_VAL", "survey_current_CAP_VAL")
 MONEY_FIELDS = leaves.CPS_CURRENT_PREDICTOR_MONEY_FIELDS
-OUTPUTS = leaves.CPS_CURRENT_PREDICTOR_PERSON_LEAVES
+OUTPUTS = (
+    *leaves.CPS_CURRENT_PREDICTOR_PERSON_LEAVES,
+    "tax_exempt_interest_income",
+)
 PROTOCOL = "microcosm.us.current-survey-predictor-completion.v1"
 PHASE = "survey_multispine_current_financial_completion"
 SEED = 578
@@ -474,6 +477,12 @@ def qualify_current_survey_predictors(
         "earnings_universe": dict(universe_receipt),
         "split_contract": leaves.cps_carried_current_leaf_contract(),
         "model_judgments": {
+            "interest_partition": {
+                "total": "source-qualified_ASEC_INT_VAL_or_ACS_modeled_INT_VAL",
+                "taxable": "INT_VAL*maintained_taxable_interest_fraction",
+                "tax_exempt": "INT_VAL-taxable_interest_income",
+                "split_is_observed": False,
+            },
             "conditioning": list(predictors),
             **(
                 {"demographic_conditioning": demographics[1]}
@@ -584,6 +593,12 @@ def complete_predictor_columns(qualified, clone_frame, drawn_money):
         values.loc[drawn_money.index, raw] = _numeric(drawn_money[target])
     completed = leaves.derive_cps_current_predictor_leaves(
         {name: _numeric(values[name]) for name in MONEY_FIELDS}
+    )
+    # Retain the complementary part of the same observed or modeled total.
+    # The split remains a modeling judgment; neither part is separately observed.
+    # Derive here, before clone alignment, so both support arms conserve INT_VAL.
+    completed["tax_exempt_interest_income"] = (
+        _numeric(values["INT_VAL"]) - completed["taxable_interest_income"]
     )
     native = pd.DataFrame(completed, index=values.index)
     person = clone_frame.person

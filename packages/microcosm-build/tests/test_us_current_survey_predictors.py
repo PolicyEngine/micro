@@ -9,7 +9,7 @@ import copy
 import json
 import pickle
 from dataclasses import replace
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -101,7 +101,7 @@ def _money():
 def test_shared_current_money_split_preserves_signs_and_partition_totals():
     source = _money()
     result = leaves.derive_cps_current_predictor_leaves(source)
-    assert set(result) == set(values.OUTPUTS)
+    assert set(result) == set(leaves.CPS_CURRENT_PREDICTOR_PERSON_LEAVES)
     # The legacy full leaf owner unpacks this mapping. Preserve its original
     # insertion order so consumers constructing a DataFrame see the same schema.
     assert tuple(result) == (
@@ -135,6 +135,76 @@ def test_shared_current_money_split_preserves_signs_and_partition_totals():
     )
     result["employment_income_before_lsr"][0] = 10.0
     assert source["WSAL_VAL"][0] == 0.0
+
+
+@pytest.mark.parametrize("reverse", (False, True))
+def test_financial_attachment_conserves_native_and_drawn_interest(reverse):
+    # Descriptive, invented inputs exercise the numerical attachment only;
+    # constructing this dataclass does not authenticate a survey source.
+    ids = pd.Index([11, 12, 13], name="person_id")
+    money = pd.DataFrame(0.0, index=ids, columns=values.MONEY_FIELDS)
+    money["INT_VAL"] = [120.031, 0.0, np.nan]
+    origins = pd.DataFrame(
+        {"native_person_id": [101, 102, 201], "source": ["asec", "asec", "acs"]},
+        index=ids,
+    )
+    features = pd.DataFrame(0.0, index=ids[-1:], columns=values.FEATURES)
+    qualified = values.QualifiedSurveyPredictors(
+        projection=b"",
+        matrix=graph.model_input.encode_recipient_matrix(
+            features, entity="person", entity_ids=ids[-1:].to_numpy(dtype="<i8")
+        ),
+        source_frame=None,
+        donor_frame=None,
+        donor_columns=pd.DataFrame(),
+        native_money=money.iloc[::-1] if reverse else money,
+        origins=origins.iloc[::-1] if reverse else origins,
+        evidence={},
+    )
+    # Interleave pairs and origins to catch positional attachment.
+    stack_ids = [13, 11, 12, 11, 13, 12]
+    people = pd.DataFrame(
+        {
+            "person_id": np.arange(301, 307, dtype=np.int64),
+            values.provenance.support_source_id_column("person"): stack_ids,
+            values.provenance.spine_source_id_column("person"): [
+                201,
+                101,
+                102,
+                101,
+                201,
+                102,
+            ],
+            values.provenance.support_channel_column("person"): [
+                "acs",
+                "asec",
+                "asec",
+                "asec",
+                "acs",
+                "asec",
+            ],
+            values.provenance.support_clone_index_column("person"): [1, 0, 1, 1, 0, 0],
+        }
+    )
+    draws = pd.DataFrame([[19.079, 0.0, 0.0]], index=ids[-1:], columns=values.TARGETS)
+    result = values.complete_predictor_columns(
+        qualified, SimpleNamespace(person=people), draws
+    )
+    assert ("person", "tax_exempt_interest_income") in result
+    taxable = result["person", "taxable_interest_income"]
+    exempt = result["person", "tax_exempt_interest_income"]
+    total = (
+        money["INT_VAL"].fillna(draws[values.TARGETS[0]]).reindex(stack_ids).to_numpy()
+    )
+    np.testing.assert_array_equal(taxable, total * leaves.TAXABLE_INTEREST_FRACTION)
+    np.testing.assert_array_equal(exempt, total - taxable.to_numpy())
+    np.testing.assert_allclose(taxable + exempt, total, rtol=1e-15, atol=0)
+    np.testing.assert_array_equal(exempt.to_numpy()[[2, 5]], [0.0, 0.0])
+    assert taxable.index.tolist() == people.person_id.tolist()
+    assert exempt.index.equals(taxable.index)
+    assert money.loc[11, "INT_VAL"] == 120.031
+    assert np.isnan(money.loc[13, "INT_VAL"])
+    assert draws.iloc[0, 0] == 19.079
 
 
 @pytest.mark.parametrize(
@@ -196,6 +266,12 @@ def test_current_predictor_source_fit_attachment_and_required_replay(
         qualified.evidence["model_judgments"]["quality_acceptance"]
         == "held_out_fit_quality_not_yet_assessed"
     )
+    assert qualified.evidence["model_judgments"]["interest_partition"] == {
+        "total": "source-qualified_ASEC_INT_VAL_or_ACS_modeled_INT_VAL",
+        "taxable": "INT_VAL*maintained_taxable_interest_fraction",
+        "tax_exempt": "INT_VAL-taxable_interest_income",
+        "split_is_observed": False,
+    }
     assert qualified.donor_frame.resolve_weights("person").kind is WeightKind.DESIGN
     # A separate numerical probe changes only a defensive invented copy. It
     # exercises the actual age15 owner; it is never issued as authenticated.
@@ -249,6 +325,19 @@ def test_current_predictor_source_fit_attachment_and_required_replay(
     )
     for name in original_join:
         pd.testing.assert_series_equal(original_join[name], reversed_join[name])
+    completed_interest = qualified.native_money["INT_VAL"].fillna(
+        invented_draw[values.TARGETS[0]]
+    )
+    expected_interest = completed_interest.reindex(
+        clone.frame.person[values.provenance.support_source_id_column("person")]
+    ).to_numpy()
+    np.testing.assert_allclose(
+        original_join["person", "taxable_interest_income"]
+        + original_join["person", "tax_exempt_interest_income"],
+        expected_interest,
+        rtol=1e-15,
+        atol=0,
+    )
     assert allocated.frame.resolve_weights("person").kind is WeightKind.IMPORTANCE
     if nonconstant:
         origins = qualified.origins

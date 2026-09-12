@@ -380,6 +380,16 @@ def test_direct_whole_cohort_oracle_all_outputs_and_nonowned_storage(composed):
     )
     before, after = b.expected.frame, case.cold.population.frame
     masks = graph.physical._masks(before)
+    # The survey's conserving interest split exists before PUF attachment.
+    # PUF owns clone1 only; original-channel complements must survive exactly.
+    interest = "tax_exempt_interest_income"
+    assert interest in before.person
+    assert before.person[interest].notna().all()
+    pd.testing.assert_series_equal(
+        before.person.loc[~masks["person"], interest],
+        after.person.loc[~masks["person"], interest],
+        check_exact=True,
+    )
     coordinates = {(o.entity, o.column) for o in b.nodes[2].outputs}
     for entity in before.entities:
         left, right = before.table(entity), after.table(entity)
