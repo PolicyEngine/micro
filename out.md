@@ -5,6 +5,9 @@ in the worktree `~/PolicyEngine/_worktrees/microcosm-amend-artifacts`.
 Date 2026-09-11. **Nothing pushed, no PR opened, no branch created, `uv.lock`
 untouched, the stash never used.**
 
+> Historicized 2026-09-12: written before the push; the branch is PR #911 (pushed 2026-09-11, peer-gated). The lock-enforcement test named in §8 merged as #910 on 2026-09-11.
+
+
 The interface change the integration branch
 `origin/microcosm-us-launch-integration-20260909` had made to the two frozen
 files without an amendment is now extracted and landed the charter's way:
@@ -511,3 +514,6 @@ passes unchanged at 42156/42156 and 41/41, so no drift arose to report.
 No push, no PR, no branch created, no stash used, no `uv.lock` edit, no spec
 re-pin, no artifact build, no release, no publication, and no acceptance-test
 change beyond the single B2 field-set line the amendment requires.
+
+
+> Historicized 2026-09-12: "no push, no PR" was true when written; the branch was pushed as PR #911 on 2026-09-11.
