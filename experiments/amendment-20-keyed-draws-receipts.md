@@ -12,6 +12,11 @@ platform, so the local pin is *produced* rather than derived.
 **Three things need your decision, in §7.** One of them is merge-blocking:
 the branch cannot go green in CI as it stands, by design of the brief.
 
+> Historicized 2026-09-12: the decisions in §7 were taken when the branch
+> was stacked on amendment 19 and pushed as PR #912 — see the notes under
+> §5, §7.1, §7.2, §7.3 and §8. The report below is the lane's record, not
+> the branch's state.
+
 This report is also committed at
 `experiments/amendment-20-keyed-draws-receipts.md`, because the root `out.md`
 is a tracked file holding a different lane's report — see §7.4.
@@ -259,6 +264,12 @@ red.
 
 ## 5. Every command, with its direct exit code
 
+> Historicized 2026-09-12: the two red rows below (`spec_engine_coverage
+> --check`, the two coverage test files) were cleared by the re-pin recorded
+> under §7.1; the lock line predates the merge with amendment 19, after which
+> `docs/graph-interface.lock` was re-recorded over the merged files.
+
+
 Environment prepared with `uv sync --all-packages --locked --extra us --extra uk`;
 everything after used `uv run --no-sync`.
 
@@ -351,6 +362,12 @@ untouched.
 
 ### 7.1 The spec-engine seed digests are stale — and this is merge-blocking
 
+> Historicized 2026-09-12: applied in PR #912 — `seed_protocol` and
+> `seed_map` re-pinned in `inventory_coverage.py`, the evidence file
+> regenerated, and the pool-tool test's `spec_sha256` pin moved with it;
+> `spec_engine_coverage.py --check` exits 0 on the pushed head.
+
+
 | | `origin/main` | this branch |
 |---|---|---|
 | `tools/spec_engine_coverage.py --check` | exit **0** (42156/42156 fields, 41/41 checks) | exit **1** |
@@ -423,6 +440,10 @@ digests attest the tree that actually merges.
 
 ### 7.2 Amendment numbering — and it renders as 19 regardless
 
+> Historicized 2026-09-12: amendment 19 (typed artifacts) merged first as
+> PR #911, so this entry is 20 by main's own arithmetic and renders as 20.
+
+
 `main`'s list ends at **18**, so by its own arithmetic the next free number is
 **19**. The entry is numbered **20** because the brief assigns 20 and gives 19 to
 the artifacts lane. Two unmerged commits on the
@@ -444,6 +465,12 @@ only `| A1 |`-style table rows), so nothing breaks — but the document already
 one-token edits; which is right depends on what the artifacts lane lands as.
 
 ### 7.3 `keyed_uniform` draws differently for `-0.0` and `0.0`
+
+> Historicized 2026-09-12: fixed in PR #912 — `_coordinate` normalises a
+> float zero to `0.0` (as `keys._canonical_tolerance_float` already did for
+> tolerances), with a contract test and a sentence in the amendment entry.
+> No version bump: the algorithm string had not shipped on `main`.
+
 
 Verified directly:
 
@@ -490,6 +517,10 @@ every lane that gets handed the same `-o` path.
 ---
 
 ## 8. Things checked that turned out clean
+
+> Historicized 2026-09-12: the interface lock is now enforced in the suite
+> by `packages/microcosm-graph/tests/test_graph_interface_lock.py` (PR #910).
+
 
 - **No other stale pin.** Repo-wide grep for the old identities `02db8f5c`,
   `8878352d`, `f6984280`, `9e80ee3a` across `*.py`, `*.json`, `*.md`, `*.yaml`

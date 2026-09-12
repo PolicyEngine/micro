@@ -17,6 +17,12 @@ decisions with their evidence — are in
 Implementation, tests, pins, charter and changelog are landed and committed.
 `packages/microcosm-graph/tests` and `packages/microcosm-fit/tests` are green.
 
+> Historicized 2026-09-12: the paragraph below described the branch as the lane
+> left it. The seed digests were re-pinned when the branch was stacked on
+> amendment 19 and pushed as PR #912, so nothing here is red any more; the
+> `-0.0` question in item 7.3 of the receipts was settled by normalising
+> signed zero in `_coordinate`.
+
 **The branch cannot go green in CI as it stands**, and that is deliberate: the
 `qrf.py` edit moves the spec-engine seed digests, leaving seven tests red in a
 lane that runs on every PR. The lane brief said report the drift, not re-pin
