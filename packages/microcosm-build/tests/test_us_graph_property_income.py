@@ -16,6 +16,7 @@ from microcosm.build.us_runtime.graph_property_income import (
     property_income_nodes,
 )
 from microcosm.fit import QRF
+from microcosm.fit import graph_legacy_train
 from microcosm.fit.graph_legacy_qrf import LegacyQRFApplyKernel
 from microcosm.fit.graph_signed_reconciliation import SignedReconciliationKernel
 from microcosm.fit.signed_reconciliation import reconcile_signed_total
@@ -39,6 +40,19 @@ from microcosm.graph import (
 )
 
 FEATURES = (PROPERTY_REPORTED_TOTAL, "age", "earnings")
+
+
+def test_base_training_implementation_is_part_of_cache_identity(monkeypatch):
+    seen = []
+    original = graph_legacy_train.source_hash
+
+    def observe(*items, **kwargs):
+        seen.append(items)
+        return original(*items, **kwargs)
+
+    monkeypatch.setattr(graph_legacy_train, "source_hash", observe)
+    PropertyIncomeTrainKernel().implementation_hash()
+    assert any(items[0] is graph_legacy_train.LegacyQRFTrainKernel for items in seen)
 
 
 @pytest.fixture(autouse=True)

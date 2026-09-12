@@ -176,7 +176,7 @@ class PropertyIncomeTrainKernel(LegacyQRFTrainKernel):
             codec.encode_json(
                 {
                     "fragment": source_hash(sys.modules[__name__]),
-                    "fit": super().implementation_hash(),
+                    "fit": LegacyQRFTrainKernel().implementation_hash(),
                     "components": PROPERTY_COMPONENTS,
                     "aggregate": PROPERTY_REPORTED_TOTAL,
                 }

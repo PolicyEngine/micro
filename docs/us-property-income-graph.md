@@ -52,7 +52,7 @@ negative/zero totals, large int64 identities, original membership, metadata and
 a zero-weight household. It executes the real twelve-node graph including two
 source nodes, compares draws with direct weighted QRF, compares reconciled
 values with the pure projection and reopens the store in required-cache mode.
-Twenty-one tests also cover dependency reuse, incorrect weight kinds,
+Twenty-two tests also cover delegated training-code identity, dependency reuse, incorrect weight kinds,
 unknown/inconsistent donors, altered draw history and invalid declarations.
 They establish numerical and graph contracts, not native source acceptance,
 statistical adequacy, tax correctness or release readiness.
