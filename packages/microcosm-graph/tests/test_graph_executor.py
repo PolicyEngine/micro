@@ -3716,3 +3716,76 @@ def test_a_gate_reached_only_through_bytes_still_derives_the_tier(
     assert manifest.tier == "evidence"
     restored = RunManifest.from_json(manifest.to_json())
     assert restored.tier == "evidence"
+
+
+def test_an_artifact_edge_crosses_population_versions_and_resume_policies(
+    tmp_path: Path,
+) -> None:
+    """Amendment 19: a byte edge is not confined to one population version.
+
+    ``fit`` lives in the ``survey`` version; ``draw`` lives in the version a
+    FILTER opens. The bytes cross the boundary, the producer is still a
+    predecessor, and all three resume policies agree.
+    """
+
+    def keep_all(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        return KernelResult(
+            keep=pd.Series(True, index=person["person_id"], dtype="bool")
+        )
+
+    fit = Node(
+        "fit",
+        "fit@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "fitted", "float64"),),
+        params={"source": "age", "target": "fitted", "scale": 1.0},
+        population="survey",
+        artifact_outputs=(ArtifactOutput("forest", FOREST),),
+    )
+    boundary = Node(
+        "boundary",
+        "identity.filter@1",
+        inputs=(Slice("person", ("selected",)),),
+        structural=StructuralDelta.FILTER,
+        base="survey",
+    )
+    draw = Node(
+        "draw",
+        "consume@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "drawn", "float64"),),
+        population="boundary",
+        artifact_inputs=(ArtifactInput("donor", "fit", "forest", FOREST),),
+    )
+    graph = Graph("toy", (SOURCE,), (CREATE, fit, boundary, draw))
+    compiled = compile_graph(graph)
+    assert "fit" in compiled.predecessors["draw"]
+    assert compiled.versions["draw"] == "boundary"
+
+    source = _source_path(tmp_path / "src")
+    store = ContentStore(tmp_path / "store")
+
+    def registry() -> KernelRegistry:
+        built = _artifact_registry()
+        built.register(
+            _Kernel(
+                "identity.filter@1",
+                Capabilities(
+                    Determinism.DETERMINISTIC, structural=StructuralDelta.FILTER
+                ),
+                keep_all,
+            )
+        )
+        return built
+
+    cold = _run(graph, source, store, registry())
+    assert not any(receipt.hit for receipt in cold.nodes.values())
+    warm = _run(graph, source, store, registry(), resume="require")
+    assert all(receipt.hit for receipt in warm.nodes.values())
+    assert warm.nodes["draw"].key == cold.nodes["draw"].key
+
+    forbidden = _run(graph, source, store, registry(), resume="forbid")
+    assert not any(receipt.hit for receipt in forbidden.nodes.values())
+    assert forbidden.nodes["draw"].key == cold.nodes["draw"].key
+    assert forbidden.nodes["draw"].typed_artifacts == cold.nodes["draw"].typed_artifacts
