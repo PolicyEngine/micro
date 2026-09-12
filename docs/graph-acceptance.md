@@ -158,7 +158,9 @@ recorded in `docs/graph-interface.lock` at the start of parallel work.
 Changing either file requires the owner's sign-off on the pull request and
 re-recording the lock. Everything else moves freely.
 
-Amendments so far (each re-locked):
+Amendments to the contract are numbered below. Changes to the two frozen
+interface files are re-locked; runtime-only amendments leave their existing
+lock unchanged:
 
 1. **Structural kernels return data; the executor does the structural
    work.** Only `CREATE` returns `KernelResult.frame`. `FILTER` returns the
@@ -413,6 +415,102 @@ Amendments so far (each re-locked):
     selecting it, and a CDF that sums to just under one can no longer
     silently select the first class. Raised by the US launch integration
     branch, which carried the code without an amendment; adopted 2026-09-11.
+
+
+21. **Raw sources have an explicit byte codec.** A lookup, crosswalk or fitted
+    input may be a file rather than a population. `SourceCodecRegistry`
+    therefore has separate Frame and byte registration/loading methods under
+    one codec-name namespace. Registering a name in both modes is refused;
+    loading through the wrong mode raises `TypeError`. Existing Frame
+    enumeration and mapping methods remain Frame-only, and byte codecs have
+    their own equivalents. `get` resolves availability in either mode, so a
+    missing codec or import dependency still raises fatal `StoreUnavailable`
+    before execution instead of authorizing recomputation (E2).
+
+    The built-in `raw-bytes-v1` reads one regular file into immutable bytes,
+    bounded at 64 MiB. Its descriptor is opened without blocking and checked
+    for regular-file type; directories, pipes, devices and oversized files
+    are refused. The consuming kernel owns payload parsing and validation.
+    This codec does not turn a lookup into a Frame or a source receipt into
+    survey data. Existing executor source-content identity and post-run
+    mutation checks still apply. Source declarations and canonical projections
+    do not change. A future country import must ship its declared resource
+    files with its first consumer; this generic codec supplies no country
+    resources. Extracted from the US launch integration on 2026-09-12.
+
+22. **Frame metadata survives the content store.** Frame format
+    `microcosm-graph-frame-v2` persists the complete recursively frozen
+    metadata alongside entity/link tables, schema, strata, typed weights and
+    the Frame mass log. Tagged metadata preserves mapping order, tuples,
+    frozensets, scalar kinds and binary float values, including signed zero
+    and supported non-finite values. The metadata payload has a separately
+    recorded SHA-256, checked on load; writing the same frame key with
+    different metadata is corruption, including concurrent write collisions.
+
+    A stored v1 Frame is `StoreUnavailable`, never a metadata-empty substitute
+    or an automatic cache miss. Malformed metadata is `StoreCorrupt`.
+    Non-finite JSON literals and overflowing JSON numbers are refused at the
+    JSON decode boundary; supported non-finite *metadata floats* use tagged
+    binary encodings and remain valid. This is a complete Frame persistence
+    contract, not a new source authority or a release verdict. Extracted from
+    the US launch integration on 2026-09-12.
+
+23. **Unavailable artifacts have executor-owned outcomes.** This amendment
+    supersedes amendment 19's interim refusal of gate kernels with declared
+    typed outputs. Such a gate may now produce verified bytes normally. If
+    the kernel raises, amendment 7 still applies: the executor records its
+    failed verdict and exception evidence. It additionally records
+    `microcosm.graph.execution.v1`, state `gate_exception`, with the exact
+    declared artifact names that were not produced. No replacement bytes or
+    successful computation are invented. An ordinary returned result that
+    omits a declared output is still rejected.
+
+    A node requiring an unavailable artifact is `unreached`; this propagates
+    through causal predecessors, including version/base, cell and byte
+    dependencies. Its kernel does not run and it has no columns, Frame,
+    weights, opaque bytes or observable population. Its receipt names each
+    direct blocker by node id and key. A failed gate's existing verdict
+    columns remain available, so an independent branch or a reader of that
+    verdict can still run. An unreached release remains evidence-tier and
+    cannot certify a file.
+
+    Execution status and cache status are independent. Exceptional node
+    records use schema 3 and manifests containing them use schema 4. A valid
+    cached exceptional record is a hit only with the same blocker provenance;
+    strict required replay validates that provenance before any kernel runs.
+    Missing cache records remain misses, unavailable codecs remain fatal,
+    and corrupt, fabricated or inconsistent execution evidence is refused.
+    Manifests validate unavailable typed inputs and blocker identities on
+    load. Ordinary typed records/manifests retain their previous schemas.
+
+    Only the executor may author the exact tagged execution schema. Kernel
+    attempts to return it are rejected; older free-form `execution`
+    diagnostics without that schema remain uninterpreted. The graph view
+    displays exceptional execution outcomes separately from hit/miss state.
+    No fields in `Node`, `KernelContext`, `KernelResult` or their canonical
+    declarations change. Extracted from the US launch integration on
+    2026-09-12.
+
+24. **Population observers cannot change computation.** The private executor
+    observer receives a detached snapshot of each admitted Population, on
+    cold execution and restored cache hits, before the current node is
+    persisted. Entity/link tables, object-cell leaves, pandas attributes and
+    axis/category buffers, strata, schema/link records, weights, design
+    anchors, owners, metadata and both mass ledgers are detached. The
+    observer may retain or mutate its snapshot during later callbacks or
+    after return without changing downstream inputs or stored outputs.
+    Its exception still refuses the run. An unreached node has no snapshot;
+    an absent observer allocates none.
+
+    The snapshot is an observation seam for an integrating verifier, not a
+    kernel capability, authority-bearing receipt or input to node identity.
+    The implementation uses an in-memory round trip of its own pandas
+    objects and explicit record reconstruction; it accepts no external
+    pickle bytes and introduces no pickle cache format. One complete copy
+    and a temporary serialization buffer are needed per callback, and
+    retained snapshots retain memory. Larger data pilots must measure that
+    cost before scaling. Extracted with the independently reviewed observer
+    isolation repair on 2026-09-12.
 
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and

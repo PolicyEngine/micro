@@ -1,0 +1,1 @@
+Add explicit raw-byte source codecs, preserve complete Frame metadata in the content store, represent unavailable gate artifacts and unreached consumers independently of cache hits, and isolate population observers from execution and persistence.
