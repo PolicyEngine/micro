@@ -14,8 +14,21 @@ import pandas as pd
 import pytest
 import torch
 
-from microcosm.calibrate import GroupedUpperBounds, Target, TargetSet, calibrate, solve
+from microcosm.calibrate import (
+    GroupedUpperBounds,
+    Target,
+    TargetSet,
+    TargetSnapshotCadence,
+    TargetSnapshotObserver,
+    calibrate,
+    solve,
+)
 from microcosm.calibrate.initialization import GateInitialization
+from microcosm.calibrate.target_snapshots import (
+    EVERY_EPOCH,
+    ITERATE_CURRENT,
+    ITERATE_SELECTED,
+)
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 
@@ -601,3 +614,106 @@ def test_grouped_mode_constraints_survive_the_reordering(monkeypatch, kwargs, ex
     with pytest.raises(ValueError, match=expected):
         _grouped_run(epochs=2, **kwargs)
     assert not calls
+
+
+def _snapshot_observer(seen, **kwargs):
+    return TargetSnapshotObserver(
+        sink=seen.append,
+        run_id="grouped-bounds",
+        cadence=TargetSnapshotCadence(every=EVERY_EPOCH),
+        **kwargs,
+    )
+
+
+def test_zero_epochs_through_the_internal_grouped_path_adds_no_evaluation(monkeypatch):
+    """A bound observer on a no-update run neither emits nor evaluates.
+
+    ``calibrate`` refuses zero epochs publicly, so the internal seam is the
+    only way to reach this state; it must stay a pure admission path.
+    """
+    applications = []
+    apply_constraint = solve._apply_constraint
+
+    def counted(matrix, weights):
+        applications.append(matrix.layout)
+        return apply_constraint(matrix, weights)
+
+    monkeypatch.setattr(solve, "_apply_constraint", counted)
+    initial = np.array([100.0, 120.0, 80.0, 40.0])
+    seen = []
+    bound = _snapshot_observer(seen).bind(
+        names=("population@2024",), targets=np.array([200.0])
+    )
+    final, trajectory = _internal(
+        initial, _groups((220.0, 120.0)), epochs=0, snapshots=bound
+    )
+    assert not len(trajectory)
+    assert final.tobytes() == initial.tobytes()
+    assert applications == []
+    assert seen == []
+
+
+@pytest.mark.parametrize("sparse", [False, True], ids=["dense", "csr"])
+def test_a_binding_bound_that_actually_corrects_is_unchanged_by_snapshots(
+    monkeypatch, sparse
+):
+    """Projection still corrects, identically, with the observer attached.
+
+    Caps of 81 sit just above the initial per-group total of 80, so the very
+    first Adam step overshoots them and the projection has to pull each group
+    back on every epoch — the case where an observer could plausibly disturb
+    the accepted state.
+    """
+    if sparse:
+        monkeypatch.setattr(solve, "_SPARSE_MIN_CELLS", 1)
+        monkeypatch.setattr(solve, "_SPARSE_DENSITY_CUTOFF", 1.0)
+
+    def run(**extra):
+        observations = []
+        result = _grouped_run(
+            grouped_upper_bounds=_groups((81.0, 81.0)),
+            _post_projection_observer=observations.append,
+            **extra,
+        )
+        return result, observations
+
+    off, observed_off = run()
+    seen = []
+    on, observed_on = run(target_snapshots=_snapshot_observer(seen))
+
+    # The bound really binds on this fixture, or the test proves nothing.
+    assert sum(item["corrected_group_count"] for item in observed_off) > 0
+
+    assert on.weights.tobytes() == off.weights.tobytes()
+    assert on.loss_trajectory.tobytes() == off.loss_trajectory.tobytes()
+    assert on.options == off.options
+    assert on.options["grouped_upper_bounds"] == off.options["grouped_upper_bounds"]
+    for payload_on, payload_off in zip(observed_on, observed_off, strict=True):
+        assert payload_on["weights"].tobytes() == payload_off["weights"].tobytes()
+        assert (
+            payload_on["group_totals"].tobytes()
+            == payload_off["group_totals"].tobytes()
+        )
+        assert (
+            payload_on["corrected_group_count"] == payload_off["corrected_group_count"]
+        )
+
+    in_loop = [item for item in seen if item["iterate"] != ITERATE_SELECTED]
+    assert [item["epoch"] for item in in_loop] == list(range(1, 7))
+    assert all(item["iterate"] == ITERATE_CURRENT for item in in_loop)
+    assert all(item["precision"] == "float32" for item in in_loop)
+    assert all(
+        item["selection"]
+        == {
+            "rule": "closing_state",
+            "constraint_mode": "grouped_upper_bounds",
+            "grouped_preserve_zeros": False,
+        }
+        for item in seen
+    )
+    selected = [item for item in seen if item["iterate"] == ITERATE_SELECTED]
+    assert len(selected) == 1
+    assert selected[0]["epoch"] == 6 and selected[0]["precision"] == "float64"
+    assert [row["estimate"] for row in selected[0]["targets"]] == [
+        diagnostic.final_estimate for diagnostic in on.diagnostics
+    ]

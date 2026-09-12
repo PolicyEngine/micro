@@ -18,10 +18,13 @@ from microcosm.calibrate import (
     GroupedUpperBounds,
     Target,
     TargetSet,
+    TargetSnapshotCadence,
+    TargetSnapshotObserver,
     calibrate,
     diagnostics_payload,
 )
 from microcosm.calibrate import solve as solve_module
+from microcosm.calibrate.target_snapshots import EVERY_EPOCH, ITERATE_SELECTED
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 
@@ -209,3 +212,120 @@ def test_grouped_closing_state_and_ordinary_best_iterate_remain_distinct(
     monkeypatch.setattr(solve_module, "build_constraint_matrix", forbidden_compile)
     with pytest.raises(ValueError, match="original aligned constraints"):
         rebuild(grouped, grouped_frame)
+
+
+@pytest.mark.parametrize("fixed_zeros", [False, True], ids=["positive", "fixed-zeros"])
+@pytest.mark.parametrize(
+    "target,warm,epochs,selected_epoch",
+    [
+        pytest.param(2.01, 2.0, 2, 0, id="warm-start-overshoot"),
+        pytest.param(1.5, None, 3, 2, id="intermediate-overshoot"),
+    ],
+)
+def test_snapshots_describe_each_solver_s_own_selection_on_the_same_oscillation(
+    fixed_zeros, target, warm, epochs, selected_epoch
+) -> None:
+    """The same oscillating example, now observed by both solvers.
+
+    Ordinary Adam's closing snapshot must name the earlier epoch it actually
+    returned and admit a retained best; the grouped run's must name the closing
+    epoch and say no best iterate was retained at all. A single reused emitter
+    that inferred retain-best from an empty receipt would look right here only
+    by accident, which is why the grouped label is asserted too.
+    """
+    targets = TargetSet(
+        (
+            Target(
+                name="population",
+                entity="household",
+                value=target,
+                measure="household_count",
+            ),
+        )
+    )
+    common = {"epochs": epochs, "learning_rate": 0.2, "mass": "free", "seed": 0}
+
+    def observer(seen):
+        return TargetSnapshotObserver(
+            sink=seen.append,
+            run_id="oscillation",
+            cadence=TargetSnapshotCadence(every=EVERY_EPOCH),
+        )
+
+    ordinary_seen = []
+    ordinary = calibrate(
+        _count_frame((1.0,)),
+        targets,
+        warm_start_weights=None if warm is None else np.array([warm]),
+        target_snapshots=observer(ordinary_seen),
+        **common,
+    )
+    initial = np.array([0.0, 1.0, 0.0] if fixed_zeros else [1.0])
+    groups = GroupedUpperBounds(
+        tuple(range(len(initial))),
+        np.array([0, 1, 1] if fixed_zeros else [0]),
+        np.array([0.0, 3.0] if fixed_zeros else [3.0]),
+    )
+    grouped_seen = []
+    grouped = calibrate(
+        _count_frame(tuple(initial)),
+        targets,
+        warm_start_weights=None if warm is None else initial * warm,
+        grouped_upper_bounds=groups,
+        grouped_preserve_zeros=fixed_zeros,
+        target_snapshots=observer(grouped_seen),
+        **common,
+    )
+
+    # The example is still an oscillation the two rules resolve differently.
+    assert grouped.final_loss > ordinary.final_loss + 0.01
+
+    ordinary_selected = [
+        item for item in ordinary_seen if item["iterate"] == ITERATE_SELECTED
+    ]
+    grouped_selected = [
+        item for item in grouped_seen if item["iterate"] == ITERATE_SELECTED
+    ]
+    assert len(ordinary_selected) == len(grouped_selected) == 1
+    ordinary_selected = ordinary_selected[0]
+    grouped_selected = grouped_selected[0]
+
+    assert ordinary_selected["epoch"] == selected_epoch
+    assert ordinary_selected["epoch"] < epochs
+    assert ordinary_selected["best_retained"]["available"] is True
+    assert ordinary_selected["selection"]["rule"] == "best_feasible_loss"
+    assert ordinary_selected["selection"]["selected_epoch"] == selected_epoch
+
+    assert grouped_selected["epoch"] == epochs
+    assert grouped_selected["best_retained"] == {
+        "available": False,
+        "epoch": None,
+        "loss": None,
+    }
+    assert grouped_selected["selection"] == {
+        "rule": "closing_state",
+        "constraint_mode": "grouped_upper_bounds",
+        "grouped_preserve_zeros": fixed_zeros,
+    }
+
+    # Both closing snapshots are the float64 estimates their result returned.
+    for selected, result in (
+        (ordinary_selected, ordinary),
+        (grouped_selected, grouped),
+    ):
+        assert selected["precision"] == "float64"
+        assert selected["epochs"] == epochs
+        assert [row["estimate"] for row in selected["targets"]] == [
+            diagnostic.final_estimate for diagnostic in result.diagnostics
+        ]
+        assert selected["loss"] == float(result.closing_loss)
+
+    # Every in-loop grouped snapshot reports the closing-state rule; the
+    # ordinary run's carry its own best-iterate bookkeeping instead.
+    for item in grouped_seen:
+        assert item["best_retained"]["available"] is False
+    assert any(
+        item["best_retained"]["available"] is True
+        for item in ordinary_seen
+        if item["iterate"] != ITERATE_SELECTED
+    )

@@ -1,3 +1,60 @@
+# Grouped solver x calibration target snapshots integration - 2026-09-12
+
+Lane: `microcosm-grouped-target-snapshot-integration-20260912`, branch
+`grouped-target-snapshot-integration-20260912`. Base: fresh `origin/main`
+`116d46ee9dc2aafdc68259b7c06e4c3462522e8b` (unmoved; it is exactly the shared
+base both reviewed heads were cut from). Integrates the exact reviewed heads
+`536f1ceefcdafda3cc619c14b4da18e012a7be57` (G, US grouped/fixed-zero Adam) and
+`b43369dc49e175803f62020cc1e72fa53926aed8` (S, calibration target snapshots,
+PR #914) against the read-only checklist
+`grouped-snapshot-integration-review.md`.
+
+Everything below this section is prior-lane history and was accurate when
+written; see "Root journals are history, not state" in `CLAUDE.md`.
+
+## State
+
+Merge resolved. Neither solver path was replaced. Grouped instrumentation,
+identity recomputation and the cross-product tests follow in later commits on
+this branch.
+
+## Done
+
+- Fetched `origin/main`; confirmed it is still `116d46ee9`, so no main drift
+  had to be preserved. Recorded as the integration base.
+- Created this worktree on a new branch from that base; fast-forwarded to G,
+  then merged S. Verified all four pinned source hashes
+  (`solve.py` and `calibrate/__init__.py` on both heads) match
+  `grouped-snapshot-integration-review-pins.json` byte for byte before merging.
+- `calibrate/__init__.py` auto-merged as a true union: `GroupedUpperBounds`
+  export retained alongside every snapshot export.
+- `solve.py`: the single textual conflict was the `calibrate()` signature;
+  resolved as a union of S's `target_snapshots` and G's
+  `grouped_upper_bounds` / `grouped_preserve_zeros` /
+  `_post_projection_observer`.
+- `test_us_multispine_pool_tool.py`: resolved semantically. G's unrelated US
+  integration delta (schema_version 2 PUMA-ladder fixture with joint
+  PUMA/tract/CD overlap arrays and per-layer `source` labels) merged cleanly
+  and is retained; the only textual conflict was the `spec_sha256` pin.
+- The five source-derived identity conflicts
+  (`inventory_coverage.py` EXPECTED_HASHES, `us-f0-coverage.json`,
+  `test_spec_engine_loader.py` golden, the multispine `spec_sha256`, and the
+  calibrate parity `pins.json`) carry a placeholder in this merge commit. None
+  of them is an ours/theirs decision: both sides' values describe their own
+  tree, and neither describes the merged one. They are recomputed against the
+  final merged sources in a later commit on this branch.
+
+## Next
+
+1. Instrument `_optimize_grouped` so grouped runs emit snapshots (the grouped
+   early return in `_optimize` otherwise bypasses every hook S added).
+2. Recompute the five source-derived identities against the final merged
+   checkout and the isolated interpreter.
+3. Add the bounded cross-product tests from checklist section 7.
+4. Record the lane's scope and evidence under `experiments/`.
+
+---
+
 # #893 reconciliation to main's amended graph interface (amendments 19 and 20)
 
 Lane: `microcosm-us-launch-verified-lanes-20260910` (the live integration
