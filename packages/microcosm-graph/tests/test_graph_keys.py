@@ -96,6 +96,7 @@ def _all_keys(
     implementation_hashes = {
         "source.frame@1": "a" * 64,
         "toy.model@1": "b" * 64,
+        "toy.fit@1": "1" * 64,
         **(hashes or {}),
     }
     keys: dict[str, str] = {}
@@ -373,7 +374,7 @@ def _artifact_graph(
 ) -> Graph:
     producer = Node(
         "fit",
-        "toy.model@1",
+        "toy.fit@1",
         inputs=(Slice("person", ("age",)),),
         artifact_outputs=(ArtifactOutput(output, type_),) if declare else (),
     )
@@ -437,3 +438,25 @@ def test_every_part_of_an_artifact_declaration_is_normative() -> None:
     assert realiased["fit"] == base["fit"]
     assert realiased["draw"] != base["draw"]
     assert base["survey"] == realiased["survey"] == retyped["survey"]
+
+
+def test_a_byte_edge_carries_descendant_exact_invalidation() -> None:
+    """Amendment 19 keeps A3 over bytes: the producer's key is in the consumer's.
+
+    The producer has its own kernel ref, so re-hashing only its
+    implementation isolates the byte edge: the consumer reads no cell of the
+    producer, and its key moves anyway.
+    """
+    graph = _artifact_graph()
+    fit_hashes = {"toy.fit@1": "1" * 64}
+    _, base = _all_keys(graph, hashes=fit_hashes)
+    _, moved = _all_keys(graph, hashes={"toy.fit@1": "e" * 64})
+    assert moved["survey"] == base["survey"]
+    assert moved["fit"] != base["fit"]
+    assert moved["draw"] != base["draw"]
+    # Without the declaration the same producer edit leaves the consumer alone.
+    plain = _artifact_graph(declare=False)
+    _, plain_base = _all_keys(plain, hashes=fit_hashes)
+    _, plain_moved = _all_keys(plain, hashes={"toy.fit@1": "e" * 64})
+    assert plain_moved["fit"] != plain_base["fit"]
+    assert plain_moved["draw"] == plain_base["draw"]
