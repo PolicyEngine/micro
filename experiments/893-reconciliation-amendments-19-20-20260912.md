@@ -40,6 +40,24 @@
 > G1–G4 and numbered charter entries. Neither that extraction nor the remaining
 > country layers are declared accepted by this historical report.
 
+> **Subsequent 12 September integration checks:** corrected PR912 head
+> `5e33d6971` received Fable approval; its merge remains conditional on CI.
+> The local integration merged that exact revision in `9e61d0d04` and
+> recomputed the combined source/seed identities. All 734 graph and fitting
+> tests passed. The six-file spec/build sweep collected 248 tests: 247 passed
+> and one failed because its invented PUMA fixture still used schema 1 and
+> omitted the required joint tract/CD population support. The fixture now
+> supplies consistent schema-2 support and explicit invented provenance; that
+> single test passed when rerun. The original failed sweep and intermediate
+> incomplete fixture repair are preserved. This is separate-run evidence,
+> not a claim that the complete 248-test sweep was rerun successfully.
+>
+> Shared graph consolidation is now public as PR913, temporarily based on
+> PR912, with independent Fable review in progress. Its runtime matches this
+> integration's graph implementation. Native strict replay, PUF55 host
+> acceptance and complete national/CD release acceptance remain separate
+> work and are not established by these software checks.
+
 
 Date: 2026-09-12. Worktree `~/PolicyEngine/_worktrees/microcosm-us-launch-verified-lanes-20260910`,
 branch `microcosm-us-launch-verified-lanes-20260910` (PR #893's branch is
