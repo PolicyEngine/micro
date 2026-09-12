@@ -461,10 +461,33 @@ the consumers — that is a follow-up amendment, and it interacts with the
 `availability.py` / execution-state lane this extraction deliberately left on
 the integration branch.
 
-**Two things worth Max's attention, neither this lane's:**
+**The root cause of this lane, and the sibling branch that fixes it.** The
+charter's "Interface freeze" section (`docs/graph-acceptance.md:153-159`) says
+changing `decl.py` or `kernel.py` "requires the owner's sign-off on the pull
+request and re-recording the lock" — a human gate. Nothing in the repository
+compares the lock with the files: `grep` for `graph-interface` across the tree
+finds only the charter sentence and the lock file itself, and CI's `lint` lane
+runs only `ruff check .`. That is exactly how the integration branch extended
+both frozen files with no amendment and no one noticing until this extraction.
 
-- `ruff format --check .` is red on 81 pre-existing files. CI does not gate on
-  it, so it has drifted silently. Worth one formatting sweep, on its own PR.
+There is already an unmerged sibling branch for it — **`graph-interface-lock-test`,
+one commit `8bd6e05ec` ("Enforce the graph interface lock with a test"),
+branched from the same `3094bfe84`** — adding
+`packages/microcosm-graph/tests/test_graph_interface_lock.py`, which asserts the
+lock names exactly the two frozen files and that each one's SHA-256 matches.
+**This branch already satisfies it:** its test file run against this tree exits
+0, 2 passed (run from a temporary copy, removed afterwards; the tree is clean).
+Merging that sibling would make the freeze enforceable instead of advisory, and
+would have caught the integration branch at PR time. It is a governance change
+— every future frozen-file edit becomes a hard CI failure until re-locked,
+which is the point — so it is Max's call, not this lane's, and the two branches
+do not conflict.
+
+**Two more, neither this lane's:**
+
+- `ruff format --check .` is red on 81 pre-existing files — a skeptic confirmed
+  the identical 81-file set on `origin/main`. CI does not gate on it, so it has
+  drifted silently. Worth one formatting sweep, on its own PR.
 - The local `_buildh-runtime` feed artifact is from 2026-07-23 and now fails
   the #855 hierarchy-label requirement, so two `test_release_target_parity.py`
   tests are red on any machine that has it and green (skipped) everywhere else.
