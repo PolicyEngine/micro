@@ -64,8 +64,10 @@ def test_the_top_level_pin_is_the_authoring_platform_and_its_bytes_exist(
 ) -> None:
     case, pins = _case(name)
     platforms = _platforms(pins)
-    assert pins["platform"] in platforms
-    assert platforms[pins["platform"]]["node_key"] == pins["node_key"]
+    # Read the raw mapping, not the one ``_platforms`` back-fills, or the
+    # assertion would be about this helper rather than about the fixture.
+    assert pins["platform"] in pins["platforms"]
+    assert pins["platforms"][pins["platform"]]["node_key"] == pins["node_key"]
     for entry in platforms.values():
         direct = case / entry["direct"]
         assert direct.is_file(), f"{name}: {entry['direct']} is pinned but absent"
@@ -94,9 +96,13 @@ def test_platform_bitwise_pins_partition_identity_across_platforms() -> None:
 def test_a_derived_key_is_the_local_platform_s_own_key() -> None:
     """The derivation is not a second implementation of ``node_key``.
 
-    On this machine the derived key and the pinned key agree, and the pinned key
-    was produced by running the graph — so the derivation is anchored to the
-    executor rather than to itself.
+    Deriving every platform's key would be circular if the derivation were only
+    ever checked against itself. It is not: on whatever platform this runs,
+    ``test_h1_kernel_parity`` executes the graph and asserts that the executor's
+    key equals this same local pin, so agreeing with the local pin here anchors
+    the derivation to the executor. (The local pin is produced by a run on the
+    authoring platform and derived elsewhere, which is exactly why the anchor
+    has to come from an executed key rather than from the pin's provenance.)
     """
     case, pins = _case("fit.qrf")
     local = platform_fingerprint()
