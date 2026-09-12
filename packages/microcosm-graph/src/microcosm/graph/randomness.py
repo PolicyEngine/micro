@@ -31,7 +31,9 @@ def _coordinate(value: object) -> list[object]:
     if isinstance(value, str):
         return ["str", value]
     if isinstance(value, float) and math.isfinite(value):
-        return ["float", value]
+        # Signed zero is one identity, as keys._canonical_tolerance_float treats
+        # it: -0.0 and 0.0 are equal and hash-equal, so they must draw alike.
+        return ["float", 0.0 if value == 0.0 else value]
     raise TypeError("Random coordinates must be non-null finite scalar identities.")
 
 
@@ -39,7 +41,8 @@ def keyed_uniform(*, stream: tuple, keys: Sequence[tuple]) -> np.ndarray:
     """Return bytes-backed, read-only float64 draws keyed by stable coordinates.
 
     Row order, chunk boundaries, and unrelated inserted identities cannot affect
-    a draw. Integers, strings, booleans and floats have distinct canonical tags.
+    a draw. Integers, strings, booleans and floats have distinct canonical tags;
+    a float coordinate of negative zero is the same identity as positive zero.
     The experiment name is nonempty; replicate and base seed are non-negative
     Python integers (booleans refused). No numpy RNG state is read or mutated.
     """
