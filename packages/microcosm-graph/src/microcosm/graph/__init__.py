@@ -16,6 +16,9 @@ from .decl import (
     PARTITION_DTYPES,
     ROWS_ALL,
     WEIGHT_KINDS,
+    ArtifactInput,
+    ArtifactOutput,
+    ArtifactType,
     CompiledGraph,
     Graph,
     GraphError,
@@ -37,6 +40,7 @@ from .errors import (
     StoreUnavailableError,
 )
 from .kernel import (
+    ArtifactValue,
     Capabilities,
     Determinism,
     Kernel,
@@ -63,6 +67,10 @@ __all__ = [
     "PARTITION_DTYPES",
     "ROWS_ALL",
     "WEIGHT_KINDS",
+    "ArtifactInput",
+    "ArtifactOutput",
+    "ArtifactType",
+    "ArtifactValue",
     "Capabilities",
     "CompiledGraph",
     "ContentStore",

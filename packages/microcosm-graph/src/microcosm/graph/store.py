@@ -329,6 +329,13 @@ def _encode_object_scalar(value: object) -> bytes:
         return bytes([_TAG_PD_NAT])
     if isinstance(value, (bool, np.bool_)):
         return bytes([_TAG_TRUE if bool(value) else _TAG_FALSE])
+    if isinstance(value, (np.timedelta64, np.datetime64)):
+        # timedelta64 subclasses signedinteger at runtime; letting it reach the
+        # integer branch would drop the unit and collide with a plain int.
+        raise TypeError(
+            "Object columns may not carry numpy datetime64 or timedelta64 leaves; "
+            f"found {type(value).__name__}."
+        )
     if isinstance(value, (int, np.integer)):
         return bytes([_TAG_INTEGER]) + str(int(value)).encode("ascii")
     if isinstance(value, (float, np.floating)):
