@@ -134,6 +134,15 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # qualifier beside it does; it routes no PUF-detail imputation and
         # models nothing.
         "current_asec_income_routing_source.py",
+        # Source-qualified graph additions reviewed 2026-09-12. These are
+        # original-record joins or declarations, not source-routed PUF models.
+        "current_acs_income_anchor_source.py",  # ACS anchor -> exact original ids.
+        "current_asec_interest_source.py",  # ASEC interest -> original money owner.
+        "current_asec_unemployment_source.py",  # UC literal -> original ASEC ids.
+        "current_survey_amounts.py",  # Validate origin join; fan out to both clones.
+        "current_survey_health_source.py",  # Qualify exact ACS/ASEC source rosters.
+        "current_survey_health_coverage.py",  # Validate the same two-clone join.
+        "graph_current_survey_health.py",  # Declare the attachment's identity inputs.
         "current_social_security_source.py",  # Source-owned SS totals per row.
         "current_survey_geography.py",  # Origin roster and draw keys.
         "current_survey_predictors.py",  # Source-qualified predictor prep.
@@ -357,6 +366,30 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
 # listed separately in _SOURCE_SPINE_PROVENANCE_OWNERS with their reason.
 _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
     {
+        # Qualified raw ACS INTP/RETP anchors, preserving literal knownness
+        "current_acs_income_anchor_source.py",
+        # Qualified ASEC interest components and unreconciled total diagnostics
+        "current_asec_interest_source.py",
+        # Qualified UC receipt/amount observations, preserving unknown zeros
+        "current_asec_unemployment_source.py",
+        # Current UC/health amount qualification and exact two-clone attachment
+        "current_survey_amounts.py",
+        # Pure current-coverage recodes and original-person clone attachment
+        "current_survey_health_coverage.py",
+        # Authenticated original ACS/ASEC health-coverage observations
+        "current_survey_health_source.py",
+        # Typed source, recode and attachment health graph fragment
+        "graph_current_survey_health.py",
+        # Grouped dense calibration over retained fiscal measurements
+        "graph_fiscal_dense_calibration.py",
+        # Measured fiscal inputs and exact retained population/target axes
+        "graph_fiscal_measurement.py",
+        # Source-blind PUF clone placement and original-channel preservation
+        "graph_puf55_route_attachment.py",
+        # Complete PUF composition and retained checked-output lifetime
+        "graph_survey_puf55.py",
+        # Current amount/health composition over the checked PUF parent
+        "graph_us_survey_enrichment.py",
         # Bounded, checksummed codec preserving target-only money source authority
         "_asec_current_money_codec.py",
         # Validate the measured person-signal summary shape before gate decisions
@@ -3413,6 +3446,13 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
 # accepted, and only for the listed modules.
 _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
     {
+        # Reviewed 2026-09-12: exact geography fields/CSR masks, typed artifact
+        # names and producer keys, retained registry entries and node histories.
+        # These four remain scanned for provenance columns and accessor calls.
+        "graph_fiscal_measurement.py",
+        "graph_puf55_route_attachment.py",
+        "graph_survey_puf55.py",
+        "graph_us_survey_enrichment.py",
         "acs_native_coverage_binding.py",
         "acs_person_coverage_columns.py",
         "acs_population_catalogue.py",
