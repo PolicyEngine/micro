@@ -8,12 +8,20 @@ fixture's authoring platform.
 *Journal, not state: accurate as written on 2026-09-11. Check git and the
 tracking issue for what is true later.*
 
+Full receipts — every identity, command and exit code, and the three open
+decisions with their evidence — are in
+[`experiments/amendment-20-keyed-draws-receipts.md`](experiments/amendment-20-keyed-draws-receipts.md).
+
 ## State
 
 Implementation, tests, pins, charter and changelog are landed and committed.
 `packages/microcosm-graph/tests` and `packages/microcosm-fit/tests` are green.
-One item is deliberately left red and reported rather than fixed: see
-**Open for decision** below.
+
+**The branch cannot go green in CI as it stands**, and that is deliberate: the
+`qrf.py` edit moves the spec-engine seed digests, leaving seven tests red in a
+lane that runs on every PR. The lane brief said report the drift, not re-pin
+it, so the branch carries it and the decision goes to the merge owner — see
+**Open for decision** item 1, which carries a tested recipe.
 
 ## Done
 
