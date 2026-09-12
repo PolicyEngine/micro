@@ -18,6 +18,28 @@
 > Python import analysis alone cannot establish extraction order. No engine
 > defaults were admitted and no source/engine identity was refreshed.
 
+> **Later 12 September correction:** `6f66fa545` closes the demonstrated G4
+> mutation defect by handing observers detached snapshots, including nested
+> table values, metadata, schema, weights and ledgers. Independent review is
+> clean; 524 graph tests, five focused cases and all four existing synthetic
+> consumers passed, including financial and calibration teardown checks. An
+> earlier source-edit-during-test failure remains preserved and is excluded.
+> Entry 7.4 below is historical: the current observer need not be trusted to
+> leave its snapshot unmodified. Retaining snapshots still costs memory.
+>
+> `cb27bdb0b` makes the offline explanation display executor-owned unreached
+> and gate-exception states independently from cache hits. Sixteen graph
+> explanation/actual-gate cases and two free-form diagnostic controls passed.
+> Its new `explain → availability` import is recorded in the implementation
+> inventory; availability was already bound as a whole module in all ten
+> using scopes. No scope, dependency, resource, or unbound-use exemption was
+> added. All eight prepared-resource/full-manifest tests passed afterward.
+>
+> Corrected PR912 head `5e33d6971` is undergoing exact-head CI and Fable review.
+> Graph-only extraction is being prepared against that revision, incorporating
+> G1–G4 and numbered charter entries. Neither that extraction nor the remaining
+> country layers are declared accepted by this historical report.
+
 
 Date: 2026-09-12. Worktree `~/PolicyEngine/_worktrees/microcosm-us-launch-verified-lanes-20260910`,
 branch `microcosm-us-launch-verified-lanes-20260910` (PR #893's branch is

@@ -1174,6 +1174,7 @@
     },
     "microcosm.graph/explain.py": {
       "imports": [
+        "microcosm.graph.availability",
         "microcosm.graph.decl",
         "microcosm.graph.manifest",
         "microcosm.graph.population",

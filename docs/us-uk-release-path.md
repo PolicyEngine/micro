@@ -1,6 +1,6 @@
 # US and UK release path
 
-Planning snapshot, 10 September 2026. This is a release work plan, not a
+Planning snapshot, 12 September 2026. This is a release work plan, not a
 certification of either country. Component tests, historical candidates and
 current-candidate acceptance are distinct evidence.
 
@@ -43,20 +43,35 @@ common source population alone does not guarantee identical estimates.
 | Stage | US demonstrated result | UK demonstrated result |
 | --- | --- | --- |
 | Population construction | Small real ACS/ASEC composition, clone and financial enrichment pass; complete PUF and remaining inputs pending | Real FRS 2024–25 spine and earlier whole-spine parity; latest integrated stage set needs fresh coverage and verification |
-| Geography | Corrected post-clone order passes 70 invented controls plus separate default compatibility; native post-clone execution and complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
+| Geography | Small native post-clone block assignment and financial extension passed on 11 September; strict replay is running; complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
 | Calibration | Solver controls pass; fully enriched native national/CD solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
 | Independent quality | Complete-candidate engine outcomes, holdouts and reform validation pending | Prior comparisons and diagnostics exist; the recorded 55k candidates skipped holdout evaluation and do not establish release quality |
 | Full/compact files | Small prefix replay and 36 supplied-parent full/pruned/local export checks pass; complete enriched release family pending | Size-selection implementation and measured candidates exist; current accepted full/compact local family pending |
 | Delivery | No accepted new-architecture release or default consumer adoption | Assembly implementation and historical assembled cuts exist; current certification and default promotion pending |
 
-The US new graph has passed a small real survey → block assignment → clone →
-financial-enrichment build and required replay. The combined survey population
-has 1,584 source households and 3,168 records after cloning. That native result
-uses the earlier assignment-before-cloning order. The corrected nine-node prefix
-and nineteen-node financial extension now pass their invented controls; the
-next native pilot must use their new order and a fresh graph store. The remaining
-critical sequence is complete PUF/input integration, a small real full build,
-model and calibration evaluation, then progressive scale and release verification. See
+The 11 September native pilot passed the corrected survey → full initial
+support clone → atomic block assignment → financial-enrichment order. At a
+1/1000 source sample, its 1,584 source households and 3,464 people become
+3,168 households and 6,928 people after cloning. The nineteen-node graph fits
+and attaches seven financial fields. Its closed receipt is tied to frozen
+source `2ca11c85a`, and reports 5,362 seconds elapsed and 9.31 GB peak RSS.
+This supersedes the earlier assignment-before-cloning milestone for ordering;
+it does not establish full PUF enrichment or national/CD calibration.
+
+On 12 September, a strict required replay of that frozen source was launched
+with a fresh output directory and a read-only retained store. It must verify
+all source bytes again, reuse every node, and reproduce complete artifact
+content, excluding only operational timing and cache-hit fields. Its outcome
+is pending. Meanwhile the maintained graph's observer-mutation defect has been
+fixed and independently reviewed, and the shared graph changes are being
+consolidated against the amended main interface. These software changes still
+need their own native candidate verification; the frozen pilot does not
+certify the newer source.
+
+The remaining critical sequence is complete PUF/input integration, a small
+real full build, model and calibration evaluation, then progressive scale
+and release verification. The existing age-development runner is a separate
+prefix demonstration, not calibration of the nineteen-node financial result. See
 [the US review guide](us-launch-review.md) for scoped acceptance records.
 
 UK work already includes raw-source enrichment, national/local calibration,
