@@ -44,7 +44,7 @@ common source population alone does not guarantee identical estimates.
 | --- | --- | --- |
 | Population construction | Small real ACS/ASEC composition, clone and financial enrichment pass; maintained two-route PUF host passes invented cold/replay controls, with native PUF and remaining inputs pending | Real FRS 2024–25 spine and earlier whole-spine parity; latest integrated stage set needs fresh coverage and verification |
 | Geography | Small native post-clone block assignment and financial extension passed on 11 September; strict required replay passed on 12 September; complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
-| Calibration | Declared national/state/CD measurement stage and solver controls pass; dense graph integration and fully enriched native solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
+| Calibration | Declared national/state/CD measurement and dense grouped calibration stages pass on invented inputs; fully enriched native solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
 | Independent quality | Complete-candidate engine outcomes, holdouts and reform validation pending | Prior comparisons and diagnostics exist; the recorded 55k candidates skipped holdout evaluation and do not establish release quality |
 | Full/compact files | Small prefix replay and 36 supplied-parent full/pruned/local export checks pass; complete enriched release family pending | Size-selection implementation and measured candidates exist; current accepted full/compact local family pending |
 | Delivery | No accepted new-architecture release or default consumer adoption | Assembly implementation and historical assembled cuts exist; current certification and default promotion pending |
@@ -88,7 +88,18 @@ uses declared target bindings, household-aligned CSR measurements and explicit
 national/state/CD masks. Missing consumed predicates refuse, indicator sums
 are numeric, and local calculation helpers participate in cache identity.
 Specialized unsupported bindings refuse; this is not full fiscal-registry
-coverage. The dense grouped weight solve is being integrated separately.
+coverage.
+
+The dense grouped calibration stage is now integrated. Independent review of
+its numerical adapter found no actionable defects, and all 167 selected
+calibration tests passed. The combined integration also passed all 42 tests
+for the measurement and dense stages together. The adapter uses the existing
+grouped Adam solver, keeps initially zero weights fixed, enforces group bounds
+and refuses a result exceeding the declared original row caps. It returns
+calibrated weights and schema-8 diagnostics. Numeric bound arrays do not prove
+their source: the complete-population host must authenticate the original
+sampling references and retained parent before and after use. Native fit,
+full-size memory and calibration acceptance remain unestablished.
 
 Complete-population ancestry remains an explicit requirement. The PUF host
 checks its output before return but does not issue a persistent authority token
