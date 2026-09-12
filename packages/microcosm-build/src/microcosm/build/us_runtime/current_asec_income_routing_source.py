@@ -249,6 +249,7 @@ UNFLAGGED_FIELDS = (
     "FRSE_VAL",
     "FRSE_YN",
     "OI_OFF",
+    "OI_YN",
     "DST_VAL1_YNG",
     "DST_VAL2_YNG",
     "DST_YN_YNG",
