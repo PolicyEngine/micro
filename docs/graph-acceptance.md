@@ -381,7 +381,9 @@ Amendments so far (each re-locked):
     `microcosm.graph.randomness.keyed_uniform`: a keyed kernel's draws are a
     pure function of normative stream parameters — `("sha256-u53-v1",
     experiment_id, replicate, base_seed)` — and one stable coordinate per
-    draw, conventionally `(person_id, process, period, draw_index)`. It
+    draw, conventionally `(person_id, process, period, draw_index)`, with a
+    float coordinate's signed zero normalised to one identity, as the
+    capabilities projection already does for tolerances. It
     reads and advances no generator, so a row's draw stops depending on how
     many rows were drawn before it: the invariance to packing that C1 and C2
     already gave a node's key and seed now reaches each individual draw, and

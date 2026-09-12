@@ -133,6 +133,21 @@ def test_numpy_scalars_are_the_python_scalars_they_hold() -> None:
     )
 
 
+def test_negative_zero_is_the_same_float_coordinate_as_positive_zero() -> None:
+    """``-0.0 == 0.0`` and they hash alike, so they must draw alike.
+
+    A negation or a CSV literal can hand a column ``-0.0`` where another run
+    holds ``0.0``; without normalisation ``canonical_json`` would spell them
+    differently and silently re-randomise that row.
+    """
+    positive = keyed_uniform(stream=STREAM, keys=[(7, 0.0)])[0]
+    assert keyed_uniform(stream=STREAM, keys=[(7, -0.0)])[0] == positive
+    assert keyed_uniform(stream=STREAM, keys=[(7, np.float64(-0.0))])[0] == positive
+    # The normalisation is to positive zero: the documented formula over
+    # ``0.0`` is the draw both spellings produce.
+    assert positive == _spec_uniform(STREAM, (7, 0.0))
+
+
 def test_draws_are_bytes_backed_and_read_only() -> None:
     values = keyed_uniform(stream=STREAM, keys=[(1,), (2,)])
     assert not values.flags.writeable
