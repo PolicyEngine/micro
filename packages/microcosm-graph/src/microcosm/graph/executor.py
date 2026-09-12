@@ -6,7 +6,7 @@ import hashlib
 import json
 import socket
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -2189,8 +2189,17 @@ def run_graph(
     kernels: KernelRegistry,
     resume: ResumePolicy = "auto",
     decisions: tuple[Decision, ...] = (),
+    _population_observer: Callable[[str, Population], None] | None = None,
 ) -> RunManifest:
-    """Execute a compiled graph with content-addressed reuse and receipts."""
+    """Execute a compiled graph with content-addressed reuse and receipts.
+
+    The private population observer exposes each node's admitted population,
+    design anchors included, to an integrating verifier. It runs for cold
+    execution and for restored cache hits alike, before the node is persisted;
+    it must not mutate the population, and an exception it raises refuses the
+    run. It is never a kernel capability, enters no key or receipt, and an
+    unreached node has no population to observe.
+    """
 
     if resume not in ("auto", "require", "forbid"):
         raise ValueError("resume must be 'auto', 'require', or 'forbid'.")
@@ -2489,6 +2498,9 @@ def run_graph(
             populations[compiled.versions[node_id]] = updated
         else:
             populations[node.id] = updated
+
+        if _population_observer is not None:
+            _population_observer(node_id, updated)
 
         if not hit:
             manifest_artifacts, record = _write_node(

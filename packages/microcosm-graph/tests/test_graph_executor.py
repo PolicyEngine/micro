@@ -48,6 +48,7 @@ from microcosm.graph.kernel import (
 )
 from microcosm.graph.keys import opaque_artifact_key, platform_fingerprint
 from microcosm.graph.manifest import Decision, RunManifest
+from microcosm.graph.population import Population
 from microcosm.graph.store import (
     ContentStore,
     StoreCorrupt,
@@ -3940,6 +3941,58 @@ def test_a_manifest_authenticates_its_unreached_blockers(tmp_path: Path) -> None
     forged["schema_version"] = 3
     with pytest.raises(ValueError, match="require manifest schema 4"):
         RunManifest.from_json(json.dumps(forged))
+
+
+def test_the_private_population_observer_sees_every_admitted_population(
+    tmp_path: Path,
+) -> None:
+    """``_population_observer`` runs per node, cold and on hits, before persistence.
+
+    It is an integration seam for verifiers, not a kernel capability: nothing
+    it does enters a key or a receipt, and an exception it raises refuses the
+    run.
+    """
+    store = ContentStore(tmp_path / "store")
+    source = _source_path(tmp_path / "src")
+    seen: list[tuple[str, int]] = []
+
+    def observe(node_id: str, population: Population) -> None:
+        seen.append((node_id, population.frame.n("person")))
+
+    cold = run_graph(
+        compile_graph(_graph()),
+        sources={"survey": source},
+        store=store,
+        kernels=_registry(),
+        _population_observer=observe,
+    )
+    assert [node_id for node_id, _ in seen] == list(cold.nodes)
+    assert {n for _, n in seen} == {3}
+    plain = _run(_graph(), source, store, _registry())
+    assert plain.key == cold.key
+
+    seen.clear()
+    warm = run_graph(
+        compile_graph(_graph()),
+        sources={"survey": source},
+        store=store,
+        kernels=_registry(),
+        _population_observer=observe,
+    )
+    assert all(receipt.hit for receipt in warm.nodes.values())
+    assert [node_id for node_id, _ in seen] == list(warm.nodes)
+
+    def refuse(node_id: str, population: Population) -> None:
+        raise RuntimeError(f"verifier refused {node_id}")
+
+    with pytest.raises(RuntimeError, match="verifier refused survey"):
+        run_graph(
+            compile_graph(_graph()),
+            sources={"survey": source},
+            store=ContentStore(tmp_path / "other"),
+            kernels=_registry(),
+            _population_observer=refuse,
+        )
 
 
 def test_a_gate_reached_only_through_bytes_still_derives_the_tier(
