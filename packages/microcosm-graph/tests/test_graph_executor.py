@@ -3808,6 +3808,97 @@ def test_a_gate_that_declares_evidence_and_raises_leaves_its_consumers_unreached
         assert sum(_calls(again).values()) == 0
 
 
+def test_unreached_propagates_through_a_structural_node_and_its_version(
+    tmp_path: Path,
+) -> None:
+    """A FILTER whose input is unreached is unreached, and so is its version.
+
+    The version the filter would have opened has no population, so a node
+    placed on it is blocked by the filter itself (its version is one of its
+    compiled predecessors), while a node beside the edge still runs.
+    """
+    gate = Node(
+        "gate",
+        "gate@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("household", "gate_verdict", "string"),),
+        population="survey",
+        artifact_outputs=(ArtifactOutput("evidence", EVIDENCE),),
+    )
+    use = Node(
+        "use",
+        "use@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "used", "float64"),),
+        population="survey",
+        artifact_inputs=(ArtifactInput("evidence", "gate", "evidence", EVIDENCE),),
+    )
+    boundary = Node(
+        "boundary",
+        "keep@1",
+        inputs=(Slice("person", ("used",)),),
+        structural=StructuralDelta.FILTER,
+        base="survey",
+    )
+    on_boundary = Node(
+        "on_boundary",
+        "after@1",
+        inputs=(Slice("person", ("used",)),),
+        outputs=(Owned("person", "after", "float64"),),
+        population="boundary",
+    )
+    beside = Node(
+        "beside",
+        "a@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "a", "float64"),),
+        params={"source": "age", "target": "a", "scale": 1.0},
+        population="survey",
+    )
+    graph = Graph("toy", (SOURCE,), (CREATE, gate, use, boundary, on_boundary, beside))
+
+    def keep(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        return KernelResult(
+            keep=pd.Series(True, index=person["person_id"], dtype="bool")
+        )
+
+    def registry_with_filter() -> KernelRegistry:
+        registry = _gate_artifact_registry(raising=True)
+        registry.register(
+            _Kernel(
+                "keep@1",
+                Capabilities(
+                    Determinism.DETERMINISTIC, structural=StructuralDelta.FILTER
+                ),
+                keep,
+            )
+        )
+        return registry
+
+    registry = registry_with_filter()
+    store = ContentStore(tmp_path / "store")
+    source = _source_path(tmp_path / "src")
+    manifest = _run(graph, source, store, registry)
+    nodes = manifest.nodes
+    assert nodes["boundary"].receipt["execution"]["blocked_by"] == {
+        "use": nodes["use"].key
+    }
+    assert nodes["on_boundary"].receipt["execution"]["blocked_by"] == {
+        "boundary": nodes["boundary"].key
+    }
+    assert nodes["boundary"].frame_key is None
+    assert "boundary" not in manifest.populations
+    assert "execution" not in nodes["beside"].receipt
+    assert set(manifest.populations["survey"].person["a"]) == {10.0, 20.0, 30.0}
+    calls = _calls(registry)
+    assert calls["keep@1"] == calls["after@1"] == 0 and calls["a@1"] == 1
+    restored = RunManifest.from_json(manifest.to_json())
+    assert restored.key == manifest.key
+    replay = _run(graph, source, store, registry_with_filter(), resume="require")
+    assert all(receipt.hit for receipt in replay.nodes.values())
+
+
 def test_a_gate_that_declares_evidence_and_passes_produces_it(
     tmp_path: Path,
 ) -> None:
