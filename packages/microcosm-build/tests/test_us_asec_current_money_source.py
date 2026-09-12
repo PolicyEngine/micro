@@ -1,5 +1,6 @@
 """Invented checkpoint-byte tests; private test pins are NOT Census evidence."""
 
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -14,6 +15,58 @@ from microcosm.build.us_runtime import asec_current_money as money
 from microcosm.build.us_runtime import asec_current_money_source as source
 from microcosm.build.us_runtime import asec_household_observations as household
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+
+@pytest.mark.parametrize(
+    "series",
+    [
+        pd.Series(
+            ["HEAD", "DEPENDENT", "HEAD", "", "é", "e\u0301", "\x00", "😀"] * 100,
+            dtype=object,
+        ),
+        pd.Series(["2024", None, "2024", ""] * 100, dtype="string[python]"),
+        pd.Series(["2024", None, "2024", ""] * 100, dtype="string[pyarrow]"),
+        pd.Series([str(i) for i in range(1500)] * 2, dtype=object),
+        pd.Series(["a" * 300000, "b" * 300000, "a" * 300000], dtype=object),
+        pd.Series([None, pd.NA, pd.NaT, np.nan], dtype=object),
+        pd.Series([b"a", b"", b"a", None], dtype=object),
+        pd.Series([True, False, None, np.bool_(True)], dtype=object),
+        pd.Series([0, 2**80, -(2**80), None], dtype=object),
+        pd.Series([0.0, -0.0, np.inf, -np.inf, float("nan"), None], dtype=object),
+    ],
+)
+def test_source_scalar_digest_preserves_original_exact_byte_stream(series):
+    # Independent pre-optimization scalar stream, including dtype metadata.
+    expected = hashlib.sha256()
+    expected.update(
+        source._json(
+            source.checkpoint._series_spec(series, label="authenticated source")
+        )
+    )
+    for value in series.to_numpy(dtype=object, copy=False):
+        encoded = source.checkpoint._encode_object_scalar(value)
+        expected.update(len(encoded).to_bytes(8, "little"))
+        expected.update(encoded)
+    actual = hashlib.sha256()
+    source._series_digest(actual, series)
+    assert actual.digest() == expected.digest()
+
+
+def test_repeated_source_strings_do_not_hide_later_value_or_order_mutations():
+    series = pd.Series(["2024", "2024", "2025"], dtype="string[python]")
+
+    def digest():
+        value = hashlib.sha256()
+        source._series_digest(value, series)
+        return value.digest()
+
+    before = digest()
+    series.iloc[0] = "2025"
+    assert digest() != before
+    series.iloc[0] = "2024"
+    assert digest() == before
+    series.iloc[:] = ["2025", "2024", "2024"]
+    assert digest() != before
 
 
 def _original_fixture_module():

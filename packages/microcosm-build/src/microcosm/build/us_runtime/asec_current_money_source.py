@@ -111,7 +111,23 @@ def _series_digest(digest, series):
         digest.update(len(value).to_bytes(8, "little"))
         digest.update(value)
     else:
+        # Repeated literal strings are common in full survey source frames.
+        # Cache their exact length-prefixed bytes within this column only; every
+        # value is still visited and every later seal rereads the current data.
+        # Both entry and payload bounds keep distinct or large strings bounded.
+        string_tokens = {}
+        token_bytes = 0
         for value in series.to_numpy(dtype=object, copy=False):
+            if type(value) is str:
+                token = string_tokens.get(value)
+                if token is None:
+                    encoded = checkpoint._encode_object_scalar(value)
+                    token = len(encoded).to_bytes(8, "little") + encoded
+                    if len(string_tokens) < 1024 and token_bytes + len(token) <= 262144:
+                        string_tokens[value] = token
+                        token_bytes += len(token)
+                digest.update(token)
+                continue
             encoded = checkpoint._encode_object_scalar(value)
             digest.update(len(encoded).to_bytes(8, "little"))
             digest.update(encoded)
