@@ -458,7 +458,7 @@ def normalize_best_retained(
     :func:`normalize_metadata` does, and ``coerce=False`` additionally
     requires the triple to be complete rather than defaulted.
     """
-    if value is None:
+    if value is None and coerce:
         return {"available": False, "epoch": None, "loss": None}
     if not isinstance(value, Mapping):
         raise TargetSnapshotError(

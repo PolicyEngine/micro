@@ -1012,7 +1012,15 @@ def test_history_publication_still_refuses_to_overwrite_an_existing_chunk(
 
 
 def test_codec_refuses_the_impossible_payloads_the_review_reproduced():
+    # The emitter's omitted best iterate is a complete triple; the public
+    # codec must not silently turn a serialized null into that default.
+    assert _payload()["best_retained"] == {
+        "available": False,
+        "epoch": None,
+        "loss": None,
+    }
     cases = {
+        "null_best_metadata": {"best_retained": None},
         "epoch_exceeds_epochs": {"epoch": 99, "epochs": 1},
         "invalid_timestamp": {"created_at": "not-a-time"},
         "naive_timestamp": {"created_at": "2026-09-12T00:00:00"},
