@@ -68,6 +68,50 @@ ref, and am now implementing the four reviewed findings. Not pushed, no PR.
 - The metadata bounds (32 entries, 64-character keys, 256-character strings)
   are the narrowest values that comfortably hold everything `solve.py` emits.
 
+## Verification (isolated interpreter, no installs, threads=1)
+
+`/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-verified-lanes-20260910/.venv/bin/python -I -B -S`
+with this worktree's shard `src` roots ahead of that venv's site-packages and
+an import-path assertion, `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB_NUM_THREADS=1`.
+
+| battery | result |
+| --- | --- |
+| `packages/microcosm-calibrate/tests` | 307 passed (12 s) |
+| `packages/microcosm-fit/tests` | 124 passed (13 s) — main's QRF pins intact |
+| `test_spec_engine_loader.py` + `test_us_multispine_pool_tool.py` | 197 passed (309 s) |
+| `packages/microcosm-build/tests -k "inventory or coverage or seed"` | 448 passed, 2 skipped (343 s) |
+| `packages/microcosm-graph/tests -k parity` | 25 passed (88 s) |
+| `tools/spec_engine_coverage.py --check` | 42156/42156 fields, 41/41 inventory |
+| `tools/ci_test_groups.py --verify` | `verification=ok`; the snapshot test file lands in fast `rest` / engine `us-am`, never `[defaulted]` |
+| `ruff check .` | clean; `ruff format --check` clean on both touched files |
+
+`test_target_snapshots.py` holds 52 tests, 16 of them new here and 2 existing
+ones updated to the closed contract's refusal points. Replaying the whole file
+against the reviewed head's `target_snapshots.py` (the only source that
+differs) gives **12 failed, 40 passed** — 10 new red regressions plus the 2
+updated tests. Every finding has at least one red regression:
+
+- **C1** — `test_context_refuses_the_record_vectors_the_review_smuggled_through`,
+  `test_metadata_refuses_arbitrary_nested_payloads`,
+  `test_identifier_fields_must_be_strings`,
+  `test_supported_scalar_metadata_survives_and_is_bounded`.
+- **A1** — `test_metadata_refuses_arbitrary_nested_payloads` is the review's
+  own aliasing counterexample; the detachment invariant itself is pinned by
+  `test_a_delivered_snapshot_shares_no_mutable_object_with_its_caller` and
+  `test_sink_mutation_cannot_reach_caller_metadata_or_the_next_snapshot`,
+  which pass on both heads because the flat case was never the defect.
+- **A2** — `test_a_history_chunk_is_published_only_after_its_bytes_are_complete`,
+  `test_a_failed_chunk_write_leaves_no_partial_or_leftover_file`.
+- **A3** — `test_codec_refuses_the_impossible_payloads_the_review_reproduced`,
+  `test_non_finite_diagnostics_stay_null_statuses_rather_than_aborting`,
+  `test_the_codec_is_stricter_than_the_emitting_edge_and_says_so`,
+  `test_created_at_is_a_timezone_aware_timestamp`.
+
+The remaining 6 new tests are preservation tests (the structured metadata
+`solve.py` really emits, the epochs the solver really selects, duplicate chunk
+refusal, and observer-off/observer-on weight parity on the L0, budget-search,
+refit and proximal paths); they pass on both heads by design.
+
 ## Next
 
 - Independent re-review by main before integration/PR updates.
