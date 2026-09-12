@@ -3650,3 +3650,69 @@ def test_a_gate_kernel_may_not_declare_a_typed_artifact_output(tmp_path: Path) -
     store = ContentStore(tmp_path / "store")
     with pytest.raises(NodeRejected, match="gate kernel may not declare"):
         _run(graph, _source_path(tmp_path / "src"), store, registry)
+
+
+def test_a_gate_reached_only_through_bytes_still_derives_the_tier(
+    tmp_path: Path,
+) -> None:
+    """Amendment 19 cannot route around F2: a byte edge is a real ancestor.
+
+    ``gate`` fails and owns a column only ``fit`` reads; ``fit``'s bytes are
+    the only path from that subgraph to ``release``. The release's gate
+    ancestry must still name the gate, so its tier is evidence.
+    """
+    gate = Node(
+        "gate",
+        "gate@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("household", "gate_verdict", "string"),),
+        params={"outcome": "fail"},
+        population="survey",
+    )
+    fit = Node(
+        "fit",
+        "fit@1",
+        inputs=(Slice("household", ("gate_verdict",)),),
+        outputs=(Owned("person", "fitted", "float64"),),
+        params={"source": "age", "target": "fitted", "scale": 1.0},
+        population="survey",
+        artifact_outputs=(ArtifactOutput("forest", FOREST),),
+    )
+    release = Node(
+        "release",
+        "release@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("household", "tier", "string"),),
+        params={"answer": "evidence", "requires_decisions": ()},
+        population="survey",
+        artifact_inputs=(ArtifactInput("donor", "fit", "forest", FOREST),),
+    )
+    graph = Graph("toy", (SOURCE,), (CREATE, gate, fit, release))
+    compiled = compile_graph(graph)
+    assert "fit" in compiled.predecessors["release"]
+
+    registry = _release_registry()
+    registry.register(
+        _Kernel(
+            "fit@1",
+            Capabilities(Determinism.DETERMINISTIC),
+            lambda context: KernelResult(
+                columns={
+                    ("person", "fitted"): pd.Series(
+                        np.zeros(len(context.tables["person"])),
+                        index=pd.Index(
+                            context.tables["person"]["person_id"], name="person_id"
+                        ),
+                        dtype="float64",
+                    )
+                },
+                artifacts={"forest": b"forest-bytes"},
+            ),
+        )
+    )
+    store = ContentStore(tmp_path / "store")
+    manifest = _run(graph, _source_path(tmp_path / "src"), store, registry)
+    assert manifest.nodes["release"].receipt["gate_ancestry"] == ("gate",)
+    assert manifest.tier == "evidence"
+    restored = RunManifest.from_json(manifest.to_json())
+    assert restored.tier == "evidence"
