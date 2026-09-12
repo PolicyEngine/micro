@@ -863,6 +863,56 @@ def test_a_laundered_artifact_scope_loads_as_store_corrupt(tmp_path: Path) -> No
         RunManifest.load(path, store)
 
 
+def test_a_malformed_gate_ancestry_behind_a_byte_edge_keeps_the_tier_diagnostic() -> (
+    None
+):
+    """Amendment 19: a foreign manifest's bad ``gate_ancestry`` is named, not TypeError'd.
+
+    When a byte edge reaches a gate, ``_validate_typed_ancestry`` reads the
+    release's ``gate_ancestry`` before ``tier`` does; a non-sequence there must
+    surface with ``tier``'s own diagnostic (node and offending value), never as
+    a bare ``TypeError`` from building a set of it.
+    """
+    gate_key = "a" * 64
+    descriptor = _typed_descriptor("gate", "evidence", gate_key)
+    gate = NodeReceipt(
+        key=gate_key,
+        hit=False,
+        seed=1,
+        kernel_ref="gate@1",
+        kernel_impl_hash="b" * 64,
+        capabilities=_capabilities(KernelRole.GATE),
+        receipt={"outcome": "fail", "evidence": {"fixture": True}},
+        opaque_artifacts={"evidence": descriptor["key"]},
+        typed_artifacts={"inputs": {}, "outputs": {"evidence": descriptor}},
+    )
+    release = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="release@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=_capabilities(KernelRole.RELEASE),
+        receipt={
+            "tier": "evidence",
+            "outcome": "fail",
+            "gate_ancestry": 5,
+            "requires_decisions": [],
+        },
+        typed_artifacts={"inputs": {"donor": descriptor}, "outputs": {}},
+    )
+    with pytest.raises(
+        ValueError, match="release node 'release' has invalid gate ancestry 5"
+    ):
+        RunManifest(
+            country="toy",
+            nodes={"gate": gate, "release": release},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )
+
+
 def test_a_manifest_without_typed_edges_keeps_its_gate_ancestry_diagnostic() -> None:
     """Amendment 19 must not change a manifest that declares no byte edges.
 
