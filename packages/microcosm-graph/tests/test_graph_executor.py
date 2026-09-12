@@ -31,6 +31,7 @@ from microcosm.graph.decl import (
     WeightTransition,
     compile_graph,
 )
+from microcosm.graph.errors import NodeRejectedError
 from microcosm.graph.executor import NodeRejected, run_graph
 from microcosm.graph.kernel import (
     ArtifactValue,
@@ -44,7 +45,6 @@ from microcosm.graph.kernel import (
     NumericScope,
     Tolerance,
 )
-from microcosm.graph.errors import NodeRejectedError
 from microcosm.graph.keys import opaque_artifact_key, platform_fingerprint
 from microcosm.graph.manifest import Decision, RunManifest
 from microcosm.graph.store import (
@@ -3550,7 +3550,9 @@ def test_the_manifest_records_typed_provenance_and_round_trips(tmp_path: Path) -
     assert '"schema_version":3' in text
     restored = RunManifest.from_json(text)
     assert restored.key == manifest.key
-    assert restored.nodes["draw"].typed_artifacts == manifest.nodes["draw"].typed_artifacts
+    assert (
+        restored.nodes["draw"].typed_artifacts == manifest.nodes["draw"].typed_artifacts
+    )
 
 
 def test_a_typed_edge_refuses_to_launder_its_producer_numeric_scope(
@@ -3558,13 +3560,12 @@ def test_a_typed_edge_refuses_to_launder_its_producer_numeric_scope(
 ) -> None:
     """Amendment 19 x 16/17: bytes carry their producer's numeric contract."""
     store = ContentStore(tmp_path / "store")
+    source = _source_path(tmp_path / "src")
     registry = _artifact_registry(
         producer=Capabilities(Determinism.SEEDED, numeric=Numeric.PLATFORM_BITWISE)
     )
-    with pytest.raises(
-        NodeRejectedError, match="platform_bitwise artifact requires"
-    ):
-        _run(_artifact_graph(), _source_path(tmp_path / "src"), store, registry)
+    with pytest.raises(NodeRejectedError, match="platform_bitwise artifact requires"):
+        _run(_artifact_graph(), source, store, registry)
     bounded = _artifact_registry(
         producer=Capabilities(
             Determinism.SEEDED,
@@ -3572,10 +3573,17 @@ def test_a_typed_edge_refuses_to_launder_its_producer_numeric_scope(
             tolerance=Tolerance(rtol=1e-6),
         )
     )
-    with pytest.raises(
-        NodeRejectedError, match="tolerance_bound artifact requires"
-    ):
-        _run(_artifact_graph(), _source_path(tmp_path / "src"), store, bounded)
+    with pytest.raises(NodeRejectedError, match="tolerance_bound artifact requires"):
+        _run(_artifact_graph(), source, store, bounded)
+    # A consumer that declares the producer's class reads the bytes.
+    matched = _artifact_registry(
+        producer=Capabilities(Determinism.SEEDED, numeric=Numeric.PLATFORM_BITWISE),
+        consumer=Capabilities(Determinism.SEEDED, numeric=Numeric.PLATFORM_BITWISE),
+    )
+    manifest = _run(_artifact_graph(), source, store, matched)
+    scope = manifest.nodes["draw"].typed_artifacts["inputs"]["donor"]["numerics"]
+    assert scope["numeric"] == "platform_bitwise"
+    assert scope["platform"] == platform_fingerprint()
 
 
 def test_an_artifact_payload_enters_the_input_context_digest(tmp_path: Path) -> None:
@@ -3592,15 +3600,11 @@ def test_an_artifact_payload_enters_the_input_context_digest(tmp_path: Path) -> 
     )
     first = KernelContext(
         **base,
-        artifacts={
-            "donor": ArtifactValue(b"one", FOREST, "a" * 64, "b" * 64, scope)
-        },
+        artifacts={"donor": ArtifactValue(b"one", FOREST, "a" * 64, "b" * 64, scope)},
     )
     second = KernelContext(
         **base,
-        artifacts={
-            "donor": ArtifactValue(b"two", FOREST, "a" * 64, "b" * 64, scope)
-        },
+        artifacts={"donor": ArtifactValue(b"two", FOREST, "a" * 64, "b" * 64, scope)},
     )
     bare = KernelContext(**base)
     digest = graph_executor._context_digest
