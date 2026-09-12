@@ -303,8 +303,11 @@ Amendments so far (each re-locked):
     already returns) and `ArtifactInput` (a consumer-local alias naming a
     producer, its output, and the exact type), plus `Node.artifact_inputs`
     and `Node.artifact_outputs`. `kernel.py` gains `ArtifactValue` —
-    immutable bytes with the artifact's content identity, its producer's
-    node key, and the producer's `NumericScope` — and
+    immutable bytes with the artifact's store identity (derived from the
+    producing node's key and the output name, not a hash of the payload;
+    the store validates the bytes against their own recorded SHA-256 on
+    load, as E1 requires), its producer's node key, and the producer's
+    `NumericScope` — and
     `KernelContext.artifacts`, one value per declared alias. It rides
     before `tolerances`, so amendment 17's statement that `numerics` rides
     at the end of the context stays literally true; the acceptance suite's

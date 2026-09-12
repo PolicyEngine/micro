@@ -286,7 +286,12 @@ class ArtifactValue:
     Attributes:
         payload: The stored bytes, immutable.
         type: The nominal contract the producer declared.
-        key: The artifact's content identity (``opaque_artifact_key``).
+        key: The artifact's store identity, derived from the producing
+            node's key and the output name (``opaque_artifact_key``). It is
+            not a hash of ``payload``: the store validates the bytes filed
+            under it against their own recorded SHA-256 on every load
+            (charter E1), and the executor checks this key against the
+            producer's receipt before handing the value over.
         producer_key: The node key of the node that produced it.
         numerics: The producer's :class:`NumericScope`, so a gate reading an
             artifact holds it to the same contract as a cell (amendment 17).
