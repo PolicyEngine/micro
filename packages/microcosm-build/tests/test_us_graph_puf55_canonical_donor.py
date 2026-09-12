@@ -30,7 +30,7 @@ from microcosm.graph.kernel import KernelContext
 from microcosm.graph.keys import opaque_artifact_key
 
 
-def _original_sources(root, *, defect=None):
+def _original_sources(root, *, defect=None, full_finalization_support=False):
     """Encode complete invented deliveries with real pinned source definitions."""
     packaged = owner.raw.packaged_definition()
     rows = []
@@ -77,6 +77,10 @@ def _original_sources(root, *, defect=None):
                 E03230="100",
                 E87530="300",
             )
+            if full_finalization_support and int(row["S006"]) > 0:
+                # Full-chain finalization needs positive weighted support for
+                # its configured capital-gain distribution tail bound.
+                row["E01100"] = str(100 + i)
         rows.append(row)
     if defect == "duplicate":
         rows[0]["RECID"] = rows[1]["RECID"]
@@ -128,6 +132,87 @@ def _original_sources(root, *, defect=None):
         path.write_bytes(payload)
         paths[pin.source_name] = path
     return definition, paths, (main, demo)
+
+
+@pytest.mark.parametrize(
+    "case", ("default_unsupported", "supported", "positive_only_zero_weight")
+)
+def test_original_source_fixture_weighted_tail_support(tmp_path, case):
+    target = "non_sch_d_capital_gains"
+    support = owner.full.support
+    configuration = support.puf_tax_detail_tail_bound_quantiles_identity()
+    assert configuration == {target: 0.999}
+    assert owner.source.DIRECT_MAPPINGS[target] == "E01100"
+    assert all(target in profile.targets for profile in owner.numerical.PROFILES)
+
+    baseline_definition, _, baseline_buffers = _original_sources(tmp_path / "default")
+    definition, paths, buffers = _original_sources(
+        tmp_path / "selected", full_finalization_support=case == "supported"
+    )
+    for pin, payload in zip(
+        (definition.main, definition.demographic), buffers, strict=True
+    ):
+        assert paths[pin.source_name].read_bytes() == payload
+        assert pin.bytes == len(payload)
+        assert pin.sha256 == hashlib.sha256(payload).hexdigest()
+    if case != "supported":
+        # Explicit false keeps the default fixture's exact delivered bytes.
+        assert buffers == baseline_buffers
+        assert definition.canonical == baseline_definition.canonical
+    assert buffers[1] == baseline_buffers[1]
+
+    baseline = owner.source.decode_full_puf_source(
+        *baseline_buffers, baseline_definition
+    )
+    decoded = owner.source.decode_full_puf_source(*buffers, definition)
+    assert decoded.aggregate_tokens == baseline.aggregate_tokens
+    assert decoded.status.keys() == baseline.status.keys()
+    assert decoded.values.keys() == baseline.values.keys()
+    for name in decoded.status:
+        np.testing.assert_array_equal(decoded.status[name], baseline.status[name])
+    for name in decoded.values:
+        if name != "E01100":
+            np.testing.assert_array_equal(decoded.values[name], baseline.values[name])
+    np.testing.assert_array_equal(
+        decoded.values["E01100"][~decoded.ordinary],
+        baseline.values["E01100"][~baseline.ordinary],
+    )
+
+    observed, _, status = owner.source.observed_and_derived_return_columns(decoded)
+    np.testing.assert_array_equal(status["RECID"], np.arange(501000, 501064))
+    expected_weights = np.array([0, *range(126, 189)], dtype=np.float64) / 100
+    weights = status["S006"].astype(np.float64) / 100
+    np.testing.assert_array_equal(weights, expected_weights)
+    values = observed[target].astype(np.float64, copy=True)
+    expected_values = (
+        np.array([0, *range(101, 164)], dtype=np.float64)
+        if case == "supported"
+        else np.zeros(64, dtype=np.float64)
+    )
+    np.testing.assert_array_equal(values, expected_values)
+    np.testing.assert_array_equal(
+        observed[target], decoded.values["E01100"][decoded.ordinary]
+    )
+    if case == "positive_only_zero_weight":
+        # A detached negative numerical input; never alter source/donor bytes.
+        values[0] = 100
+        assert (values > 0).any()
+        assert (weights[values > 0] == 0).all()
+        np.testing.assert_array_equal(observed[target], np.zeros(64))
+    if case == "supported":
+        assert np.isfinite(values).all()
+        assert ((values > 0) & (weights > 0)).sum() == 63
+        cap = support._weighted_positive_donor_quantile(
+            values, weights, configuration[target]
+        )
+        assert np.isfinite(cap) and 0 < cap <= values.max()
+    else:
+        with pytest.raises(
+            ValueError, match=r"^PUF tail-bound donor has no positive donor support\.$"
+        ):
+            support._weighted_positive_donor_quantile(
+                values, weights, configuration[target]
+            )
 
 
 def _context(kernel, paths):
