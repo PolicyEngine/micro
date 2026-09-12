@@ -1,5 +1,24 @@
 # #893 reconciliation to main's amended graph interface — lane report
 
+> **12 September Codex continuation:** this is the historical layer proposal
+> at `80fef2217`, not an approved extraction plan. The final battery
+> `bt0nx8fcc` was killed during its first pytest group: CI-group verification
+> and coverage check exited zero, but no final consumer result was produced.
+> Independent review found that G4 exposes mutable admitted populations to
+> observers and that the layer order omits hard packaged-resource dependencies.
+> Fix and review both before extracting or landing layers. PR912 is also held
+> for fixes from Astra's executed review; the branch-head assumption below is
+> superseded until its corrected head lands.
+>
+> Resource repair `a4b6fe88c` restores all three omitted ASEC JSON contracts
+> from their exact historical blobs, matching unchanged loader pins. Eight
+> targeted tests and wheel-content verification pass. These three resources,
+> `acs_2024_housing_universe.json`, and current-money domains/consumers/price-basis
+> resources must accompany their first PR-1 loaders or an earlier prerequisite;
+> Python import analysis alone cannot establish extraction order. No engine
+> defaults were admitted and no source/engine identity was refreshed.
+
+
 Date: 2026-09-12. Worktree `~/PolicyEngine/_worktrees/microcosm-us-launch-verified-lanes-20260910`,
 branch `microcosm-us-launch-verified-lanes-20260910` (PR #893's branch is
 `microcosm-us-launch-integration-20260909`). Started at `069d5ed9a`. No push, no
@@ -210,7 +229,7 @@ change). Tests ran with `uv run --no-sync pytest … -p no:cacheprovider`.
 
 Build-side and shared consumers, final tree (`07566eb17`). A first battery at `a16eeacf8` found 39 survey tests refused (`PREPARATION_ISSUANCE_REFUSED`) — all traced to the implementation inventory above, re-pinned in `07566eb17` — and one non-existent file name in my own raw-bytes group list (`test_us_puf_raw_source.py`, removed); the battery was then rerun in full:
 
-_(battery running at the time of this draft; the final table replaces this line)_
+_(Historical draft marker resolved: task `bt0nx8fcc` was killed during availability consumers. No final battery counts or exit code exist; later groups did not start.)_
 
 ## 6. Layer map: landing #893 as sequential PRs
 
