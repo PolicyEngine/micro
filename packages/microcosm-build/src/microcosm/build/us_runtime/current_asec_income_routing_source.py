@@ -146,7 +146,18 @@ RECEIPT_ENTRIES = {
     "FRMOTR": (1, 389, 43, "6C-22", "ERN_OTR = 1", "niu"),
     "OI_YN": (1, 555, 47, "6C-26", "All Persons aged 15+", "none or niu"),
 }
-RECEIPT_CODES = {0: "niu_or_none", 1: "yes", 2: "no"}
+RECEIPT_CODE_DOMAIN = (0, 1, 2)
+
+
+def receipt_codes(field):
+    """Printed yes/no labels for one entry; the zero label is not shared.
+
+    OI_YN prints "none or niu" where the other entries print "niu"/"Niu", so a
+    single shared label would attribute a "respondent reported none" reading to
+    eight fields whose dictionary entry does not support it.
+    """
+    return {0: RECEIPT_ENTRIES[field][5], 1: "yes", 2: "no"}
+
 
 # Retirement account identity. Code 4 names a regular IRA; it does not observe
 # any taxable fraction of the distribution.
@@ -377,20 +388,28 @@ def amount_state(value, status):
 
 # Statuses whose dollar reading is established by the source itself. Every other
 # status leaves the canonical amount unknown rather than completing it with zero.
+# A recipient zero qualifies only where the printed entry says the zero is valid
+# dollars; every entry here except ANN_VAL prints "0 = none or niu", which the
+# pinned domains artifact records as not distinguishable from an amount alone.
+DOLLAR_ZERO_SEMANTICS = "valid_zero_dollars"
 KNOWN_AMOUNT_STATUSES = (
     "known_receipt",
-    "receipt_with_net_zero",
+    "known_recipient_zero",
     "known_nonreceipt",
 )
 
 
-def receipt_status(universe, receipt, amount_kind, *, net_measure):
+def receipt_status(universe, receipt, amount_kind, *, net_measure, zero_is_dollars):
     """Classify one family row without inventing receipt, absence or dollars.
 
     `universe` is True, False, or None when the printed universe itself is not
-    resolved by the retained literals. A zero amount under a yes answer is a
-    genuine net zero only for a signed net measure; for a gross entry the
-    printed zero reads "none or niu" and stays ambiguous.
+    resolved by the retained literals.
+
+    A zero amount under a yes answer establishes a dollar reading only when the
+    printed entry says its zero is valid dollars. `net_measure` does not make a
+    zero known: it only separates a signed net entry's recipient zero, which a
+    consumer may want to treat differently, from a gross entry's. Both stay
+    unknown, because both print "0 = none or niu".
     """
     code, status = receipt
     if universe is None:
@@ -415,11 +434,13 @@ def receipt_status(universe, receipt, amount_kind, *, net_measure):
     if code == 1:
         if amount_kind == "nonzero":
             return "known_receipt"
+        if zero_is_dollars:
+            return "known_recipient_zero"
         return "receipt_with_net_zero" if net_measure else "ambiguous_recipient_zero"
     return "known_nonreceipt" if amount_kind == "zero" else "contradictory_no_nonzero"
 
 
-def _classify(amounts, statuses, universes, receipts, *, net_measure):
+def _classify(amounts, statuses, universes, receipts, *, net_measure, zero_is_dollars):
     """Row-wise family classification returning labels and canonical amounts."""
     labels, canonical = [], np.full(len(amounts), np.nan, dtype=np.float64)
     kinds, sources = [], np.full(len(amounts), np.nan, dtype=np.float64)
@@ -427,11 +448,22 @@ def _classify(amounts, statuses, universes, receipts, *, net_measure):
         kind, dollars = amount_state(value, statuses[i])
         kinds.append(kind)
         sources[i] = dollars
-        label = receipt_status(universes[i], receipts[i], kind, net_measure=net_measure)
+        label = receipt_status(
+            universes[i],
+            receipts[i],
+            kind,
+            net_measure=net_measure,
+            zero_is_dollars=zero_is_dollars,
+        )
         labels.append(label)
         if label in KNOWN_AMOUNT_STATUSES:
             canonical[i] = dollars if label == "known_receipt" else 0.0
     return labels, canonical, kinds, sources
+
+
+def _zero_is_dollars(field):
+    """Whether the printed entry says its zero is valid dollars, not none/niu."""
+    return printed_amount_entries()[field].zero_semantics == DOLLAR_ZERO_SEMANTICS
 
 
 def _codes_frame(prefix, tokens, allowed, labels=None, *, width=1):
@@ -455,10 +487,12 @@ def _age_universe(ages):
 def _allocation_origin(flags, unflagged):
     """Family allocation provenance from published flags only.
 
-    Every published flag here prints a conditional universe, so an unpopulated
-    literal is not a defect and is not "no allocation" either. A family that
-    also publishes unflagged fields can never report a clean "no allocation":
-    the dictionary does not publish that evidence for those fields.
+    Every published flag here prints a conditional universe (for example
+    I_RNTVAL is printed for RNT_VAL > 0), and those universes are not evaluated
+    here. An unpopulated literal is therefore not a defect, and an all-zero
+    reading is not an assertion of non-allocation: on a non-recipient row the
+    flag is outside its own printed universe. The zero readings are reported as
+    exactly that, never as publisher-confirmed absence of allocation.
     """
     origins = []
     count = len(next(iter(flags.values()))[0])
@@ -472,9 +506,9 @@ def _allocation_origin(flags, unflagged):
         elif any(s == "missing" for s in statuses):
             origins.append("allocation_flag_not_populated")
         elif unflagged:
-            origins.append("publisher_no_allocation_on_published_flags_only")
+            origins.append("published_flags_all_zero_with_unflagged_fields")
         else:
-            origins.append("publisher_no_allocation")
+            origins.append("published_flags_all_zero")
     return pd.array(origins, dtype="string")
 
 
@@ -486,11 +520,12 @@ def _pension_annuity(raw, ages):
         ("pension", "PNSN_VAL", "PEN_YN"),
         ("annuity", "ANN_VAL", "ANN_YN"),
     ):
+        printed = receipt_codes(receipt_field)
         frame, codes, statuses = _codes_frame(
             "pension_annuity_" + prefix + "_receipt",
             raw[receipt_field],
-            RECEIPT_CODES,
-            RECEIPT_CODES,
+            printed,
+            printed,
         )
         labels, canonical, kinds, sources = _classify(
             raw["amounts"][amount_field],
@@ -498,6 +533,7 @@ def _pension_annuity(raw, ages):
             universe,
             list(zip(codes, statuses, strict=True)),
             net_measure=False,
+            zero_is_dollars=_zero_is_dollars(amount_field),
         )
         out = pd.concat([out, frame], axis=1)
         out["pension_annuity_" + prefix + "_source_total"] = sources
@@ -542,7 +578,7 @@ def _retirement_distribution(raw, ages):
         ("slot1_young", "DST_SC1_YNG", "DST_VAL1_YNG", "under_age58"),
         ("slot2_young", "DST_SC2_YNG", "DST_VAL2_YNG", "under_age58"),
     )
-    slot_codes, slot_amounts, slot_kinds = {}, {}, {}
+    slot_codes, slot_amounts, slot_kinds, slot_status = {}, {}, {}, {}
     for name, code_field, amount_field, slot_route in slots:
         prefix = "retirement_distribution_" + name + "_account"
         frame, codes, statuses = _codes_frame(
@@ -584,6 +620,7 @@ def _retirement_distribution(raw, ages):
         slot_codes[name] = codes
         slot_amounts[name] = values
         slot_kinds[name] = kinds
+        slot_status[name] = statuses_out
     applicable = {
         "age58_and_over": ("slot1", "slot2"),
         "under_age58": ("slot1_young", "slot2_young"),
@@ -606,10 +643,10 @@ def _retirement_distribution(raw, ages):
                 for n in names
             )
         )
-        if all(
-            slot_codes[n][i] is not None and slot_kinds[n][i] != "missing"
-            for n in names
-        ):
+        # Both axes must be resolved: an unreadable account code could itself be
+        # a regular IRA, and a declared account whose amount is a "none or niu"
+        # zero does not observe a zero dollar distribution from that account.
+        if all(slot_status[n][i] in ("niu_slot", "known_slot") for n in names):
             matched = [n for n in names if slot_codes[n][i] == REGULAR_IRA_CODE]
             ira[i] = float(sum(slot_amounts[n][i] for n in matched))
             ira_slots.append(len(matched))
@@ -623,8 +660,8 @@ def _retirement_distribution(raw, ages):
         frame, codes, statuses = _codes_frame(
             "retirement_distribution_receipt_" + suffix,
             raw[field],
-            RECEIPT_CODES,
-            RECEIPT_CODES,
+            receipt_codes(field),
+            receipt_codes(field),
         )
         out = pd.concat([out, frame], axis=1)
         route_codes[field] = (codes, statuses)
@@ -645,7 +682,10 @@ def _retirement_distribution(raw, ages):
         for i in range(rows)
     ]
     frame, codes, statuses = _codes_frame(
-        "retirement_distribution_receipt", receipt_tokens, RECEIPT_CODES, RECEIPT_CODES
+        "retirement_distribution_receipt",
+        receipt_tokens,
+        receipt_codes("DST_YN"),
+        receipt_codes("DST_YN"),
     )
     out = pd.concat([out, frame], axis=1)
     # The two printed DST universes name only the age-58 split. Unlike the four
@@ -660,7 +700,19 @@ def _retirement_distribution(raw, ages):
         universes,
         list(zip(codes, statuses, strict=True)),
         net_measure=False,
+        zero_is_dollars=_zero_is_dollars("DST_VAL1"),
     )
+    # An answered off-route recipiency or off-route dollars contradict the route
+    # this row is on, and an applicable slot whose declared account carries a
+    # "none or niu" zero leaves the composition unresolved. Neither may end in a
+    # known amount, however the route's own receipt literal reads.
+    for i in range(rows):
+        if offroute[i] or offroute_receipt[i]:
+            labels[i] = "contradictory_offroute_evidence"
+            canonical[i] = np.nan
+        elif ambiguity[i]:
+            labels[i] = "unresolved_slot_composition"
+            canonical[i] = np.nan
     out["retirement_distribution_source_total"] = totals
     out["retirement_distribution_reporting_status"] = pd.array(labels, dtype="string")
     out["retirement_distribution_known_amount"] = canonical
@@ -702,7 +754,10 @@ def _net_property(raw, ages):
     rows = len(ages)
     universe = _age_universe(ages)
     frame, codes, statuses = _codes_frame(
-        "net_property_receipt", raw["RNT_YN"], RECEIPT_CODES, RECEIPT_CODES
+        "net_property_receipt",
+        raw["RNT_YN"],
+        receipt_codes("RNT_YN"),
+        receipt_codes("RNT_YN"),
     )
     labels, canonical, kinds, sources = _classify(
         raw["amounts"]["RNT_VAL"],
@@ -710,6 +765,7 @@ def _net_property(raw, ages):
         universe,
         list(zip(codes, statuses, strict=True)),
         net_measure=True,
+        zero_is_dollars=_zero_is_dollars("RNT_VAL"),
     )
     out = frame
     out["net_property_source_total"] = sources
@@ -742,7 +798,10 @@ def _farm(raw, ages):
     universe_codes = {}
     for field in ("ERN_YN", "FRMOTR"):
         frame, codes, _ = _codes_frame(
-            "farm_" + field.lower(), raw[field], RECEIPT_CODES, RECEIPT_CODES
+            "farm_" + field.lower(),
+            raw[field],
+            receipt_codes(field),
+            receipt_codes(field),
         )
         out = pd.concat([out, frame], axis=1)
         universe_codes[field] = codes
@@ -756,7 +815,10 @@ def _farm(raw, ages):
         else:
             universe.append(None)
     frame, codes, statuses = _codes_frame(
-        "farm_receipt", raw["FRSE_YN"], RECEIPT_CODES, RECEIPT_CODES
+        "farm_receipt",
+        raw["FRSE_YN"],
+        receipt_codes("FRSE_YN"),
+        receipt_codes("FRSE_YN"),
     )
     out = pd.concat([out, frame], axis=1)
     labels, canonical, kinds, sources = _classify(
@@ -765,6 +827,7 @@ def _farm(raw, ages):
         universe,
         list(zip(codes, statuses, strict=True)),
         net_measure=True,
+        zero_is_dollars=_zero_is_dollars("FRSE_VAL"),
     )
     out["farm_source_total"] = sources
     out["farm_amount_kind"] = pd.array(kinds, dtype="string")
@@ -788,7 +851,10 @@ def _other_income(raw, ages):
     rows = len(ages)
     universe = _age_universe(ages)
     frame, codes, statuses = _codes_frame(
-        "other_income_receipt", raw["OI_YN"], RECEIPT_CODES, RECEIPT_CODES
+        "other_income_receipt",
+        raw["OI_YN"],
+        receipt_codes("OI_YN"),
+        receipt_codes("OI_YN"),
     )
     category, category_codes, category_statuses = _codes_frame(
         "other_income_category",
@@ -803,6 +869,7 @@ def _other_income(raw, ages):
         universe,
         list(zip(codes, statuses, strict=True)),
         net_measure=False,
+        zero_is_dollars=_zero_is_dollars("OI_VAL"),
     )
     out = pd.concat([frame, category], axis=1)
     out["other_income_source_total"] = sources
@@ -813,7 +880,13 @@ def _other_income(raw, ages):
     routing = []
     for i in range(rows):
         code, status = category_codes[i], category_statuses[i]
-        if status == "missing":
+        # OI_OFF is printed for OI_YN = 1, and OI_YN for persons aged 15+, so a
+        # row outside that universe carries no in-universe category either.
+        if universe[i] is None:
+            routing.append("unresolved_reporting_universe_routing")
+        elif universe[i] is False:
+            routing.append("outside_reporting_universe_routing")
+        elif status == "missing":
             routing.append("missing_category_literal")
         elif code is None:
             routing.append("unrecognized_category_literal")
@@ -1014,6 +1087,14 @@ def project_income_routing(raw, ages):
             and len(statuses) == len(ages)
             and np.isin(statuses, [int(c) for c in money.CodebookStatus]).all(),
             "AMOUNT_ARRAY_CONTRACT:" + name,
+        )
+    for name in (*RECEIPT_ENTRIES, *ACCOUNT_ENTRIES, "OI_OFF"):
+        tokens = raw.get(name)
+        require(
+            type(tokens) is list
+            and len(tokens) == len(ages)
+            and all(type(t) is str and len(t) <= TOKEN_MAX_CHARS for t in tokens),
+            "ROUTING_TOKEN_CONTRACT:" + name,
         )
     parts = [
         _pension_annuity(raw, ages),
@@ -1255,6 +1336,7 @@ def qualify_current_asec_income_routing(preparation):
         "source_admission_issued": False,
         "release_eligible": False,
         "projection_sha256": _sha(out.to_json(orient="table").encode()),
+        "literals_sha256": _sha(literals.to_json(orient="table").encode()),
     }
     require(
         preparation._checked()[1] == entry[1] and parent.ready().header == ready.header,
@@ -1269,7 +1351,9 @@ def qualify_current_asec_income_routing(preparation):
         "FINAL_OWNER",
     )
     require(
-        _sha(out.to_json(orient="table").encode()) == evidence["projection_sha256"],
+        _sha(out.to_json(orient="table").encode()) == evidence["projection_sha256"]
+        and _sha(literals.to_json(orient="table").encode())
+        == evidence["literals_sha256"],
         "FINAL_PROJECTION_CHANGED",
     )
     return CurrentAsecIncomeRoutingValues(out, literals, evidence)

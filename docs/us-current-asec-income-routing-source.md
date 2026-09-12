@@ -15,6 +15,11 @@ graph does not yet supply:
 
 Thirteen published allocation flags are read alongside them.
 
+Both returned frames carry a digest: `evidence["projection_sha256"]` over
+`person` and `evidence["literals_sha256"]` over `asec_literals`. Both are
+re-checked at the end of the qualifier, so a host comparing the documented
+digests detects a corrupted transport on either frame.
+
 `qualify_current_asec_income_routing(preparation)` takes a live
 `AuthenticatedSurveyPopulationPreparation`, requalifies it, captures the pinned
 2024 member once, joins it to the money parent by exact native keys, and returns
@@ -58,7 +63,14 @@ around its own I/O, exactly as the accepted unemployment qualifier requires.
   `net_property_component_split_known` is constant `False`, so the total is not
   independently labelled rental and no subdivision is separately modelled.
 - `FRSE_VAL` is farm self-employment, not nonfarm `SEMP_VAL`;
-  `farm_is_nonfarm_self_employment` is constant `False`.
+  `farm_is_nonfarm_self_employment` is constant `False`. Its printed label
+  includes the composite clause naming `ERN_VAL` (when `ERN_SRCE=3`) and
+  `FRM_VAL`, so the total already contains those components.
+- `retirement_distribution_regular_ira_amount` is published only when every
+  applicable slot is fully resolved on both axes. An unreadable account code
+  could itself be a regular IRA, and a declared account whose amount is a
+  "none or niu" zero does not observe a zero dollar distribution, so both leave
+  the regular-IRA share unknown rather than at zero.
 - `OI_OFF` code 20 is the reported alimony category. Nothing maps any other
   code — including 19, `anything else` — onto alimony or onto a miscellaneous
   residual; `other_income_residual_rule_applied` is constant `False`.
@@ -74,22 +86,41 @@ around its own I/O, exactly as the accepted unemployment qualifier requires.
 ## Reporting status vocabulary
 
 `receipt_status` is the single classifier. Only `known_receipt`,
-`receipt_with_net_zero` and `known_nonreceipt` establish a dollar reading
+`known_recipient_zero` and `known_nonreceipt` establish a dollar reading
 (`KNOWN_AMOUNT_STATUSES`); every other status leaves the canonical amount
 unknown rather than completing it with zero.
 
 | Status | Meaning |
 | --- | --- |
 | `known_receipt` | in universe, receipt yes, amount non-zero (a signed loss included) |
-| `receipt_with_net_zero` | in universe, receipt yes, amount zero on a signed net measure (`RNT_VAL`, `FRSE_VAL`) |
+| `known_recipient_zero` | in universe, receipt yes, amount zero on an entry whose printed zero is valid dollars — `ANN_VAL` alone, whose NIU is the separate `-1` code |
+| `receipt_with_net_zero` | in universe, receipt yes, amount zero on a signed net measure (`RNT_VAL`, `FRSE_VAL`). Distinct from a gross entry's recipient zero, but **not** a known amount: both print `0 = none or niu` |
 | `ambiguous_recipient_zero` | in universe, receipt yes, amount zero on a gross entry whose printed zero reads "none or niu" |
 | `known_nonreceipt` | in universe, receipt no, amount zero |
 | `niu` | in universe, receipt 0, amount zero or a declared non-money code |
 | `missing_amount` / `missing_receipt_literal` | one side of the pair is absent |
 | `unrecognized_receipt_literal` | the receipt literal is malformed or outside the printed range |
 | `contradictory_no_nonzero`, `contradictory_niu_nonzero`, `contradictory_declared_niu_amount`, `contradictory_outside_reporting_universe` | retained source contradictions, excluded from every canonical amount |
+| `contradictory_offroute_evidence` | distributions only: the route that does not apply carries dollars or an answered recipiency |
+| `unresolved_slot_composition` | distributions only: an applicable slot declares an account whose amount is a "none or niu" zero |
 | `outside_reporting_universe` | the printed universe excludes the row and the literals agree |
 | `unresolved_reporting_universe` | the printed universe cannot be resolved from the retained literals |
+
+Which recipient zeros resolve is read from the pinned domains artifact, not
+decided here: `_zero_is_dollars` compares each entry's `zero_semantics` against
+`valid_zero_dollars`. Eight of the nine entries record
+`none_or_niu_not_distinguishable_from_amount_alone`, including both signed net
+measures, so a signed zero is separated by label but never completed.
+
+The receipt code labels are per entry, not shared: `receipt_codes(field)` reads
+the printed zero label from `RECEIPT_ENTRIES`, so `OI_YN` reports `none or niu`
+where `PEN_YN` reports `niu` and `FRSE_YN` reports `Niu` exactly as printed.
+
+Other-income routing (`other_income_routing_status`) follows the same universe:
+`OI_OFF` is printed for `OI_YN = 1` and `OI_YN` for persons aged 15+, so a row
+outside or unresolved on that universe reports
+`outside_reporting_universe_routing` or `unresolved_reporting_universe_routing`
+and never a reported category.
 
 Universes are per family and never reduced to age alone. `PEN_YN`, `ANN_YN`,
 `RNT_YN` and `OI_YN` print `All Persons aged 15+`. `FRSE_YN` prints
@@ -149,9 +180,12 @@ the pooled 2022/2023 cohorts would require handling that restatement first.
 `*_allocation_origin` is derived from published flags only:
 
 - `publisher_allocated` — some applicable flag is non-zero.
-- `publisher_no_allocation` — every applicable flag is populated and zero, and
-  every field in the family carries a published flag.
-- `publisher_no_allocation_on_published_flags_only` — the same, but the family
+- `published_flags_all_zero` — every applicable flag is populated and reads
+  zero, and every field in the family carries a published flag. This is **not**
+  an assertion of non-allocation: each flag prints a conditional universe (for
+  example `I_RNTVAL` is printed for `RNT_VAL > 0`) and those universes are not
+  evaluated here, so a non-recipient row sits outside its own flag's universe.
+- `published_flags_all_zero_with_unflagged_fields` — the same, but the family
   also holds a field the dictionary does not flag.
 - `allocation_flag_not_populated` — a flag literal is absent. Every flag here
   prints a conditional universe, so this is not a defect and not "no

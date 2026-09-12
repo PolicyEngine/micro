@@ -227,11 +227,16 @@ def test_pension_and_annuity_totals_stay_separate_and_unsplit(tmp_path, monkeypa
     assert np.isnan(person.loc[105, "pension_annuity_annuity_source_total"])
     assert person.loc[105, "pension_annuity_annuity_amount_kind"] == "declared_niu"
     assert person.loc[105, "pension_annuity_annuity_reporting_status"] == "niu"
-    # A yes answer with a zero gross amount is ambiguous, not a known zero.
+    # ANN_VAL is the one entry here whose printed zero is valid dollars (its NIU
+    # is the separate -1 code), so a yes answer with a zero amount resolves.
     assert person.loc[107, "pension_annuity_annuity_reporting_status"] == (
-        "ambiguous_recipient_zero"
+        "known_recipient_zero"
     )
-    assert np.isnan(person.loc[107, "pension_annuity_annuity_known_amount"])
+    assert person.loc[107, "pension_annuity_annuity_known_amount"] == 0.0
+    # PNSN_VAL prints "0 = none or niu", so the same pattern would not resolve
+    # there; the module reads that distinction from the pinned domains artifact.
+    assert owner._zero_is_dollars("ANN_VAL")
+    assert not owner._zero_is_dollars("PNSN_VAL")
     # A no answer against a positive total is a retained contradiction.
     assert person.loc[107, "pension_annuity_pension_reporting_status"] == (
         "contradictory_no_nonzero"
@@ -304,9 +309,13 @@ def test_signed_property_and_farm_totals_keep_losses_and_net_zero_receipt(
     )
     assert person.loc[107, "net_property_source_total"] == 500.0
     assert np.isnan(person.loc[107, "net_property_known_amount"])
-    # Farm receipt with a net zero is distinct from absence, NIU and unknown.
+    # Farm receipt with a net zero stays distinct from absence, NIU and missing,
+    # but FRSE_VAL prints "0 = none or niu" just as the gross entries do, so the
+    # amount is not completed to a known zero.
     assert person.loc[105, "farm_reporting_status"] == "receipt_with_net_zero"
-    assert person.loc[105, "farm_known_amount"] == 0.0
+    assert np.isnan(person.loc[105, "farm_known_amount"])
+    assert person.loc[105, "farm_source_total"] == 0.0
+    assert "receipt_with_net_zero" not in owner.KNOWN_AMOUNT_STATUSES
     assert person.loc[107, "farm_source_total"] == -9000.0
     assert person.loc[107, "farm_reporting_status"] == "known_receipt"
     assert bool(person.loc[107, "farm_is_net_loss"])
@@ -533,37 +542,81 @@ def _write_member(path, rows):
 
 
 @pytest.mark.parametrize(
-    "universe,token,kind,net,label",
+    "universe,token,kind,net,dollars,label",
     [
-        (True, "1", "nonzero", False, "known_receipt"),
-        (True, "1", "zero", False, "ambiguous_recipient_zero"),
-        (True, "1", "zero", True, "receipt_with_net_zero"),
-        (True, "1", "nonzero", True, "known_receipt"),
-        (True, "2", "zero", False, "known_nonreceipt"),
-        (True, "2", "nonzero", False, "contradictory_no_nonzero"),
-        (True, "0", "zero", False, "niu"),
-        (True, "0", "nonzero", False, "contradictory_niu_nonzero"),
-        (True, "0", "declared_niu", False, "niu"),
-        (True, "1", "declared_niu", False, "contradictory_declared_niu_amount"),
-        (True, "1", "missing", False, "missing_amount"),
-        (True, "", "zero", False, "missing_receipt_literal"),
-        (True, "9", "zero", False, "unrecognized_receipt_literal"),
-        (True, "01", "zero", False, "unrecognized_receipt_literal"),
-        (False, "0", "zero", False, "outside_reporting_universe"),
-        (False, "0", "missing", False, "outside_reporting_universe"),
-        (False, "1", "nonzero", False, "contradictory_outside_reporting_universe"),
-        (False, "2", "zero", False, "contradictory_outside_reporting_universe"),
-        (None, "1", "nonzero", False, "unresolved_reporting_universe"),
-        (None, "0", "zero", True, "unresolved_reporting_universe"),
+        (True, "1", "nonzero", False, False, "known_receipt"),
+        (True, "1", "zero", False, False, "ambiguous_recipient_zero"),
+        # A signed net measure's recipient zero stays distinct, and stays
+        # unknown: RNT_VAL and FRSE_VAL print the same "0 = none or niu" label
+        # the gross entries print.
+        (True, "1", "zero", True, False, "receipt_with_net_zero"),
+        # Only an entry whose printed zero is valid dollars (ANN_VAL) resolves.
+        (True, "1", "zero", False, True, "known_recipient_zero"),
+        (True, "1", "nonzero", True, False, "known_receipt"),
+        (True, "2", "zero", False, False, "known_nonreceipt"),
+        (True, "2", "nonzero", False, False, "contradictory_no_nonzero"),
+        (True, "0", "zero", False, False, "niu"),
+        (True, "0", "nonzero", False, False, "contradictory_niu_nonzero"),
+        (True, "0", "declared_niu", False, True, "niu"),
+        (True, "1", "declared_niu", False, True, "contradictory_declared_niu_amount"),
+        (True, "1", "missing", False, False, "missing_amount"),
+        (True, "", "zero", False, False, "missing_receipt_literal"),
+        (True, "9", "zero", False, False, "unrecognized_receipt_literal"),
+        (True, "01", "zero", False, False, "unrecognized_receipt_literal"),
+        (False, "0", "zero", False, False, "outside_reporting_universe"),
+        (False, "0", "missing", False, False, "outside_reporting_universe"),
+        (
+            False,
+            "1",
+            "nonzero",
+            False,
+            False,
+            "contradictory_outside_reporting_universe",
+        ),
+        (
+            False,
+            "2",
+            "zero",
+            False,
+            False,
+            "contradictory_outside_reporting_universe",
+        ),
+        (None, "1", "nonzero", False, False, "unresolved_reporting_universe"),
+        (None, "0", "zero", True, False, "unresolved_reporting_universe"),
     ],
 )
-def test_receipt_and_amount_knownness_stay_separate(universe, token, kind, net, label):
-    receipt = owner.literal_code(token, owner.RECEIPT_CODES, width=1)
-    assert owner.receipt_status(universe, receipt, kind, net_measure=net) == label
+def test_receipt_and_amount_knownness_stay_separate(
+    universe, token, kind, net, dollars, label
+):
+    receipt = owner.literal_code(token, owner.receipt_codes("PEN_YN"), width=1)
+    assert (
+        owner.receipt_status(
+            universe, receipt, kind, net_measure=net, zero_is_dollars=dollars
+        )
+        == label
+    )
     # Only three statuses establish a dollar reading; nothing else completes.
     assert (label in owner.KNOWN_AMOUNT_STATUSES) == (
-        label in ("known_receipt", "receipt_with_net_zero", "known_nonreceipt")
+        label in ("known_receipt", "known_recipient_zero", "known_nonreceipt")
     )
+
+
+def test_only_ann_val_prints_a_zero_that_reads_as_valid_dollars():
+    entries = owner.printed_amount_entries()
+    dollars = {
+        name
+        for name, entry in entries.items()
+        if entry.zero_semantics == owner.DOLLAR_ZERO_SEMANTICS
+    }
+    assert dollars == {"ANN_VAL"}
+    for name in set(owner.AMOUNT_FIELDS) - dollars:
+        assert (
+            entries[name].zero_semantics
+            == "none_or_niu_not_distinguishable_from_amount_alone"
+        )
+    assert owner._zero_is_dollars("ANN_VAL")
+    assert not owner._zero_is_dollars("RNT_VAL")
+    assert not owner._zero_is_dollars("FRSE_VAL")
 
 
 @pytest.mark.parametrize(
@@ -796,8 +849,13 @@ def test_both_distribution_recipiency_literals_are_retained_with_the_route():
     assert out.retirement_distribution_receipt_58_literal.tolist() == ["0", "1"]
     assert out.retirement_distribution_receipt_young_literal.tolist() == ["1", "0"]
     assert out.retirement_distribution_offroute_receipt.tolist() == [True, True]
-    # The applicable literal still drives the reporting status.
-    assert out.retirement_distribution_reporting_status.tolist() == ["niu", "niu"]
+    # An answered off-route recipiency contradicts the route, so the applicable
+    # literal cannot resolve the row however it reads.
+    assert out.retirement_distribution_reporting_status.tolist() == [
+        "contradictory_offroute_evidence",
+        "contradictory_offroute_evidence",
+    ]
+    assert out.retirement_distribution_known_amount.isna().all()
     # A clean pair reports no off-route answer. Here each person answers yes on
     # their own route with every applicable slot at the printed "none or niu"
     # zero, which stays ambiguous rather than becoming a known zero.
@@ -896,6 +954,201 @@ def test_printed_flag_and_scope_claims_match_the_dictionary_as_printed():
     assert owner.ACCOUNT_ENTRIES["DST_SC1_YNG"][4] == ("DST_YN_YNG = 1 and a_age < 58")
     assert owner.ACCOUNT_ENTRIES["DST_SC2_YNG"][4] == ("DST_VAL_YNG > 0 and a_age < 58")
     assert owner.RECEIPT_ENTRIES["OI_YN"][5] == "none or niu"
+    assert owner.receipt_codes("OI_YN")[0] == "none or niu"
+    for name in ("PEN_YN", "ANN_YN", "DST_YN", "DST_YN_YNG", "RNT_YN", "ERN_YN"):
+        assert owner.receipt_codes(name)[0] == "niu"
+    assert owner.receipt_codes("FRSE_YN")[0] == "Niu"
     assert owner.RECEIPT_ENTRIES["FRSE_YN"][4] == "ERN_YN=1 or FRMOTR=1"
     for name in ("PEN_YN", "ANN_YN", "RNT_YN", "OI_YN"):
         assert owner.RECEIPT_ENTRIES[name][4] == "All Persons aged 15+"
+
+
+def _pure_rows(n, ages, **literals):
+    codebook = owner.money.CodebookStatus
+    amounts = {name: np.zeros(n) for name in owner.AMOUNT_FIELDS}
+    statuses = {
+        name: np.full(n, int(codebook.ZERO_NONE_OR_NIU), "u1")
+        for name in owner.AMOUNT_FIELDS
+    }
+    statuses["ANN_VAL"] = np.full(n, int(codebook.ZERO_DOLLARS_AS_CODED), "u1")
+    raw = {
+        "amounts": amounts,
+        "statuses": statuses,
+        "allocations": {
+            name: ([0] * n, ["in_printed_range"] * n)
+            for name in owner.ALLOCATION_ENTRIES
+        },
+    }
+    for name in (*owner.RECEIPT_ENTRIES, *owner.ACCOUNT_ENTRIES, "OI_OFF"):
+        raw[name] = ["0"] * n
+    raw.update(literals)
+    return raw, np.asarray(ages, dtype="float64")
+
+
+def _set_amount(raw, field, values):
+    codebook = owner.money.CodebookStatus
+    raw["amounts"][field] = np.asarray(values, dtype="float64")
+    raw["statuses"][field] = np.array(
+        [
+            int(codebook.AMOUNT_NONZERO)
+            if v
+            else int(
+                codebook.ZERO_DOLLARS_AS_CODED
+                if field == "ANN_VAL"
+                else codebook.ZERO_NONE_OR_NIU
+            )
+            for v in values
+        ],
+        dtype="u1",
+    )
+
+
+def test_offroute_distribution_dollars_block_a_known_absence():
+    raw, ages = _pure_rows(1, [70.0], DST_YN=["2"], DST_SC1_YNG=["4"])
+    _set_amount(raw, "DST_VAL1_YNG", [8000.0])
+    out = owner.project_income_routing(raw, ages)
+    assert out.retirement_distribution_route.iloc[0] == "age58_and_over"
+    assert bool(out.retirement_distribution_offroute_nonzero.iloc[0])
+    # The applicable literals alone would read as a known zero; the retained
+    # off-route dollars contradict that, so nothing is resolved.
+    assert out.retirement_distribution_reporting_status.iloc[0] == (
+        "contradictory_offroute_evidence"
+    )
+    assert np.isnan(out.retirement_distribution_known_amount.iloc[0])
+    assert out.retirement_distribution_slot1_young_amount.iloc[0] == 8000.0
+
+
+def test_an_ambiguous_slot_zero_leaves_the_total_and_the_ira_share_unknown():
+    raw, ages = _pure_rows(1, [70.0], DST_YN=["1"], DST_SC1=["4"], DST_SC2=["1"])
+    _set_amount(raw, "DST_VAL1", [5000.0])
+    out = owner.project_income_routing(raw, ages)
+    # Slot 2 declares a 401k account whose amount is a "none or niu" zero.
+    assert out.retirement_distribution_slot2_slot_status.iloc[0] == (
+        "ambiguous_slot_zero"
+    )
+    assert bool(out.retirement_distribution_slot_zero_ambiguity.iloc[0])
+    assert out.retirement_distribution_source_total.iloc[0] == 5000.0
+    assert out.retirement_distribution_reporting_status.iloc[0] == (
+        "unresolved_slot_composition"
+    )
+    assert np.isnan(out.retirement_distribution_known_amount.iloc[0])
+    assert np.isnan(out.retirement_distribution_regular_ira_amount.iloc[0])
+    assert pd.isna(out.retirement_distribution_regular_ira_slots.iloc[0])
+    # A regular IRA slot whose own amount is that ambiguous zero is not a known
+    # zero distribution from that account either.
+    raw, ages = _pure_rows(1, [70.0], DST_YN=["1"], DST_SC1=["4"], DST_SC2=["1"])
+    _set_amount(raw, "DST_VAL2", [5000.0])
+    ambiguous = owner.project_income_routing(raw, ages)
+    assert ambiguous.retirement_distribution_slot1_slot_status.iloc[0] == (
+        "ambiguous_slot_zero"
+    )
+    assert np.isnan(ambiguous.retirement_distribution_regular_ira_amount.iloc[0])
+    # A contradictory NIU slot carrying dollars is likewise unresolved.
+    raw, ages = _pure_rows(1, [70.0], DST_YN=["1"], DST_SC1=["0"])
+    _set_amount(raw, "DST_VAL1", [5000.0])
+    contradictory = owner.project_income_routing(raw, ages)
+    assert contradictory.retirement_distribution_slot1_slot_status.iloc[0] == (
+        "contradictory_niu_slot_amount"
+    )
+    assert np.isnan(contradictory.retirement_distribution_regular_ira_amount.iloc[0])
+    assert pd.isna(contradictory.retirement_distribution_regular_ira_slots.iloc[0])
+    # Two fully resolved slots do give a known composition.
+    raw, ages = _pure_rows(1, [70.0], DST_YN=["1"], DST_SC1=["4"], DST_SC2=["0"])
+    _set_amount(raw, "DST_VAL1", [5000.0])
+    resolved = owner.project_income_routing(raw, ages)
+    assert resolved.retirement_distribution_reporting_status.iloc[0] == "known_receipt"
+    assert resolved.retirement_distribution_known_amount.iloc[0] == 5000.0
+    assert resolved.retirement_distribution_regular_ira_amount.iloc[0] == 5000.0
+    assert resolved.retirement_distribution_regular_ira_slots.iloc[0] == 1
+
+
+@pytest.mark.parametrize(
+    "age,ern,frmotr,routing",
+    [
+        (14, "1", "0", "outside_reporting_universe_routing"),
+        (40, "", "", "reported_category"),
+    ],
+)
+def test_other_income_routing_follows_the_printed_receipt_universe(
+    age, ern, frmotr, routing
+):
+    raw, ages = _pure_rows(
+        1,
+        [float(age)],
+        OI_YN=["1"],
+        OI_OFF=["20"],
+        ERN_YN=[ern],
+        FRMOTR=[frmotr],
+    )
+    _set_amount(raw, "OI_VAL", [3000.0])
+    out = owner.project_income_routing(raw, ages)
+    assert out.other_income_routing_status.iloc[0] == routing
+    assert bool(out.other_income_is_reported_alimony.iloc[0]) == (
+        routing == "reported_category"
+    )
+    # The farm universe on the same rows comes from ERN_YN/FRMOTR, not from age.
+    assert pd.isna(out.farm_source_reporting_universe.iloc[0]) == (ern == "")
+
+
+def test_allocation_origins_do_not_assert_publisher_confirmed_non_allocation():
+    raw, ages = _pure_rows(1, [40.0])
+    zeroed = owner.project_income_routing(raw, ages)
+    # Every flag here prints a conditional universe that is not evaluated, so an
+    # all-zero reading is reported as exactly that, never as "no allocation".
+    assert zeroed.net_property_allocation_origin.iloc[0] == "published_flags_all_zero"
+    assert zeroed.pension_annuity_allocation_origin.iloc[0] == (
+        "published_flags_all_zero_with_unflagged_fields"
+    )
+    for column in [c for c in zeroed.columns if c.endswith("_allocation_origin")]:
+        assert "no_allocation" not in zeroed[column].iloc[0]
+    raw, ages = _pure_rows(1, [40.0])
+    raw["allocations"]["I_RNTVAL"] = ([4], ["in_printed_range"])
+    assert (
+        owner.project_income_routing(raw, ages).net_property_allocation_origin.iloc[0]
+        == "publisher_allocated"
+    )
+    raw, ages = _pure_rows(1, [40.0])
+    raw["allocations"]["I_RNTYN"] = ([None], ["missing"])
+    assert (
+        owner.project_income_routing(raw, ages).net_property_allocation_origin.iloc[0]
+        == "allocation_flag_not_populated"
+    )
+    raw, ages = _pure_rows(1, [40.0])
+    raw["allocations"]["I_RNTYN"] = ([None], ["outside_printed_range"])
+    assert (
+        owner.project_income_routing(raw, ages).net_property_allocation_origin.iloc[0]
+        == "unresolved_allocation_provenance"
+    )
+
+
+@pytest.mark.parametrize("field", ("OI_YN", "DST_SC1", "OI_OFF"))
+def test_the_public_projection_validates_its_routing_token_arrays(field):
+    raw, ages = _pure_rows(2, [40.0, 40.0])
+    raw[field] = ["0"]
+    with pytest.raises(ValueError, match="ROUTING_TOKEN_CONTRACT:" + field):
+        owner.project_income_routing(raw, ages)
+    raw[field] = ["0", 0]
+    with pytest.raises(ValueError, match="ROUTING_TOKEN_CONTRACT:" + field):
+        owner.project_income_routing(raw, ages)
+
+
+def test_the_literal_transport_carries_its_own_digest(tmp_path, monkeypatch):
+    _, qualified = _qualified(tmp_path, monkeypatch)
+    assert (
+        hashlib.sha256(
+            qualified.asec_literals.to_json(orient="table").encode()
+        ).hexdigest()
+        == qualified.evidence["literals_sha256"]
+    )
+    assert (
+        qualified.evidence["literals_sha256"] != qualified.evidence["projection_sha256"]
+    )
+    # A host comparing the documented digests detects a corrupted literal frame.
+    index = qualified.asec_literals.index[0]
+    qualified.asec_literals.loc[index, "PNSN_VAL"] = "999999"
+    assert (
+        hashlib.sha256(
+            qualified.asec_literals.to_json(orient="table").encode()
+        ).hexdigest()
+        != qualified.evidence["literals_sha256"]
+    )
