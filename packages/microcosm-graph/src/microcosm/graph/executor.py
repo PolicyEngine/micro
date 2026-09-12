@@ -2057,6 +2057,12 @@ def run_graph(
             entry = typed["inputs"][binding.name]
             producer_receipt = receipts[binding.producer]
             if producer_receipt.opaque_artifacts.get(binding.artifact) != entry["key"]:
+                # Generated receipts cannot reach this branch: a producer that
+                # hit its record had this identity checked by
+                # `_require_record_shape`, and one that ran got it from
+                # `_write_node` under the same derivation. It stands so the
+                # consumer's read is guarded by its own check rather than by
+                # the producer's, should those two paths ever diverge.
                 raise StoreCorrupt(
                     f"Node {node.id!r} artifact producer receipt disagrees with its "
                     "declaration."

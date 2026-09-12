@@ -3854,7 +3854,9 @@ def test_a_cache_hit_authenticates_its_artifact_edges_without_reading_them(
     assert _CountingStore.loads.count(artifact) == 1
 
     # Tampering with the producer's recorded identity is still caught on a
-    # hit, without any payload being read for the consumer.
+    # hit, without any payload being read for the consumer. The guard that
+    # fires is the record-shape contract check on the producer's own restore,
+    # which is why the consumer's later receipt comparison never has to.
     _CountingStore.loads = []
     graph = _artifact_graph()
     record_key = graph_executor._cache_record_key(cold.nodes["fit"].key)
