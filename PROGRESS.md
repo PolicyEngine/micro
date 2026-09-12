@@ -7,9 +7,9 @@ prior-lane history; see "Root journals are history, not state" in
 
 ## State
 
-In progress. Extracting the typed-artifact interface change that landed on
-`origin/microcosm-us-launch-integration-20260909` without an amendment, and
-re-landing it the charter's way as Amendment 19.
+Implementation landed on `amend-typed-artifacts`; verification in progress.
+Nothing pushed, no PR, no branches created. Eight commits on top of
+`origin/main` at `3094bfe84`.
 
 ## Scope (what is in, and what is deliberately out)
 
@@ -47,12 +47,28 @@ Out, because it is not needed for artifacts (each is its own lane):
   amendment-17 precedent (`cdbf71888`, `80b63ba14`, `ed36f6cb3`).
 - Measured the branch diff per file and fixed the in/out boundary above.
 - `uv sync --all-packages --locked --extra us --extra uk` → exit 0.
+- Captured the baseline node keys of the three toy acceptance graphs before
+  touching any source, so the node-key answer is measured, not asserted.
+- `68a6ecc4b` (red, exit 2, 4 collection errors) → `e591c52d7`: the frozen
+  declaration interface, `compile_graph`'s artifact edge, the elided
+  canonical projection, `opaque_artifact_key`, serialization, and the view.
+- `a2b6dfb0b`: the acceptance suite's B2 `KernelContext` field set, as its
+  own commit, matching `80b63ba14`.
+- `1cce8eceb` (red, 7 of 8 failing) → `15f9d2c67`: `artifact_edges.py` and
+  the executor, cache record, and manifest support.
+- `38b9a9e4d`: amendment 19 in the charter, the relock, the changelog
+  fragment. `8c2e7faab`: the graph explorer's receipt payload.
+- Node keys re-measured after the change: byte-identical for all 20 nodes
+  of the three toy graphs.
+- `packages/microcosm-graph/tests` 359 passed, exit 0.
+  `tools/ci_test_groups.py --verify` ok, `tools/spec_engine_coverage.py
+  --check` 42156/42156 + 41/41, `tools/graph_acceptance_burndown.py
+  --verify` ok, `ruff check` and `ruff format --check` clean.
 
 ## Next
 
-- Red-first contract tests, then the interface change, then the executor
-  support, then the charter amendment + relock, then the acceptance-suite
-  commit of its own.
+- Whole-workspace `uv run pytest` (running) and the adversarial review of
+  the extraction; then the lane report in `out.md`.
 
 ---
 
