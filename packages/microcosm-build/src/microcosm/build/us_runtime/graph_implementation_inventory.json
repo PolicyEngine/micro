@@ -474,11 +474,12 @@
     },
     "microcosm.build/us_runtime/congressional_district_vintage.py": {
       "imports": [
+        "microcosm.calibrate.geography_constants",
         "numpy",
         "pandas"
       ],
       "resource_accesses_sha256": "cba8c434f995a8a867f6b67951909b2038954efc13cf25c04ea958ffac6a8f61",
-      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      "unbound_uses_sha256": "d49a89e818222a896afaaed38a0f448e33b38a5656f2eb9591e1bd9195eed687"
     },
     "microcosm.build/us_runtime/cps_carried.py": {
       "imports": [
@@ -1115,18 +1116,6 @@
       "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
-    "microcosm.graph/attachments.py": {
-      "imports": [
-        "microcosm.frame",
-        "microcosm.graph.canonical",
-        "microcosm.graph.decl",
-        "microcosm.graph.manifest",
-        "microcosm.graph.population",
-        "microcosm.graph.store"
-      ],
-      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    },
     "microcosm.graph/availability.py": {
       "imports": [
         "microcosm.graph.decl",
@@ -1167,7 +1156,6 @@
         "microcosm.frame",
         "microcosm.graph",
         "microcosm.graph.artifact_edges",
-        "microcosm.graph.attachments",
         "microcosm.graph.availability",
         "microcosm.graph.canonical",
         "microcosm.graph.codecs",
@@ -1210,14 +1198,13 @@
         "microcosm.graph.decl",
         "microcosm.graph.kernel"
       ],
-      "resource_accesses_sha256": "5e91517c603797fcf9131c3cffd0119c3226dd706f2c219658ffd571c5aa893c",
+      "resource_accesses_sha256": "5950b5602a721f5334ac91d4027a61707cf58600a827a6f1a4e3b73e690f9748",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     "microcosm.graph/manifest.py": {
       "imports": [
         "microcosm.frame",
         "microcosm.graph.artifact_edges",
-        "microcosm.graph.attachments",
         "microcosm.graph.availability",
         "microcosm.graph.canonical",
         "microcosm.graph.decl",
@@ -1236,6 +1223,7 @@
         "microcosm.graph.canonical",
         "microcosm.graph.decl",
         "microcosm.graph.kernel",
+        "microcosm.graph.store",
         "numpy",
         "pandas"
       ],
@@ -1502,6 +1490,7 @@
     "microcosm.build.us_runtime.weeks_unemployed": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.wic_claim": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.workers_compensation": "live registry projection; other shared-module routes inactive",
+    "microcosm.calibrate.geography_constants": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "microcosm.calibrate.registry": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "microcosm.calibrate.solve": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "microcosm.fit": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
@@ -1517,7 +1506,6 @@
     "microcosm.frame.weights": "whole-module in explicit stages",
     "microcosm.graph": "whole-module in explicit stages",
     "microcosm.graph.artifact_edges": "whole-module in explicit stages",
-    "microcosm.graph.attachments": "whole-module in explicit stages",
     "microcosm.graph.availability": "whole-module in explicit stages",
     "microcosm.graph.canonical": "whole-module in explicit stages",
     "microcosm.graph.codecs": "whole-module in explicit stages",
@@ -1581,7 +1569,6 @@
     "microcosm.graph": [
       "__init__.py",
       "artifact_edges.py",
-      "attachments.py",
       "availability.py",
       "canonical.py",
       "codecs.py",
@@ -1594,7 +1581,6 @@
       "manifest.py",
       "population.py",
       "randomness.py",
-      "schema.py",
       "serialize.py",
       "store.py",
       "view.py"
@@ -1665,7 +1651,6 @@
         "microcosm.frame/weights.py",
         "microcosm.graph/__init__.py",
         "microcosm.graph/artifact_edges.py",
-        "microcosm.graph/attachments.py",
         "microcosm.graph/availability.py",
         "microcosm.graph/canonical.py",
         "microcosm.graph/codecs.py",
@@ -1739,7 +1724,6 @@
         "microcosm.frame/weights.py",
         "microcosm.graph/__init__.py",
         "microcosm.graph/artifact_edges.py",
-        "microcosm.graph/attachments.py",
         "microcosm.graph/availability.py",
         "microcosm.graph/canonical.py",
         "microcosm.graph/codecs.py",
@@ -1811,7 +1795,6 @@
         "microcosm.frame/weights.py",
         "microcosm.graph/__init__.py",
         "microcosm.graph/artifact_edges.py",
-        "microcosm.graph/attachments.py",
         "microcosm.graph/availability.py",
         "microcosm.graph/canonical.py",
         "microcosm.graph/codecs.py",
@@ -1896,7 +1879,6 @@
         "microcosm.frame/weights.py",
         "microcosm.graph/__init__.py",
         "microcosm.graph/artifact_edges.py",
-        "microcosm.graph/attachments.py",
         "microcosm.graph/availability.py",
         "microcosm.graph/canonical.py",
         "microcosm.graph/codecs.py",
@@ -1972,7 +1954,6 @@
         "microcosm.frame/weights.py",
         "microcosm.graph/__init__.py",
         "microcosm.graph/artifact_edges.py",
-        "microcosm.graph/attachments.py",
         "microcosm.graph/availability.py",
         "microcosm.graph/canonical.py",
         "microcosm.graph/codecs.py",
@@ -2039,7 +2020,6 @@
         "microcosm.frame/weights.py",
         "microcosm.graph/__init__.py",
         "microcosm.graph/artifact_edges.py",
-        "microcosm.graph/attachments.py",
         "microcosm.graph/availability.py",
         "microcosm.graph/canonical.py",
         "microcosm.graph/codecs.py",
@@ -2149,7 +2129,6 @@
         "microcosm.frame/weights.py",
         "microcosm.graph/__init__.py",
         "microcosm.graph/artifact_edges.py",
-        "microcosm.graph/attachments.py",
         "microcosm.graph/availability.py",
         "microcosm.graph/canonical.py",
         "microcosm.graph/codecs.py",
@@ -2270,7 +2249,6 @@
         "microcosm.frame/weights.py",
         "microcosm.graph/__init__.py",
         "microcosm.graph/artifact_edges.py",
-        "microcosm.graph/attachments.py",
         "microcosm.graph/availability.py",
         "microcosm.graph/canonical.py",
         "microcosm.graph/codecs.py",
@@ -2390,7 +2368,6 @@
         "microcosm.frame/weights.py",
         "microcosm.graph/__init__.py",
         "microcosm.graph/artifact_edges.py",
-        "microcosm.graph/attachments.py",
         "microcosm.graph/availability.py",
         "microcosm.graph/canonical.py",
         "microcosm.graph/codecs.py",
@@ -2464,7 +2441,6 @@
         "microcosm.frame/weights.py",
         "microcosm.graph/__init__.py",
         "microcosm.graph/artifact_edges.py",
-        "microcosm.graph/attachments.py",
         "microcosm.graph/availability.py",
         "microcosm.graph/canonical.py",
         "microcosm.graph/codecs.py",
