@@ -1604,7 +1604,8 @@ class FittedRegimeGatedQRF:
         """Draw using caller-supplied per-row uniforms, without advancing RNG.
 
         Each mapping must contain exactly the fitted targets, with one finite
-        one-dimensional array in ``[0, 1)`` per target, aligned to input rows.
+        real numeric one-dimensional array in ``[0, 1)`` per target, aligned
+        to input rows. Complex, object and string arrays are refused.
         Supply both arrays even for single-sign or all-zero targets. Later
         targets condition on earlier draws, just as in :meth:`predict`.
 
@@ -1622,7 +1623,12 @@ class FittedRegimeGatedQRF:
                 raise ValueError(f"{name} must contain exactly the fitted targets.")
             arrays[name] = {}
             for target in self.targets:
-                values = np.asarray(supplied[target], dtype=np.float64)
+                raw = np.asarray(supplied[target])
+                if raw.dtype.kind not in "iuf":
+                    raise ValueError(
+                        f"{name}[{target!r}] uniforms must be real numeric arrays."
+                    )
+                values = np.asarray(raw, dtype=np.float64)
                 if values.shape != (len(features),):
                     raise ValueError(
                         f"{name}[{target!r}] must have shape ({len(features)},)."

@@ -148,6 +148,15 @@ def test_negative_zero_is_the_same_float_coordinate_as_positive_zero() -> None:
     assert positive == _spec_uniform(STREAM, (7, 0.0))
 
 
+@pytest.mark.parametrize("scalar", [np.datetime64, np.timedelta64])
+@pytest.mark.parametrize("unit", ["D", "s", "ns", "ps"])
+def test_temporal_coordinates_refuse_before_losing_type_or_units(scalar, unit):
+    # Fine temporal units become bare integers under .item(); they cannot be
+    # admitted as the same random identity as an integer or another unit.
+    with pytest.raises(TypeError, match="scalar identities"):
+        keyed_uniform(stream=STREAM, keys=[(scalar(1, unit),)])
+
+
 def test_draws_are_bytes_backed_and_read_only() -> None:
     values = keyed_uniform(stream=STREAM, keys=[(1,), (2,)])
     assert not values.flags.writeable

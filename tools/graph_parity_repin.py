@@ -212,6 +212,13 @@ def repin(name: str) -> dict[str, str]:
         )
     fingerprint = platform_fingerprint()
     platforms = dict(pins.get("platforms", {}))
+    if (
+        pins["platform"] in platforms
+        and platforms[pins["platform"]]["node_key"] != pins["node_key"]
+    ):
+        raise SystemExit(
+            f"{name}: authoring platform and top-level key are inconsistent"
+        )
     platforms.setdefault(
         pins["platform"], {"node_key": pins["node_key"], "direct": "direct.csv"}
     )

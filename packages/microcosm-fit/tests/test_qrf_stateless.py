@@ -98,6 +98,17 @@ def test_uniform_target_names_must_match(model):
         model.predict_from_uniforms(pd.DataFrame({"x": [1.0, 2.0]}), **draws)
 
 
+@pytest.mark.parametrize("field", ["quantiles", "sign_uniforms"])
+@pytest.mark.parametrize("imaginary", [0.0, 0.5, np.nan, np.inf])
+def test_complex_uniforms_are_refused_without_lossy_conversion(model, field, imaginary):
+    draws = uniforms(model, 2)
+    draws[field][model.targets[-1]] = np.array(
+        [complex(0.25, imaginary), complex(0.75, imaginary)]
+    )
+    with pytest.raises(ValueError, match="real numeric"):
+        model.predict_from_uniforms(pd.DataFrame({"x": [1.0, 2.0]}), **draws)
+
+
 def test_empty_recipient_batch(model):
     actual = model.predict_from_uniforms(
         pd.DataFrame({"x": pd.Series(dtype=float)}), **uniforms(model, 0)

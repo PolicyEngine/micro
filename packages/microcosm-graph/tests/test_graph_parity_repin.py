@@ -143,6 +143,24 @@ def test_a_foreign_pin_the_recorded_hash_cannot_reproduce_refuses(
     assert foreign in str(raised.value)
 
 
+def test_inconsistent_authoring_key_is_refused_before_derivation(
+    case_copy: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    case = case_copy("fit.qrf")
+    pins = _pins(case)
+    pins["node_key"] = "0" * 64
+    _write(case, pins)
+    before = (case / "pins.json").read_bytes()
+
+    def forbidden(*args: object, **kwargs: object) -> str:
+        raise AssertionError("derived a key from inconsistent authoring pins")
+
+    monkeypatch.setattr(repin_module, "derived_node_key", forbidden)
+    with pytest.raises(SystemExit, match="authoring.*inconsistent"):
+        repin("fit.qrf")
+    assert (case / "pins.json").read_bytes() == before
+
+
 def test_the_direct_bytes_compared_are_this_platform_s_own_pin(
     case_copy: Callable[[str], Path],
 ) -> None:

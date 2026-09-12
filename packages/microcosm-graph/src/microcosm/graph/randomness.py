@@ -23,6 +23,12 @@ __all__ = ["keyed_uniform"]
 
 def _coordinate(value: object) -> list[object]:
     if isinstance(value, np.generic):
+        # Temporal .item() can return a bare integer for fine-grained units,
+        # erasing both the coordinate type and its unit before tagging.
+        if value.dtype.kind not in "biufU":
+            raise TypeError(
+                "Random coordinates must be non-null finite scalar identities."
+            )
         value = value.item()
     if isinstance(value, bool):
         return ["bool", value]
