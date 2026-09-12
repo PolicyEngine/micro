@@ -134,7 +134,13 @@ def test_a_foreign_pin_the_recorded_hash_cannot_reproduce_refuses(
     case = case_copy("fit.qrf")
     _skip_unless_this_platform_is_pinned(case)
     pins = _pins(case)
-    foreign = next(p for p in pins["platforms"] if p != platform_fingerprint())
+    # Keep the authoring entry consistent with the top-level key so this
+    # reaches the foreign-key reproduction check on every pinned platform.
+    foreign = next(
+        p
+        for p in pins["platforms"]
+        if p not in {platform_fingerprint(), pins["platform"]}
+    )
     pins["platforms"][foreign]["node_key"] = "0" * 64
     _write(case, pins)
 
@@ -185,7 +191,7 @@ def test_the_direct_bytes_compared_are_this_platform_s_own_pin(
     (case / "direct.csv").write_bytes(b"not,the,direct,call\n")
     # Force a refusal strictly after the byte comparison, so the message says
     # which check the run reached.
-    foreign = next(p for p in pins["platforms"] if p != local)
+    foreign = next(p for p in pins["platforms"] if p not in {local, pins["platform"]})
     pins["platforms"][foreign]["node_key"] = "0" * 64
     _write(case, pins)
 

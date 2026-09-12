@@ -30,3 +30,12 @@ declarations, interface lock, or acceptance tests changed.
 These are software-contract checks. They do not certify a dataset, native
 replay, calibration, release or publication. PR912 remains subject to the
 corrected-head independent review and CI merge gate.
+
+Fable's next review of `6391b809` found that two existing parity-tool tests
+selected the authoring platform as their foreign entry on Linux. Their
+intentional corruption then reached the new authoring-consistency refusal
+before the foreign-key reproduction check those tests meant to exercise.
+Both now choose an entry that is neither local nor the authoring platform.
+All nine parity-tool tests and Ruff pass locally on macOS; the exact-head
+Linux CI runs must establish the corresponding Linux result. This correction
+changes only test setup and this record, with no implementation or pin change.
