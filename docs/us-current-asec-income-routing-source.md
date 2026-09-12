@@ -203,7 +203,11 @@ the under-58 source codes is unresolved; `I_DSTSC`'s label uses the same
 `DST_SC(2)` notation, so mapping it to both `DST_SC1` and `DST_SC2` reads the
 parenthesis as a slot count that the dictionary does not state; and `I_FRMYN`
 prints an empty `Values:` block, so only its `(0:9)` range header is published
-and no meaning is claimed for its codes. No row is ever labelled a raw
+and no meaning is claimed for its codes. A nonzero `I_FRMYN` alone yields
+`allocation_code_meaning_unpublished`; a documented nonzero allocation flag
+such as `I_ERNYN` can still establish `publisher_allocated`. All-zero readings
+remain descriptions of the published codes, not assertions of nonallocation.
+The original flag values and parse statuses remain unchanged. No row is ever labelled a raw
 respondent value.
 
 ## Constants

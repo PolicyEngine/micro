@@ -238,6 +238,7 @@ ALLOCATION_DSTSC_CODES = (0, 1, 9)
 # I_FRMYN's printed Values block is empty; its (0:9) range header is all that is
 # published, so no code meaning is claimed for it.
 ALLOCATION_PRINTED_RANGE_CODES = tuple(range(10))
+ALLOCATION_CODE_MEANINGS_UNPUBLISHED = frozenset({"I_FRMYN"})
 
 
 class AllocationEntry(NamedTuple):
@@ -547,16 +548,28 @@ def _allocation_origin(flags, unflagged):
     reading is not an assertion of non-allocation: on a non-recipient row the
     flag is outside its own printed universe. The zero readings are reported as
     exactly that, never as publisher-confirmed absence of allocation.
+    A readable nonzero code whose meaning is unpublished cannot establish
+    allocation; a documented allocation flag can still establish it.
     """
     origins = []
     count = len(next(iter(flags.values()))[0])
     for i in range(count):
-        codes = [flags[f][0][i] for f in flags]
+        codes = {f: flags[f][0][i] for f in flags}
         statuses = [flags[f][1][i] for f in flags]
         if any(s not in ("missing", "in_printed_range") for s in statuses):
             origins.append("unresolved_allocation_provenance")
-        elif any(c is not None and c != 0 for c in codes):
+        elif any(
+            c is not None and c != 0
+            for f, c in codes.items()
+            if f not in ALLOCATION_CODE_MEANINGS_UNPUBLISHED
+        ):
             origins.append("publisher_allocated")
+        elif any(
+            c is not None and c != 0
+            for f, c in codes.items()
+            if f in ALLOCATION_CODE_MEANINGS_UNPUBLISHED
+        ):
+            origins.append("allocation_code_meaning_unpublished")
         elif any(s == "missing" for s in statuses):
             origins.append("allocation_flag_not_populated")
         elif unflagged:
