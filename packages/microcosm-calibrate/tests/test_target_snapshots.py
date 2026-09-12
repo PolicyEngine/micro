@@ -114,13 +114,32 @@ def test_target_identity_digest_is_order_sensitive_and_value_sensitive():
     assert len(base) == 64
 
 
-def test_target_identity_digest_refuses_duplicate_or_non_finite():
-    with pytest.raises(TargetSnapshotError):
-        target_identity_digest(("a", "a"), (1.0, 2.0))
-    with pytest.raises(TargetSnapshotError):
-        target_identity_digest(("a", "b"), (1.0, float("nan")))
+def test_target_identity_digest_separates_duplicate_names_by_row():
+    """Duplicate row labels must not abort a run the observer is only watching.
+
+    A compiled problem can produce two rows labelled the same (row_name is the
+    lossy f"{name}@{period}"), so the digest carries the row index and stays
+    unambiguous instead of refusing.
+    """
+    digest = target_identity_digest(("a", "a"), (1.0, 2.0))
+    assert digest != target_identity_digest(("a", "a"), (2.0, 1.0))
+    assert len(digest) == 64
+
+
+def test_target_identity_digest_digests_a_non_finite_target_as_null():
+    nan = target_identity_digest(("a", "b"), (1.0, float("nan")))
+    inf = target_identity_digest(("a", "b"), (1.0, float("inf")))
+    assert nan == inf  # both are "no finite target value"
+    assert nan != target_identity_digest(("a", "b"), (1.0, 2.0))
+
+
+def test_target_identity_digest_refuses_misaligned_or_empty_input():
     with pytest.raises(TargetSnapshotError):
         target_identity_digest(("a", "b"), (1.0,))
+    with pytest.raises(TargetSnapshotError):
+        target_identity_digest((), ())
+    with pytest.raises(TargetSnapshotError):
+        target_identity_digest(("",), (1.0,))
 
 
 def test_signed_relative_error_matches_the_solver_zero_target_convention():
@@ -161,10 +180,15 @@ def test_validate_rejects_non_finite_and_inconsistent_relative_error():
     with pytest.raises(TargetSnapshotError, match="relative_error"):
         validate_target_snapshot(broken)
 
-    with pytest.raises(TargetSnapshotError, match="finite"):
-        bound.snapshot(
-            np.array([float("inf")]), epoch=1, epochs=1, iterate=ITERATE_CURRENT
-        )
+    # A non-finite estimate is recorded as null, not raised: an unobserved run
+    # would have completed, so the observer must not be what kills it.
+    diverged = bound.snapshot(
+        np.array([float("inf")]), epoch=1, epochs=1, iterate=ITERATE_CURRENT
+    )
+    assert diverged["targets"][0]["estimate"] is None
+    assert diverged["targets"][0]["relative_error"] is None
+    assert diverged["non_finite_rows"] == 1
+    validate_target_snapshot(diverged)
 
 
 def test_validate_refuses_record_level_identifiers_in_context():
@@ -472,3 +496,231 @@ def test_snapshots_carry_no_record_level_vectors(tmp_path: Path):
                 and value
                 and isinstance(value[0], float)
             )
+
+
+# --------------------------------------------------------------------------
+# Regressions found by adversarial review of the first draft of this slice
+# --------------------------------------------------------------------------
+
+
+def test_a_diverging_run_still_returns_weights_with_the_observer_on():
+    """The observer must never be the thing that aborts an otherwise-good run.
+
+    At this learning rate the estimate blows up to inf mid-run; the capped loss
+    absorbs it and calibrate returns weights. The first draft raised on the
+    non-finite estimate and destroyed a run that would have succeeded.
+    """
+    baseline = calibrate(_frame(), _targets(), epochs=60, seed=0, learning_rate=14.0)
+    seen, observer = _collect(cadence=TargetSnapshotCadence(every=EVERY_EPOCH))
+    observed = calibrate(
+        _frame(),
+        _targets(),
+        epochs=60,
+        seed=0,
+        learning_rate=14.0,
+        target_snapshots=observer,
+    )
+    np.testing.assert_array_equal(baseline.weights, observed.weights)
+    np.testing.assert_array_equal(baseline.loss_trajectory, observed.loss_trajectory)
+    assert any(s["non_finite_rows"] > 0 for s in seen), (
+        "this fixture is meant to drive a non-finite estimate"
+    )
+    for snapshot in seen:
+        validate_target_snapshot(snapshot)
+
+
+def test_duplicate_compiled_row_labels_do_not_abort_the_run():
+    """`row_name` is the lossy f"{name}@{period}", so labels can collide."""
+    targets = TargetSet(
+        [
+            Target(
+                name="income",
+                period=2024,
+                entity="household",
+                measure="income",
+                value=12000.0,
+            ),
+            Target(
+                name="income",
+                period="2024",
+                entity="household",
+                measure="income",
+                value=13000.0,
+            ),
+        ]
+    )
+    baseline = calibrate(_frame(), targets, epochs=10, seed=0)
+    seen, observer = _collect(cadence=TargetSnapshotCadence(every=EVERY_EPOCH))
+    observed = calibrate(
+        _frame(), targets, epochs=10, seed=0, target_snapshots=observer
+    )
+    np.testing.assert_array_equal(baseline.weights, observed.weights)
+    assert seen
+    names = [row["name"] for row in seen[0]["targets"]]
+    assert names == ["income@2024", "income@2024"]
+    for snapshot in seen:
+        validate_target_snapshot(snapshot)
+
+
+def test_the_selected_snapshot_names_the_epoch_it_actually_selected():
+    seen, observer = _collect(cadence=TargetSnapshotCadence(every=EVERY_EPOCH))
+    result = calibrate(
+        _frame(),
+        _targets(),
+        epochs=30,
+        seed=0,
+        learning_rate=0.1,
+        target_snapshots=observer,
+    )
+    receipt = result.options["iterate_selection_receipt"]
+    selected = [s for s in seen if s["iterate"] == ITERATE_SELECTED][-1]
+    assert selected["epoch"] == receipt["selected_epoch"]
+
+
+def test_a_store_refuses_to_share_a_directory_with_another_run():
+    """Sequences restart at 1 per observer, so a shared directory collides."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as directory:
+        first = TargetSnapshotWriter(Path(directory))
+        for payload in _payloads(2):
+            first(payload)
+        with pytest.raises(TargetSnapshotError, match="already holds"):
+            TargetSnapshotWriter(Path(directory))
+        # Even the explicit adoption escape hatch keeps chunks write-once: a
+        # colliding sequence is refused, never silently overwritten.
+        adopted = TargetSnapshotWriter(Path(directory), allow_existing_history=True)
+        with pytest.raises(TargetSnapshotError, match="immutable"):
+            adopted(_payloads(1)[0])
+
+
+def test_pruning_never_deletes_another_runs_retained_chunks():
+    import tempfile
+
+    _, observer = _collect()
+    bound = observer.bind(names=("a@2024",), targets=np.array([10.0]))
+    with tempfile.TemporaryDirectory() as directory:
+        first = TargetSnapshotWriter(Path(directory))
+        for index in range(2):
+            first(
+                bound.snapshot(
+                    np.array([9.0 + index]),
+                    epoch=index + 1,
+                    epochs=2,
+                    iterate=ITERATE_CURRENT,
+                )
+            )
+        # A second writer adopting the directory continues the same observer's
+        # sequence, so nothing collides; its own bounded history must prune only
+        # its own chunks.
+        second = TargetSnapshotWriter(
+            Path(directory), history_limit=1, allow_existing_history=True
+        )
+        for index in range(3):
+            second(
+                bound.snapshot(
+                    np.array([20.0 + index]),
+                    epoch=index + 1,
+                    epochs=3,
+                    iterate=ITERATE_CURRENT,
+                )
+            )
+        retained = sorted(p.name for p in (Path(directory) / "history").iterdir())
+        assert "00000001.json" in retained
+        assert "00000002.json" in retained
+        assert retained[-1] == "00000005.json"
+
+
+def test_a_store_refuses_a_snapshot_from_a_different_run():
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as directory:
+        writer = TargetSnapshotWriter(Path(directory))
+        first = TargetSnapshotObserver(sink=lambda _p: None, run_id="run-a").bind(
+            names=("a@2024",), targets=np.array([10.0])
+        )
+        second = TargetSnapshotObserver(sink=lambda _p: None, run_id="run-b").bind(
+            names=("a@2024",), targets=np.array([10.0])
+        )
+        writer(
+            first.snapshot(np.array([9.0]), epoch=1, epochs=1, iterate=ITERATE_CURRENT)
+        )
+        with pytest.raises(TargetSnapshotError, match="run 'run-a'"):
+            writer(
+                second.snapshot(
+                    np.array([9.0]), epoch=1, epochs=1, iterate=ITERATE_CURRENT
+                )
+            )
+
+
+def test_validation_refuses_string_typed_numbers():
+    _, observer = _collect()
+    payload = observer.bind(names=("a@2024",), targets=np.array([10.0])).snapshot(
+        np.array([9.0]), epoch=1, epochs=1, iterate=ITERATE_CURRENT
+    )
+    for field_name in ("target", "estimate", "relative_error"):
+        broken = json.loads(json.dumps(payload))
+        broken["targets"][0][field_name] = str(broken["targets"][0][field_name])
+        with pytest.raises(TargetSnapshotError, match="JSON number"):
+            validate_target_snapshot(broken)
+    broken = json.loads(json.dumps(payload))
+    broken["loss"] = "0.5"
+    with pytest.raises(TargetSnapshotError, match="JSON number"):
+        validate_target_snapshot(broken)
+
+
+def test_the_aggregate_only_scan_covers_the_whole_payload():
+    _, observer = _collect()
+    payload = observer.bind(names=("a@2024",), targets=np.array([10.0])).snapshot(
+        np.array([9.0]), epoch=1, epochs=1, iterate=ITERATE_CURRENT
+    )
+    smuggled = json.loads(json.dumps(payload))
+    smuggled["selection"] = {"rule": "x", "row_id": 7}
+    with pytest.raises(TargetSnapshotError, match="aggregate-only"):
+        validate_target_snapshot(smuggled)
+
+    smuggled = json.loads(json.dumps(payload))
+    smuggled["best_retained"]["source_values"] = [1.0, 2.0]
+    with pytest.raises(TargetSnapshotError, match="aggregate-only"):
+        validate_target_snapshot(smuggled)
+
+    smuggled = json.loads(json.dumps(payload))
+    smuggled["targets"][0]["name"] = "a@2024"
+    smuggled["search"] = {"budget_iteration": 1, "benunit_id": 3}
+    with pytest.raises(TargetSnapshotError, match="aggregate-only"):
+        validate_target_snapshot(smuggled)
+
+
+def test_the_selected_snapshot_admits_the_run_retained_a_best():
+    """A retained-best run must not report best_retained.available=false."""
+    seen, observer = _collect(cadence=TargetSnapshotCadence(every=EVERY_EPOCH))
+    result = calibrate(
+        _frame(),
+        _targets(),
+        epochs=30,
+        seed=0,
+        learning_rate=0.1,
+        target_snapshots=observer,
+    )
+    receipt = result.options["iterate_selection_receipt"]
+    assert receipt, "this fixture is meant to exercise the retain-best rule"
+    selected = [s for s in seen if s["iterate"] == ITERATE_SELECTED][-1]
+    assert selected["best_retained"]["available"] is True
+    if receipt["selected_epoch"] < 30:
+        assert selected["best_retained"]["epoch"] == receipt["selected_epoch"]
+    else:
+        assert selected["best_retained"]["epoch"] is None
+
+
+def test_a_closing_state_run_still_reports_no_retained_best_on_selected():
+    seen, observer = _collect(cadence=TargetSnapshotCadence(every=EVERY_EPOCH))
+    calibrate(
+        _frame(),
+        _targets(),
+        epochs=10,
+        seed=0,
+        mass=CONSERVE_MASS,
+        target_snapshots=observer,
+    )
+    selected = [s for s in seen if s["iterate"] == ITERATE_SELECTED][-1]
+    assert selected["best_retained"]["available"] is False

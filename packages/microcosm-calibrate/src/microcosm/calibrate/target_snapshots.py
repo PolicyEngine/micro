@@ -141,6 +141,7 @@ _TOP_LEVEL_KEYS = frozenset(
         "iterate",
         "precision",
         "loss",
+        "non_finite_rows",
         "best_retained",
         "selection",
         "targets_sha256",
@@ -159,12 +160,43 @@ _PRECISIONS = ("float32", "float64")
 _RELATIVE_ERROR_RTOL = 1e-9
 
 
+def _strict_number(value: object, *, what: str) -> float | None:
+    """A JSON number or null. A bool or a numeric string is neither."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TargetSnapshotError(
+            f"{what} must be a JSON number or null, got {value!r}."
+        )
+    result = float(value)
+    if not math.isfinite(result):
+        raise TargetSnapshotError(f"{what} must be finite when present.")
+    return result
+
+
 class TargetSnapshotError(ValueError):
     """A snapshot payload violates the versioned contract."""
 
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _finite_or_none(value: object) -> float | None:
+    """A float, or ``None`` when it is not finite.
+
+    JSON has no NaN or Infinity, and a diverging optimizer can legitimately
+    hold a non-finite estimate mid-run — the capped loss absorbs it and the
+    run still returns weights. Following
+    :func:`microcosm.calibrate.diagnostics._finite`, such a value serializes
+    as null rather than aborting the calibration that an unobserved run would
+    have completed.
+    """
+    try:
+        result = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
 
 
 def _finite_float(value: object, *, what: str) -> float:
@@ -189,7 +221,7 @@ def _canonical_json_bytes(value: object) -> bytes:
     ).encode("utf-8")
 
 
-def signed_relative_error(estimate: float, target: float) -> float:
+def signed_relative_error(estimate: float | None, target: float | None) -> float | None:
     """The signed miss of ``estimate`` against ``target``.
 
     ``(estimate - target) / target``, except that a zero target has no
@@ -199,39 +231,47 @@ def signed_relative_error(estimate: float, target: float) -> float:
     ``_target_diagnostics`` implements, so a mid-run snapshot and the run's
     final diagnostics never disagree about what a target's error means.
     """
-    estimate = _finite_float(estimate, what="estimate")
-    target = _finite_float(target, what="target")
+    estimate = _finite_or_none(estimate)
+    target = _finite_or_none(target)
+    if estimate is None or target is None:
+        # No honest signed error exists; the row reports null rather than
+        # inventing one or aborting the run.
+        return None
     if target == 0.0:
         return estimate - target
-    return (estimate - target) / target
+    result = estimate - target if target == 0.0 else (estimate - target) / target
+    return _finite_or_none(result)
 
 
 def target_identity_digest(
     names: Sequence[str], targets: Sequence[float] | np.ndarray
 ) -> str:
-    """A sha256 over the ordered ``(name, target value)`` list.
+    """A sha256 over the ordered ``(row index, name, target value)`` list.
 
     Order-sensitive by construction: the digest covers the list, not a set, so
     a consumer comparing two snapshots' digests is comparing the exact ordered
-    target identity the rows are aligned to.
+    target identity the rows are aligned to. The row index is part of each
+    entry, so identity stays unambiguous even where a compiled problem happens
+    to produce two rows with the same ``name@period`` label — a snapshot must
+    never be the thing that aborts a calibration that would otherwise return
+    weights. A non-finite target digests as null, for the same reason.
     """
     names = tuple(str(name) for name in names)
-    values = [
-        _finite_float(value, what="target value") for value in np.asarray(targets)
-    ]
+    values = [_finite_or_none(value) for value in np.asarray(targets)]
     if len(names) != len(values):
         raise TargetSnapshotError(
             f"names and targets must align: {len(names)} names, {len(values)} targets."
         )
     if not names:
         raise TargetSnapshotError("a calibration snapshot needs at least one target.")
-    if len(set(names)) != len(names):
-        raise TargetSnapshotError("target row names must be unique.")
     if any(not name for name in names):
         raise TargetSnapshotError("target row names must be non-empty.")
     return hashlib.sha256(
         _canonical_json_bytes(
-            [[name, value] for name, value in zip(names, values, strict=True)]
+            [
+                [index, name, value]
+                for index, (name, value) in enumerate(zip(names, values, strict=True))
+            ]
         )
     ).hexdigest()
 
@@ -323,9 +363,7 @@ class TargetSnapshotObserver:
     ) -> BoundTargetSnapshots:
         """Bind this observer to a compiled problem's ordered targets."""
         names = tuple(str(name) for name in names)
-        values = tuple(
-            _finite_float(value, what="target value") for value in np.asarray(targets)
-        )
+        values = tuple(_finite_or_none(value) for value in np.asarray(targets))
         return BoundTargetSnapshots(
             observer=self,
             names=names,
@@ -350,7 +388,7 @@ class BoundTargetSnapshots:
 
     observer: TargetSnapshotObserver
     names: tuple[str, ...]
-    targets: tuple[float, ...]
+    targets: tuple[float | None, ...]
     digest: str
     counter: list[int]
     phase: str | None = None
@@ -399,12 +437,13 @@ class BoundTargetSnapshots:
                 f"{values.shape[0]}, expected {len(self.names)}."
             )
         rows: list[dict[str, object]] = []
+        non_finite = 0
         for index, (name, target) in enumerate(
             zip(self.names, self.targets, strict=True)
         ):
-            estimate = _finite_float(
-                values[index], what=f"estimate for target {name!r}"
-            )
+            estimate = _finite_or_none(values[index])
+            if estimate is None or target is None:
+                non_finite += 1
             rows.append(
                 {
                     "index": index,
@@ -432,7 +471,8 @@ class BoundTargetSnapshots:
             "search": None if self.search is None else dict(self.search),
             "iterate": iterate,
             "precision": precision,
-            "loss": None if loss is None else _finite_float(loss, what="loss"),
+            "loss": _finite_or_none(loss),
+            "non_finite_rows": non_finite,
             "best_retained": (
                 {"available": False, "epoch": None, "loss": None}
                 if best_retained is None
@@ -491,8 +531,14 @@ def validate_target_snapshot(payload: Mapping[str, object]) -> None:
         value = payload[key]
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise TargetSnapshotError(f"{key} must be a non-negative integer.")
-    if payload["loss"] is not None:
-        _finite_float(payload["loss"], what="loss")
+    _strict_number(payload["loss"], what="loss")
+    non_finite_rows = payload["non_finite_rows"]
+    if (
+        isinstance(non_finite_rows, bool)
+        or not isinstance(non_finite_rows, int)
+        or non_finite_rows < 0
+    ):
+        raise TargetSnapshotError("non_finite_rows must be a non-negative integer.")
     best = payload["best_retained"]
     if not isinstance(best, Mapping) or "available" not in best:
         raise TargetSnapshotError("best_retained must record whether one is available.")
@@ -512,7 +558,8 @@ def validate_target_snapshot(payload: Mapping[str, object]) -> None:
             f"n_targets is {payload['n_targets']} but {len(rows)} rows are present."
         )
     names: list[str] = []
-    values: list[float] = []
+    values: list[float | None] = []
+    observed_non_finite = 0
     for position, row in enumerate(rows):
         if not isinstance(row, Mapping):
             raise TargetSnapshotError(f"target row {position} is not a mapping.")
@@ -534,32 +581,49 @@ def validate_target_snapshot(payload: Mapping[str, object]) -> None:
         name = row["name"]
         if not isinstance(name, str) or not name:
             raise TargetSnapshotError(f"target row {position} needs a non-empty name.")
-        target = _finite_float(row["target"], what=f"target for {name!r}")
-        estimate = _finite_float(row["estimate"], what=f"estimate for {name!r}")
-        stored = _finite_float(
+        target = _strict_number(row["target"], what=f"target for {name!r}")
+        estimate = _strict_number(row["estimate"], what=f"estimate for {name!r}")
+        stored = _strict_number(
             row["relative_error"], what=f"relative_error for {name!r}"
         )
-        expected = signed_relative_error(estimate, target)
-        if not math.isclose(
-            stored, expected, rel_tol=_RELATIVE_ERROR_RTOL, abs_tol=0.0
-        ):
-            raise TargetSnapshotError(
-                f"relative_error for {name!r} is {stored!r}; the signed relative "
-                f"error of {estimate!r} against {target!r} is {expected!r}."
-            )
+        if estimate is None or target is None:
+            observed_non_finite += 1
+            if stored is not None:
+                raise TargetSnapshotError(
+                    f"relative_error for {name!r} must be null when its estimate "
+                    "or target is."
+                )
+        else:
+            expected = signed_relative_error(estimate, target)
+            if stored is None or expected is None:
+                raise TargetSnapshotError(
+                    f"relative_error for {name!r} must be present when both its "
+                    "estimate and target are."
+                )
+            if not math.isclose(
+                stored, expected, rel_tol=_RELATIVE_ERROR_RTOL, abs_tol=0.0
+            ):
+                raise TargetSnapshotError(
+                    f"relative_error for {name!r} is {stored!r}; the signed relative "
+                    f"error of {estimate!r} against {target!r} is {expected!r}."
+                )
         names.append(name)
         values.append(target)
-    if len(set(names)) != len(names):
-        raise TargetSnapshotError("target row names must be unique within a snapshot.")
+    if observed_non_finite != non_finite_rows:
+        raise TargetSnapshotError(
+            f"non_finite_rows says {non_finite_rows} but {observed_non_finite} rows "
+            "carry a null estimate or target."
+        )
     digest = target_identity_digest(names, values)
     if payload["targets_sha256"] != digest:
         raise TargetSnapshotError(
             "targets_sha256 does not digest this snapshot's ordered target "
             f"identity: declared {payload['targets_sha256']!r}, computed {digest!r}."
         )
-    for key in ("context", "search", "selection", "best_retained"):
-        _reject_record_level_keys(payload[key], where=f"snapshot {key}")
-    _reject_record_level_keys(payload["targets"], where="snapshot targets")
+    # Scan the WHOLE payload, not a chosen subset: a key added to the schema
+    # later must be covered by the aggregate-only rule without anyone
+    # remembering to extend a list here.
+    _reject_record_level_keys(payload, where="snapshot")
     # A last strictness check: the payload must be strict JSON, so a consumer
     # never receives NaN/Infinity tokens no parser outside Python accepts.
     _canonical_json_bytes(payload)
@@ -609,7 +673,16 @@ class TargetSnapshotWriter:
 
     directory: Path
     history_limit: int | None = 256
+    #: Adopt a directory that already holds history chunks. Off by default:
+    #: chunk names come from the observer's sequence counter, which restarts
+    #: at 1 for every new observer, so a second run sharing a directory would
+    #: collide with — and prune — the first run's chunks. Failing at
+    #: construction names that at the point a caller can fix it, instead of
+    #: mid-calibration.
+    allow_existing_history: bool = False
     _dropped: int = field(default=0, init=False, repr=False)
+    _written: list[int] = field(default_factory=list, init=False, repr=False)
+    _run_id: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.history_limit is not None and (
@@ -624,6 +697,15 @@ class TargetSnapshotWriter:
         self.directory = Path(self.directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.history_directory.mkdir(parents=True, exist_ok=True)
+        existing = self.retained()
+        if existing and not self.allow_existing_history:
+            raise TargetSnapshotError(
+                f"{self.history_directory} already holds {len(existing)} snapshot "
+                "chunk(s). Snapshot sequences restart at 1 for every observer, so "
+                "writing a second run here would collide with and prune the first "
+                "run's history. Use a per-run directory, or pass "
+                "allow_existing_history=True if you have reconciled the sequences."
+            )
 
     @property
     def history_directory(self) -> Path:
@@ -661,8 +743,17 @@ class TargetSnapshotWriter:
 
     def __call__(self, payload: Mapping[str, object]) -> None:
         validate_target_snapshot(payload)
+        run_id = str(payload["run_id"])
+        if self._run_id is None:
+            self._run_id = run_id
+        elif run_id != self._run_id:
+            raise TargetSnapshotError(
+                f"this store belongs to run {self._run_id!r}; it will not accept a "
+                f"snapshot from run {run_id!r}. Give each run its own directory."
+            )
         sequence = int(payload["sequence"])
         self._write_chunk(self.history_directory / f"{sequence:08d}.json", payload)
+        self._written.append(sequence)
         self._prune()
         _atomic_write_json(self.latest_path, dict(payload))
         retained = self.retained()
@@ -683,15 +774,20 @@ class TargetSnapshotWriter:
         )
 
     def _prune(self) -> int:
-        """Drop the oldest chunks past ``history_limit``; return how many."""
+        """Drop the oldest chunks THIS writer wrote, past ``history_limit``.
+
+        Pruning is scoped to this writer's own sequences: a directory it was
+        told to adopt keeps whatever was already there, rather than this run
+        silently deleting another one's evidence.
+        """
         if self.history_limit is None:
             return 0
-        chunks = self.retained()
-        excess = len(chunks) - self.history_limit
+        excess = len(self._written) - self.history_limit
         if excess <= 0:
             return 0
-        for name in chunks[:excess]:
-            (self.history_directory / name).unlink(missing_ok=True)
+        for sequence in self._written[:excess]:
+            (self.history_directory / f"{sequence:08d}.json").unlink(missing_ok=True)
+        del self._written[:excess]
         self._dropped += excess
         return excess
 

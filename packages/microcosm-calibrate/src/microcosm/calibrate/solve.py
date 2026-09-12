@@ -2161,13 +2161,37 @@ def calibrate(
         # read off the same float64 estimates the final diagnostics use — not
         # the last in-loop iterate, which the optimizer may have discarded in
         # favour of an earlier better one or changed by a closing projection.
+        selected_epoch = iterate_selection_receipt.get("selected_epoch")
+        # A non-empty receipt means the optimizer ran the retain-best rule. It
+        # records the epoch it selected, which IS the best iterate's epoch when
+        # an earlier iterate won; when the closing iterate won, no separate best
+        # epoch was recorded, so the snapshot says "retained, epoch unrecorded"
+        # instead of inventing one.
+        retained_best = bool(iterate_selection_receipt)
+        best_is_earlier = (
+            retained_best
+            and isinstance(selected_epoch, int)
+            and selected_epoch < epochs
+        )
         snapshots.emit(
             final_estimates,
-            epoch=epochs,
+            # The epoch whose iterate was actually selected, not the last one
+            # executed: a retained-best run returns an earlier iterate, and
+            # stamping the closing epoch on it would misattribute the values.
+            epoch=(int(selected_epoch) if isinstance(selected_epoch, int) else epochs),
             epochs=epochs,
             iterate=ITERATE_SELECTED,
             precision="float64",
             loss=float(closing_loss),
+            best_retained={
+                "available": retained_best,
+                "epoch": int(selected_epoch) if best_is_earlier else None,
+                "loss": (
+                    iterate_selection_receipt.get("selected_loss_float32")
+                    if best_is_earlier
+                    else None
+                ),
+            },
             selection=dict(iterate_selection_receipt) or None,
         )
     effective_target_loss_weights = (

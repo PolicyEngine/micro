@@ -76,6 +76,62 @@ scope" below.
   off.
 - Calibration Diagnostics UI (different repository, by the issue's own text).
 
+## Adversarial review round (same lane, before hand-off)
+
+Three independent review lenses (determinism, label honesty, codec/store)
+raised 21 findings; each was handed to an adversarial verifier told to refute
+it, and 10 survived. All 10 are fixed on this branch, with a regression test
+each:
+
+- Enabling the observer aborted runs that succeed without it, in two ways —
+  duplicate compiled row labels (`row_name` is the lossy `f"{name}@{period}"`,
+  so `("income", 2024)` and `("income", "2024")` collide) and a non-finite
+  float32 in-loop estimate (the capped loss absorbs it and the run returns
+  weights). The digest now carries the row index instead of refusing
+  duplicates, and a non-finite estimate or target serializes as null with a
+  `non_finite_rows` count, following `diagnostics._finite`.
+- The `selected` snapshot stamped the closing epoch on a retained-best
+  iterate, and claimed `best_retained.available: false` on a run that
+  retained and returned a best. Both now read the selection receipt.
+- The store silently collided across runs sharing a directory (sequences
+  restart at 1 per observer) and could prune another run's chunks, or the
+  chunk it had just written. Construction now refuses a populated directory
+  unless explicitly adopted, a store refuses a second run's snapshots, and
+  pruning is scoped to the chunks that writer wrote.
+- The aggregate-only scan covered a hand-listed subset of keys; it now walks
+  the whole payload. Numeric fields are type-checked, so a stringified number
+  no longer validates.
+
+## Source identity re-pins (disclosed)
+
+`microcosm.calibrate.solve` is an attested module: it is in
+`_DIRECT_KERNEL_MODULES` (`spec_engine/seeds.py`) and it defines the graph
+shard's `calibrate.adam@1` kernel. Editing it legitimately moves several
+pinned identities. Each was re-pinned to a value computed from this branch,
+after first confirming with the *same* interpreter that pristine `origin/main`
+reproduces the committed pins exactly — so the drift is attributable to the
+source edit, not to an environment leak:
+
+- `packages/microcosm-graph/tests/fixtures/parity/kernels/calibrate/pins.json`
+  (`implementation_hash`, `node_key`). `fit.qrf` and `simulate` untouched; the
+  regeneration asserted `graph.json`, `inputs.csv` and `direct.csv` come back
+  byte-identical, so the kernel's numbers did not change.
+- `EXPECTED_HASHES["seed_protocol"]` and `["seed_map"]` in
+  `spec_engine/inventory_coverage.py`, plus the regenerated
+  `docs/evidence/spec-engine/us-f0-coverage.json`.
+- The resolved-spec golden vectors in
+  `test_spec_engine_loader.py` and `test_us_multispine_pool_tool.py`.
+
+No other pin was touched.
+
+**These pins are correct for this branch's base (0c3f4f651) only.**
+`origin/main` has since advanced to 116d46ee9 (#912,
+`amend-keyed-seed-and-uniform-draws`), which itself edited the attested
+`microcosm.fit.qrf` and re-pinned the same loader golden vector and pool-tool
+spec digest. Every identity pin above must therefore be recomputed on the
+merge ref before this branch merges, per CLAUDE.md's "CI tests the merge ref,
+so merge main and re-pin". Do not treat the values here as final.
+
 ## Next
 
 - Independent review of this slice, then the staging/host wiring as a
