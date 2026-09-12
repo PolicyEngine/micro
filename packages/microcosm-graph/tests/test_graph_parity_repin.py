@@ -109,6 +109,7 @@ def test_the_dependency_check_runs_before_any_key_is_derived(
 ) -> None:
     """Refusing after deriving would already have trusted the bad environment."""
     case = case_copy("fit.qrf")
+    _skip_unless_this_platform_is_pinned(case)
     pins = _pins(case)
     pins["dependencies"]["pandas"] = "0.0.0-not-installed-here"
     _write(case, pins)
