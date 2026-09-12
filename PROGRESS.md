@@ -1,5 +1,11 @@
 # Grouped solver x calibration target snapshots integration - 2026-09-12
 
+Historical note, 12 September 2026: this grouped-lane journal was subsequently
+integrated with PR #914's corrected iteration identities and the actual fiscal
+host observer. Its 443-test evidence and statements that host wiring is absent
+describe that earlier lane. Current source and acceptance are recorded in
+[the fiscal-host evidence](experiments/fiscal-target-snapshot-host-20260912.md).
+
 Lane: `microcosm-grouped-target-snapshot-integration-20260912`, branch
 `grouped-target-snapshot-integration-20260912`. Base: fresh `origin/main`
 `116d46ee9dc2aafdc68259b7c06e4c3462522e8b` (unmoved; it is exactly the shared

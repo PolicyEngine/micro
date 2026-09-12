@@ -95,6 +95,14 @@ owned shard roots plus dependency site-packages explicitly. No source-identity
 check was relaxed. Its report SHA256 is
 `69666f687e025d9a27d9d76b2cc87fefc2622734a56fc4530674b9de019ff23d`.
 
+Five focused checks of the final minimal/country spec goldens and calibration
+parity identities then passed without failures or skips. They took 58.312
+seconds wall time with all 478 source pins unchanged. The receipt SHA256 is
+`ee662e419c17acc27b76761b32f2bdbb096f2dc993e1efeb437d3f01006573e8`;
+the JUnit result SHA256 is
+`a60a4ffcc11b4afde6fe64a332c2bcfe54b8ac298f9aa523d9a4279089ccd116`.
+No UK or US country-simulation test was selected.
+
 ## Remaining acceptance
 
 This is solver and fiscal-host instrumentation, not a dataset release or

@@ -1,5 +1,11 @@
 # Grouped solver x calibration target snapshot integration — 2026-09-12
 
+Historical scope note, 12 September 2026: this records grouped core
+`2f62bb8448010bcc9b9e1419ea24aafcb85917d1` and its earlier test run. The later
+[fiscal-host integration](fiscal-target-snapshot-host-20260912.md) adds the
+host observer and PR #914's completed-update convention. The 443-test result
+and host-wiring gaps below remain evidence of this earlier revision.
+
 Scope, evidence and residual risks for branch
 `grouped-target-snapshot-integration-20260912`. Source-only; no native build,
 no PUF fixture, no country build, no release action, nothing pushed.

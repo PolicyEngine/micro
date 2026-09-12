@@ -131,6 +131,15 @@ their source: the complete-population host must authenticate the original
 sampling references and retained parent before and after use. Native fit,
 full-size memory and calibration acceptance remain unestablished.
 
+The dense fiscal kernel now forwards an optional host-owned target-snapshot
+observer to the actual grouped solver. Tiny invented graph tests verify equal
+weights, artifacts, receipts and cache identity with observation on/off, plus
+silent required replay and final mutation refusal after the sink. The integrated
+suite has 473 passes and one explicitly recorded historical thread-configuration
+skip; five final calibration-identity checks also pass. Source admission,
+production cadence costs and a dashboard consumer remain separate. See
+[the fiscal snapshot evidence](../experiments/fiscal-target-snapshot-host-20260912.md).
+
 Complete-population ancestry remains an explicit requirement. The PUF host now
 retains its actual checked result for downstream consumption through
 `check_survey_puf55_run`. Constructing a dataclass or decoding its receipt cannot
