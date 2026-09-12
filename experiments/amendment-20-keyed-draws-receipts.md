@@ -262,10 +262,18 @@ red.
 Environment prepared with `uv sync --all-packages --locked --extra us --extra uk`;
 everything after used `uv run --no-sync`.
 
+The review agents mutation-tested by editing source files and reverting them,
+so a mid-review run could in principle have measured a mutant. The headline
+suite figure was therefore re-measured after every agent had finished, against
+a tree verified to carry no `MUTANT` marker and no `.py` differing from `HEAD`
+(`packages` tree `112501f5c275182b6bd4ea10769e44bce514d4b9`); it agrees with
+the earlier separate runs.
+
 | Command | Exit | Result |
 |---|---|---|
-| `pytest packages/microcosm-graph/tests` | **0** | **371 passed**, 1 warning, 159s (the warning is a pre-existing pydantic deprecation from `policyengine_uk`) |
-| `pytest packages/microcosm-fit/tests` | **0** | ****116 passed**, 389s** |
+| `pytest packages/microcosm-graph/tests packages/microcosm-fit/tests` | **0** | **487 passed**, 1 warning, 117s — the authoritative run, on the committed tree with nothing else touching it (the warning is a pre-existing pydantic deprecation from `policyengine_uk`) |
+| `pytest packages/microcosm-graph/tests` | **0** | **371 passed**, 143s |
+| `pytest packages/microcosm-fit/tests` | **0** | **116 passed**, 389s |
 | `pytest test_acceptance_h_parity.py test_graph_serialize.py::test_generated_parity_graphs_bind_real_kernels_and_direct_bytes test_graph_executor.py::test_fit_qrf_tolerance_source_hash_pin_is_current` | **0** | 6 passed — the three named H1 checks, on `arm64/darwin/py3.14` |
 | `pytest test_graph_parity_repin.py` (new) | **0** | 8 passed |
 | `pytest test_graph_parity_repin.py test_graph_parity_pins.py` | **0** | 19 passed |
@@ -289,8 +297,11 @@ reformatted, but that is **pre-existing on `main`**, and CI runs only
 Six reviewers read the working tree along separate axes (charter claims, test
 rigor, the re-pin tool, brief compliance, implementation correctness, repo
 integration); every finding was then put to two adversarial verifiers whose
-default was to refute. Four findings survived and were fixed; each fix was
-mutation-tested.
+default was to refute. 42 agents, no errors. Of eighteen findings, **3 survived
+both verifiers, 7 split, 8 were refuted by both**. Adjudicating the splits
+myself: four defects were fixed in code (each mutation-tested), two survivors
+plus one split are the decisions in §7, and the rest were prose or duplicates
+of the same root cause.
 
 1. **The re-pin tool's central claim was false.** Its docstring said the
    reproduction loop "proves the assumption rather than asserting it" and that
