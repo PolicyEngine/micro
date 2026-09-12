@@ -5,10 +5,10 @@
   "source_feed": {
     "artifact": ".codex-work/consumer_facts_uk.jsonl",
     "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-    "sha256": "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
-    "manifest_sha256": "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+    "sha256": "45bda3ae730d4ae3fa059d9e03304e902f7f6e74c5099355ef937625ca03b72b",
+    "manifest_sha256": "33a3031523e2cea2f0092a547b97065efbe103cdf85f842142e847b921bcdd9d",
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "ec7169b"
+    "source_commit": "c6f9361492056b9fab7b8535a2be77eb2b6c93bb"
   },
   "rows": [
     {

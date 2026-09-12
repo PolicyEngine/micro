@@ -21,6 +21,7 @@ from microcosm.build.target_reference_authoring import (
     author_target_references,
     target_references_resource,
 )
+from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
 from microcosm.build.uk_runtime.uc_source_periods import uc_source_month_metadata
 
 UK_GEOGRAPHY_IDS = {
@@ -118,6 +119,7 @@ def main() -> None:
         reference_metadata_by_target_id=_reference_metadata(contract),
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
         source_fact_feed=args.source_fact_feed or str(args.ledger_facts),
+        uprating_appliers=UK_UPRATING_APPLIERS,
     )
     authored = author_target_references(contract, facts, config)
     _add_uk_membership_accounting(authored.membership_report, authored.references)
@@ -187,13 +189,23 @@ def _registry_inverse(contract: Mapping[str, Any]) -> dict[str, list[str]]:
 
 
 def _geography_pins(contract: Mapping[str, Any]) -> dict[str, dict[str, str]]:
-    return {
-        str(target["target_id"]): {
-            "geography_level": "country",
+    """Pin every national contract target to a Ledger geography.
+
+    A target whose only declared level is ``region`` (the DfT London bus
+    rows) pins at region level with its E12 code, so it can match the
+    region-stamped publisher fact instead of a country row that never
+    exists. Every other national target pins at country level.
+    """
+
+    pins: dict[str, dict[str, str]] = {}
+    for target in contract.get("targets", ()):
+        levels = tuple(str(level) for level in target.get("geography_levels") or ())
+        level = "region" if levels == ("region",) else "country"
+        pins[str(target["target_id"])] = {
+            "geography_level": level,
             "geography_id": _geography_id_for_target(target),
         }
-        for target in contract.get("targets", ())
-    }
+    return pins
 
 
 SCOTGOV_COUNCIL_TAX_STOCK_PREFIX = "scotgov.council_tax_stock."
@@ -222,6 +234,14 @@ TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
     # needs a per-nation redesign before it can activate.
     ("slc.support.", "england"),
     ("dfe.", "england"),
+    # ORR rail industry finance is Great Britain (K03000001): NI Railways sits
+    # outside the ORR series, and Chronicle stamps every ORR fact GB.
+    ("orr.", "great_britain"),
+    # Devolved bus publishers stamp their nation and name it in neither the
+    # target id nor the concept.
+    ("welshgov.", "wales"),
+    ("nithc.", "northern_ireland"),
+    ("dfi_ni.", "northern_ireland"),
 )
 # DfT BUS05i rows name their area in the selector; the geography follows the
 # declared area, never a prefix, so a London or UK row can never be stamped

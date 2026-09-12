@@ -1,13 +1,13 @@
 {
-  "source_fact_feed": "chronicle-uk-ec7169b5-consumer-facts",
+  "source_fact_feed": "chronicle-uk-c6f93614-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 430,
-  "contract_target_count": 202,
-  "active_reference_count": 415,
+  "candidate_count": 438,
+  "contract_target_count": 210,
+  "active_reference_count": 424,
   "status_counts": {
-    "active": 415,
+    "active": 424,
     "no_fact_at_or_before_period": 7,
-    "signed_excluded": 8
+    "signed_excluded": 7
   },
   "geography_pins": {
     "obr.income_tax": {
@@ -795,11 +795,11 @@
       "geography_id": "E92000001"
     },
     "dft.bus_fare_receipts.london": {
-      "geography_level": "country",
+      "geography_level": "region",
       "geography_id": "E12000007"
     },
     "dft.bus_net_support.london": {
-      "geography_level": "country",
+      "geography_level": "region",
       "geography_id": "E12000007"
     },
     "dft.bus_fare_receipts.england_outside_london": {
@@ -817,10 +817,44 @@
     "dft.bus_net_support.uk": {
       "geography_level": "country",
       "geography_id": "K02000001"
+    },
+    "obr.fuel_duties_cars": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "orr.rail_government_support": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "ons.household_energy_expenditure": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "scotgov.bus.passenger_revenue": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
+    "scotgov.bus.government_support": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
+    "welshgov.bus.public_support": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dfi_ni.bus.passenger_receipts": {
+      "geography_level": "country",
+      "geography_id": "N92000002"
+    },
+    "nithc.public_transport_support": {
+      "geography_level": "country",
+      "geography_id": "N92000002"
     }
   },
   "genuine_sum_residue": [
     "dfe.funded_childcare.working_parent_children_2_to_4",
+    "dfi_ni.bus.passenger_receipts",
+    "nithc.public_transport_support",
     "obr.esa",
     "ons.population.age_0_9_by_region",
     "ons.population.age_10_19_by_region",
@@ -876,7 +910,8 @@
     "slc.repayments.england_plan_2",
     "slc.repayments.england_plan_5",
     "slc.repayments.england_postgraduate",
-    "slc.repayments.england_total_higher_education"
+    "slc.repayments.england_total_higher_education",
+    "welshgov.bus.public_support"
   ],
   "uprating_holds": [
     {
@@ -2677,10 +2712,61 @@
     {
       "name": "dft.bus_fare_receipts.england",
       "from": "2024",
-      "to": "2025"
+      "to": "2025",
+      "index": "dft.local_bus_fares_index",
+      "factor": "1.05695792880259",
+      "value_before_uprating": "3417388656.43538"
     },
     {
       "name": "dft.bus_net_support.england",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "dft.bus_fare_receipts.london",
+      "from": "2024",
+      "to": "2025",
+      "index": "dft.local_bus_fares_index",
+      "factor": "1",
+      "value_before_uprating": "1347434943.01459"
+    },
+    {
+      "name": "dft.bus_net_support.london",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "obr.fuel_duties_cars",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "orr.rail_government_support",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.bus.passenger_revenue",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.bus.government_support",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "welshgov.bus.public_support",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "dfi_ni.bus.passenger_receipts",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "nithc.public_transport_support",
       "from": "2024",
       "to": "2025"
     }
@@ -2777,17 +2863,14 @@
       ]
     },
     "obr.fuel_duties": {
-      "status": "active",
+      "status": "signed_excluded",
       "candidates": [
         {
           "name": "obr.fuel_duties",
-          "status": "active",
+          "status": "signed_excluded",
           "matched_fact_count_overall": 7,
           "matched_fact_count_at_or_before_period": 2,
-          "resolved_period": 2025,
-          "resolved_value": 24241874775.213375,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_9273c0c9f7045493ed2e984a"
+          "signed_rationale": "The OBR fuel duties fact is all-road-users receipts (freight, vans, business mileage) against a household frame; obr.fuel_duties_cars binds the cars receipts from the OBR vehicle-type release instead (ruling 2026-09-10). The all-road-users row is retained in the contract for registry parity and signed out here rather than carried as a calibration measure exclusion."
         }
       ]
     },
@@ -7868,9 +7951,14 @@
           "matched_fact_count_overall": 3,
           "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 3417388656.43538,
+          "resolved_value": 3612036036.2194014,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2ece7c3d283b6de43b30389f"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2ece7c3d283b6de43b30389f",
+          "uprating": {
+            "index": "dft.local_bus_fares_index",
+            "factor": "1.05695792880259",
+            "value_before_uprating": "3417388656.43538"
+          }
         }
       ]
     },
@@ -7890,26 +7978,37 @@
       ]
     },
     "dft.bus_fare_receipts.london": {
-      "status": "signed_excluded",
+      "status": "active",
       "candidates": [
         {
           "name": "dft.bus_fare_receipts.london",
-          "status": "signed_excluded",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "signed_rationale": "Region target held until the UK target compiler has a declared region roster and cross-grain leg; tracked by #790."
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 1347434943.01459,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_33611c64d2048fe660501802",
+          "uprating": {
+            "index": "dft.local_bus_fares_index",
+            "factor": "1",
+            "value_before_uprating": "1347434943.01459"
+          }
         }
       ]
     },
     "dft.bus_net_support.london": {
-      "status": "signed_excluded",
+      "status": "active",
       "candidates": [
         {
           "name": "dft.bus_net_support.london",
-          "status": "signed_excluded",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "signed_rationale": "Region target held until the UK target compiler has a declared region roster and cross-grain leg; tracked by #790."
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 1130214000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d8e40cee2fc723b719ff4680"
         }
       ]
     },
@@ -7921,7 +8020,7 @@
           "status": "signed_excluded",
           "matched_fact_count_overall": 0,
           "matched_fact_count_at_or_before_period": 0,
-          "signed_rationale": "Chronicle stamps this row at statistical_scope; Microcosm has no declared statistical-scope pin and must not bind the England total accidentally."
+          "signed_rationale": "England outside London is England minus London: the England row and the London row (pinned at region E12000007) are both bound, so this publisher partition member is derived rather than pinned; Chronicle stamps it at statistical_scope and test_uk_bus_targets asserts the partition reconciles to England within GBP 1,000."
         }
       ]
     },
@@ -7933,7 +8032,7 @@
           "status": "signed_excluded",
           "matched_fact_count_overall": 0,
           "matched_fact_count_at_or_before_period": 0,
-          "signed_rationale": "Chronicle stamps this row at statistical_scope; Microcosm has no declared statistical-scope pin and must not bind the England total accidentally."
+          "signed_rationale": "England outside London is England minus London: the England row and the London row (pinned at region E12000007) are both bound, so this publisher partition member is derived rather than pinned; Chronicle stamps it at statistical_scope and test_uk_bus_targets asserts the partition reconciles to England within GBP 1,000."
         }
       ]
     },
@@ -7957,7 +8056,127 @@
           "status": "signed_excluded",
           "matched_fact_count_overall": 0,
           "matched_fact_count_at_or_before_period": 0,
-          "signed_rationale": "BUS05i publishes no UK total and Microcosm declares no method to construct one."
+          "signed_rationale": "BUS05i publishes no UK total and no England-to-UK uplift is declared. Net support binds instead as four country legs whose scopes differ: DfT BUS05bi net support (England, operators' view), Scottish Transport Statistics all government support (Scotland), StatsWales revenue outturn gross expenditure on concessionary fares and support to operators through local authorities only (Wales: no operator-side series and no Welsh Government grants outside the outturn), and the NITHC accounts' Public Service Obligation plus concessionary compensation as one bus-plus-rail cell excluding GBP 53.2m of other revenue funding (Northern Ireland). The legs are bound on their own terms; they are not a UK total under another name."
+        }
+      ]
+    },
+    "obr.fuel_duties_cars": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "obr.fuel_duties_cars",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 14400000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_de6554fe8ab7b481035a432a"
+        }
+      ]
+    },
+    "orr.rail_government_support": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "orr.rail_government_support",
+          "status": "active",
+          "matched_fact_count_overall": 10,
+          "matched_fact_count_at_or_before_period": 10,
+          "resolved_period": 2025,
+          "resolved_value": 21621100549.34064,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b16b9b3f2329455f907f9ccc"
+        }
+      ]
+    },
+    "ons.household_energy_expenditure": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.household_energy_expenditure",
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 6,
+          "resolved_period": 2025,
+          "resolved_value": 43427000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a139145f4db5fea0260908f8"
+        }
+      ]
+    },
+    "scotgov.bus.passenger_revenue": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "scotgov.bus.passenger_revenue",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 391000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c4269bb83534f1e46f5801c1"
+        }
+      ]
+    },
+    "scotgov.bus.government_support": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "scotgov.bus.government_support",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 499000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ceb60fd41d0f5587be94c234"
+        }
+      ]
+    },
+    "welshgov.bus.public_support": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.bus.public_support",
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 6,
+          "resolved_period": 2025,
+          "resolved_value": 131489970.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a10fcfec7cb458fa0c8c7f10"
+        }
+      ]
+    },
+    "dfi_ni.bus.passenger_receipts": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfi_ni.bus.passenger_receipts",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "resolved_period": 2025,
+          "resolved_value": 150082817.48999995,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_96f72989614e0c5faaeeabbb"
+        }
+      ]
+    },
+    "nithc.public_transport_support": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "nithc.public_transport_support",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "resolved_period": 2025,
+          "resolved_value": 111700000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_be8eb7011b6f65fa65d52fcb"
         }
       ]
     }

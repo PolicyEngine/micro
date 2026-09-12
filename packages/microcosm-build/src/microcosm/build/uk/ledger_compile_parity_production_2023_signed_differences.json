@@ -1,11 +1,11 @@
 {
- "compiled_count": 230,
+ "compiled_count": 238,
  "counts_by_kind": {
   "calibration_drift": 12,
   "fixture_only": 125,
-  "ledger_only": 206
+  "ledger_only": 214
  },
- "difference_count": 343,
+ "difference_count": 351,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -898,8 +898,22 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 3278976692.6359496,
+   "ledger_value": 135820000.0,
+   "name": "dfi_ni.bus.passenger_receipts",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3258254371.1953297,
    "name": "dft.bus_fare_receipts.england",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1338986541.2373116,
+   "name": "dft.bus_fare_receipts.london",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -907,6 +921,13 @@
    "kind": "ledger_only",
    "ledger_value": 2651721003.6800003,
    "name": "dft.bus_net_support.england",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 954406918.7,
+   "name": "dft.bus_net_support.london",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -1990,6 +2011,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 99200000.0,
+   "name": "nithc.public_transport_support",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 52505000000.0,
+   "name": "ons.household_energy_expenditure",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 7497928.0,
    "name": "ons.population.age_0_9_by_region",
    "period": 2023,
@@ -2321,6 +2356,27 @@
    "kind": "ledger_only",
    "ledger_value": 68265209.0,
    "name": "ons.population.uk_total",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23120884840.50285,
+   "name": "orr.rail_government_support",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 438893000.0,
+   "name": "scotgov.bus.government_support",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 97426240.0,
+   "name": "welshgov.bus.public_support",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

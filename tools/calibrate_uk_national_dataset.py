@@ -25,16 +25,16 @@ from microcosm.build.uk_runtime.calibration_run import (
     UKCalibrationRunPaths,
     run_uk_calibration,
 )
+from microcosm.build.uk_runtime.chronicle_feed import (
+    UKChronicleFeed,
+    load_uk_chronicle_feed,
+)
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.ledger_targets import compile_uk_target_registry
 from microcosm.build.uk_runtime.measure_simulation import (
     UKMeasureResolver,
     apply_uk_calibration_measure_exclusions,
     load_uk_calibration_measure_exclusions,
-)
-from microcosm.build.uk_runtime.national_chronicle_feed import (
-    UKNationalChronicleFeed,
-    load_uk_national_chronicle_feed,
 )
 from microcosm.build.uk_runtime.national_doctrine import uk_doctrine_with_overrides
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
@@ -49,7 +49,7 @@ _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    national_feed = load_uk_national_chronicle_feed()
+    national_feed = load_uk_chronicle_feed()
     artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
@@ -127,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
         run_config_extra={
             "calibration_year": calibration_year,
             "allow_unpinned_feed": args.allow_unpinned_feed,
-            "national_chronicle_feed_pin": national_feed.to_dict(),
+            "chronicle_feed_pin": national_feed.to_dict(),
         },
         release_id=args.release_id,
         logbook_prev_row_digest=args.logbook_prev_row_digest,
@@ -235,9 +235,9 @@ def _check_committed_ledger_feed_pin(
     *,
     manifest_sha256: str | None,
     allow_unpinned_feed: bool,
-    pin: UKNationalChronicleFeed | None = None,
+    pin: UKChronicleFeed | None = None,
 ) -> None:
-    pin = pin or load_uk_national_chronicle_feed()
+    pin = pin or load_uk_chronicle_feed()
     mismatches = []
     for label, loaded, committed in (
         ("facts", facts_sha256, pin.facts_sha256),

@@ -43,6 +43,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
 from microcosm.build.uk_runtime.hmrc_income import HMRC_SPI_TARGET_RECORD_COUNT
 from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES, metric_names
@@ -77,20 +78,29 @@ FENCE_ENFORCEMENT_REVIEW = "review_required_before_binding"
 #: product description checked on this date (microcosm#495 scoping).
 _SOURCES_VERIFIED_ON = "2026-07-22"
 
-_LEDGER_FACT_FEED_PIN: dict[str, str | int] = {
-    "artifact": ".codex-work/consumer_facts_uk.jsonl",
-    "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-    "facts_sha256": (
-        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
-    ),
-    "manifest_sha256": (
-        "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f"
-    ),
-    "fact_row_count": 131450,
-    "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "ec7169b",
-    "build": "build-bundle --suite uk -> build-consumer-artifact",
-}
+
+def _ledger_fact_feed_pin() -> dict[str, str | int]:
+    """The local census reads the one UK Chronicle pin (``uk/chronicle_feed.json``).
+
+    The national and local surfaces share a single reviewed artifact identity;
+    the census restates it here with the default untracked artifact location so
+    the committed JSON carries the digest a reader can verify.
+    """
+
+    pin = load_uk_chronicle_feed()
+    return {
+        "artifact": ".codex-work/consumer_facts_uk.jsonl",
+        "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+        "facts_sha256": pin.facts_sha256,
+        "manifest_sha256": pin.manifest_sha256,
+        "fact_row_count": pin.fact_row_count,
+        "source_repo": pin.source_repo,
+        "source_commit": pin.source_commit,
+        "build": pin.build,
+    }
+
+
+_LEDGER_FACT_FEED_PIN: dict[str, str | int] = _ledger_fact_feed_pin()
 
 _SPI_FRAME_PROXY_FENCE_ID = "hmrc_spi_frame_model_proxy"
 _FRS_CIRCULARITY_FENCE_ID = "frs_model_based_target_circularity"

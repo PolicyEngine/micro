@@ -33,6 +33,18 @@
       },
       "dft": {
         "label": "Department for Transport"
+      },
+      "orr": {
+        "label": "Office of Rail and Road"
+      },
+      "welshgov": {
+        "label": "Welsh Government"
+      },
+      "dfi_ni": {
+        "label": "Department for Infrastructure (Northern Ireland)"
+      },
+      "nithc": {
+        "label": "Northern Ireland Transport Holding Company"
       }
     },
     "categories": {
@@ -155,14 +167,41 @@
       "dft.local_bus_finances": {
         "provider_id": "dft",
         "label": "Local bus finances"
+      },
+      "orr.rail_industry_finance": {
+        "provider_id": "orr",
+        "label": "Rail industry finance"
+      },
+      "ons.consumer_trends": {
+        "provider_id": "ons",
+        "label": "Consumer trends household expenditure"
+      },
+      "scotgov.local_bus_finances": {
+        "provider_id": "scotgov",
+        "label": "Local bus finances"
+      },
+      "welshgov.local_bus_finances": {
+        "provider_id": "welshgov",
+        "label": "Local bus finances"
+      },
+      "dfi_ni.local_bus_finances": {
+        "provider_id": "dfi_ni",
+        "label": "Local bus finances"
+      },
+      "nithc.public_transport_finances": {
+        "provider_id": "nithc",
+        "label": "Public transport finances"
       }
     },
     "target_categories": {
       "dfe.funded_childcare.early_learning_2_year_olds": "dfe.funded_childcare",
       "dfe.funded_childcare.universal_only_children": "dfe.funded_childcare",
       "dfe.funded_childcare.working_parent_children_2_to_4": "dfe.funded_childcare",
+      "dfi_ni.bus.passenger_receipts": "dfi_ni.local_bus_finances",
       "dft.bus_fare_receipts.england": "dft.local_bus_finances",
+      "dft.bus_fare_receipts.london": "dft.local_bus_finances",
       "dft.bus_net_support.england": "dft.local_bus_finances",
+      "dft.bus_net_support.london": "dft.local_bus_finances",
       "dwp.benefit_cap.capped_households": "dwp.benefit_cap",
       "dwp.esa_claimants": "dwp.legacy_benefits",
       "dwp.esa_contrib_claimants": "dwp.legacy_benefits",
@@ -223,12 +262,13 @@
       "hmrc.tfc.children_with_used_accounts": "hmrc.tax_free_childcare",
       "hmrc.tfc.government_top_up": "hmrc.tax_free_childcare",
       "isc.private_school_students": "isc.independent_school_pupils",
+      "nithc.public_transport_support": "nithc.public_transport_finances",
       "obr.attendance_allowance": "obr.efo_expenditure",
       "obr.carers_allowance": "obr.efo_expenditure",
       "obr.child_benefit": "obr.efo_expenditure",
       "obr.council_tax": "obr.efo_expenditure",
       "obr.esa": "obr.efo_expenditure",
-      "obr.fuel_duties": "obr.efo_receipts",
+      "obr.fuel_duties_cars": "obr.efo_receipts",
       "obr.housing_benefit": "obr.efo_expenditure",
       "obr.income_tax": "obr.efo_receipts",
       "obr.jobseekers_allowance": "obr.efo_expenditure",
@@ -256,6 +296,7 @@
       "ons.household_composition.lone_parent_non_dependent_children_households": "ons.household_composition",
       "ons.household_composition.multi_family_households": "ons.household_composition",
       "ons.household_composition.unrelated_adult_households": "ons.household_composition",
+      "ons.household_energy_expenditure": "ons.consumer_trends",
       "ons.land.corporate_land_value": "ons.land",
       "ons.land.household_land_value": "ons.land",
       "ons.land.land_value": "ons.land",
@@ -311,6 +352,9 @@
       "ons.population.uk_total": "ons.population",
       "ons.public_sector_employment": "ons.employment",
       "ons.savings_interest_income": "ons.national_accounts",
+      "orr.rail_government_support": "orr.rail_industry_finance",
+      "scotgov.bus.government_support": "scotgov.local_bus_finances",
+      "scotgov.bus.passenger_revenue": "scotgov.local_bus_finances",
       "scotgov.council_tax_stock.band_a": "scotgov.council_tax_stock",
       "scotgov.council_tax_stock.band_b": "scotgov.council_tax_stock",
       "scotgov.council_tax_stock.band_c": "scotgov.council_tax_stock",
@@ -344,19 +388,23 @@
       "voa.council_tax_stock.band_f": "voa.council_tax_stock",
       "voa.council_tax_stock.band_g": "voa.council_tax_stock",
       "voa.council_tax_stock.band_h": "voa.council_tax_stock",
-      "voa.council_tax_stock.total": "voa.council_tax_stock"
+      "voa.council_tax_stock.total": "voa.council_tax_stock",
+      "welshgov.bus.public_support": "welshgov.local_bus_finances"
     },
     "target_labels": {
       "dfe.funded_childcare.early_learning_2_year_olds": "Early learning 2 year olds",
       "dfe.funded_childcare.universal_only_children": "Universal only children",
       "dfe.funded_childcare.working_parent_children_2_to_4": "Working parent children 2 to 4",
+      "dfi_ni.bus.passenger_receipts": "Translink passenger receipts",
       "dft.bus_fare_receipts.england": "England",
+      "dft.bus_fare_receipts.london": "London",
       "dft.bus_net_support.england": "England",
+      "dft.bus_net_support.london": "London",
       "dwp.benefit_cap.capped_households": "Capped households",
       "dwp.esa_claimants": "Employment and Support Allowance claimants",
       "dwp.esa_contrib_claimants": "Employment and Support Allowance contrib claimants",
       "dwp.esa_income_claimants": "Employment and Support Allowance income claimants",
-      "dwp.jsa_claimants": "Jobseeker’s Allowance claimants",
+      "dwp.jsa_claimants": "Jobseeker\u2019s Allowance claimants",
       "dwp.uc.households": "Universal Credit households",
       "dwp.uc.households_children_1": "Households children 1",
       "dwp.uc.households_children_2": "Households children 2",
@@ -412,12 +460,13 @@
       "hmrc.tfc.children_with_used_accounts": "Children with used accounts",
       "hmrc.tfc.government_top_up": "Government top up",
       "isc.private_school_students": "Private school students",
+      "nithc.public_transport_support": "Bus and rail support",
       "obr.attendance_allowance": "Attendance allowance",
       "obr.carers_allowance": "Carers allowance",
       "obr.child_benefit": "Child benefit",
       "obr.council_tax": "Council tax",
       "obr.esa": "Employment and Support Allowance",
-      "obr.fuel_duties": "Fuel duties",
+      "obr.fuel_duties_cars": "Fuel duties from cars",
       "obr.housing_benefit": "Housing benefit",
       "obr.income_tax": "Income tax",
       "obr.jobseekers_allowance": "Jobseekers allowance",
@@ -445,6 +494,7 @@
       "ons.household_composition.lone_parent_non_dependent_children_households": "Lone parent non-dependent children households",
       "ons.household_composition.multi_family_households": "Multi-family households",
       "ons.household_composition.unrelated_adult_households": "Unrelated adult households",
+      "ons.household_energy_expenditure": "Electricity, gas and other fuels (COICOP 04.5)",
       "ons.land.corporate_land_value": "Corporate land value",
       "ons.land.household_land_value": "Household land value",
       "ons.land.land_value": "Land value",
@@ -500,6 +550,9 @@
       "ons.population.uk_total": "UK population",
       "ons.public_sector_employment": "Public sector employment",
       "ons.savings_interest_income": "Savings interest income",
+      "orr.rail_government_support": "Total government support (Great Britain)",
+      "scotgov.bus.government_support": "Government support",
+      "scotgov.bus.passenger_revenue": "Passenger revenue",
       "scotgov.council_tax_stock.band_a": "Band a",
       "scotgov.council_tax_stock.band_b": "Band b",
       "scotgov.council_tax_stock.band_c": "Band c",
@@ -533,7 +586,8 @@
       "voa.council_tax_stock.band_f": "Band f",
       "voa.council_tax_stock.band_g": "Band g",
       "voa.council_tax_stock.band_h": "Band h",
-      "voa.council_tax_stock.total": "Total"
+      "voa.council_tax_stock.total": "Total",
+      "welshgov.bus.public_support": "Public support through local authorities"
     }
   },
   "allowed_value_operations": [
@@ -657,25 +711,6 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.vat",
-        "measure_kind": "prepared_column"
-      },
-      "assertion_policy": "allow_source_projection"
-    },
-    {
-      "name": "obr.fuel_duties",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.fuel_duties",
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "household",
-      "measure": "obr/fuel_duties",
-      "family": "obr",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "obr.fuel_duties",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection"
@@ -5208,7 +5243,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£0.01 to £100.00"
+          "monthly_award_amount_bands": "\u00a30.01 to \u00a3100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5238,7 +5273,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£100.01 to £200.00"
+          "monthly_award_amount_bands": "\u00a3100.01 to \u00a3200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5268,7 +5303,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£1000.01 to £1100.00"
+          "monthly_award_amount_bands": "\u00a31000.01 to \u00a31100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5298,7 +5333,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£1100.01 to £1200.00"
+          "monthly_award_amount_bands": "\u00a31100.01 to \u00a31200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5328,7 +5363,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£1200.01 to £1300.00"
+          "monthly_award_amount_bands": "\u00a31200.01 to \u00a31300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5358,7 +5393,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£1300.01 to £1400.00"
+          "monthly_award_amount_bands": "\u00a31300.01 to \u00a31400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5388,7 +5423,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£1400.01 to £1500.00"
+          "monthly_award_amount_bands": "\u00a31400.01 to \u00a31500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5418,7 +5453,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£1500.01 to £1600.00"
+          "monthly_award_amount_bands": "\u00a31500.01 to \u00a31600.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5448,7 +5483,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£1600.01 to £1700.00"
+          "monthly_award_amount_bands": "\u00a31600.01 to \u00a31700.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5478,7 +5513,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£1700.01 to £1800.00"
+          "monthly_award_amount_bands": "\u00a31700.01 to \u00a31800.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5508,7 +5543,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£1800.01 to £1900.00"
+          "monthly_award_amount_bands": "\u00a31800.01 to \u00a31900.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5538,7 +5573,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£1900.01 to £2000.00"
+          "monthly_award_amount_bands": "\u00a31900.01 to \u00a32000.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5568,7 +5603,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£200.01 to £300.00"
+          "monthly_award_amount_bands": "\u00a3200.01 to \u00a3300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5598,7 +5633,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£2000.01 to £2100.00"
+          "monthly_award_amount_bands": "\u00a32000.01 to \u00a32100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5628,7 +5663,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£2100.01 to £2200.00"
+          "monthly_award_amount_bands": "\u00a32100.01 to \u00a32200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5658,7 +5693,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£2200.01 to £2300.00"
+          "monthly_award_amount_bands": "\u00a32200.01 to \u00a32300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5688,7 +5723,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£2300.01 to £2400.00"
+          "monthly_award_amount_bands": "\u00a32300.01 to \u00a32400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5718,7 +5753,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£2400.01 to £2500.00"
+          "monthly_award_amount_bands": "\u00a32400.01 to \u00a32500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5748,7 +5783,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£300.01 to £400.00"
+          "monthly_award_amount_bands": "\u00a3300.01 to \u00a3400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5778,7 +5813,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£400.01 to £500.00"
+          "monthly_award_amount_bands": "\u00a3400.01 to \u00a3500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5808,7 +5843,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£500.01 to £600.00"
+          "monthly_award_amount_bands": "\u00a3500.01 to \u00a3600.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5838,7 +5873,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£600.01 to £700.00"
+          "monthly_award_amount_bands": "\u00a3600.01 to \u00a3700.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5868,7 +5903,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£700.01 to £800.00"
+          "monthly_award_amount_bands": "\u00a3700.01 to \u00a3800.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5898,7 +5933,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£800.01 to £900.00"
+          "monthly_award_amount_bands": "\u00a3800.01 to \u00a3900.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5928,7 +5963,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, no children",
-          "monthly_award_amount_bands": "£900.01 to £1000.00"
+          "monthly_award_amount_bands": "\u00a3900.01 to \u00a31000.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5958,7 +5993,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£0.01 to £100.00"
+          "monthly_award_amount_bands": "\u00a30.01 to \u00a3100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -5988,7 +6023,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£100.01 to £200.00"
+          "monthly_award_amount_bands": "\u00a3100.01 to \u00a3200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6018,7 +6053,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£1000.01 to £1100.00"
+          "monthly_award_amount_bands": "\u00a31000.01 to \u00a31100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6048,7 +6083,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£1100.01 to £1200.00"
+          "monthly_award_amount_bands": "\u00a31100.01 to \u00a31200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6078,7 +6113,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£1200.01 to £1300.00"
+          "monthly_award_amount_bands": "\u00a31200.01 to \u00a31300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6108,7 +6143,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£1300.01 to £1400.00"
+          "monthly_award_amount_bands": "\u00a31300.01 to \u00a31400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6138,7 +6173,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£1400.01 to £1500.00"
+          "monthly_award_amount_bands": "\u00a31400.01 to \u00a31500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6168,7 +6203,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£1500.01 to £1600.00"
+          "monthly_award_amount_bands": "\u00a31500.01 to \u00a31600.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6198,7 +6233,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£1600.01 to £1700.00"
+          "monthly_award_amount_bands": "\u00a31600.01 to \u00a31700.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6228,7 +6263,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£1700.01 to £1800.00"
+          "monthly_award_amount_bands": "\u00a31700.01 to \u00a31800.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6258,7 +6293,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£1800.01 to £1900.00"
+          "monthly_award_amount_bands": "\u00a31800.01 to \u00a31900.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6288,7 +6323,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£1900.01 to £2000.00"
+          "monthly_award_amount_bands": "\u00a31900.01 to \u00a32000.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6318,7 +6353,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£200.01 to £300.00"
+          "monthly_award_amount_bands": "\u00a3200.01 to \u00a3300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6348,7 +6383,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£2000.01 to £2100.00"
+          "monthly_award_amount_bands": "\u00a32000.01 to \u00a32100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6378,7 +6413,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£2100.01 to £2200.00"
+          "monthly_award_amount_bands": "\u00a32100.01 to \u00a32200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6408,7 +6443,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£2200.01 to £2300.00"
+          "monthly_award_amount_bands": "\u00a32200.01 to \u00a32300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6438,7 +6473,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£2300.01 to £2400.00"
+          "monthly_award_amount_bands": "\u00a32300.01 to \u00a32400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6468,7 +6503,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£2400.01 to £2500.00"
+          "monthly_award_amount_bands": "\u00a32400.01 to \u00a32500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6498,7 +6533,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£300.01 to £400.00"
+          "monthly_award_amount_bands": "\u00a3300.01 to \u00a3400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6528,7 +6563,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£400.01 to £500.00"
+          "monthly_award_amount_bands": "\u00a3400.01 to \u00a3500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6558,7 +6593,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£500.01 to £600.00"
+          "monthly_award_amount_bands": "\u00a3500.01 to \u00a3600.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6588,7 +6623,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£600.01 to £700.00"
+          "monthly_award_amount_bands": "\u00a3600.01 to \u00a3700.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6618,7 +6653,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£700.01 to £800.00"
+          "monthly_award_amount_bands": "\u00a3700.01 to \u00a3800.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6648,7 +6683,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£800.01 to £900.00"
+          "monthly_award_amount_bands": "\u00a3800.01 to \u00a3900.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6678,7 +6713,7 @@
         ],
         "dimension_values": {
           "family_type": "Single, with children",
-          "monthly_award_amount_bands": "£900.01 to £1000.00"
+          "monthly_award_amount_bands": "\u00a3900.01 to \u00a31000.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6708,7 +6743,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£0.01 to £100.00"
+          "monthly_award_amount_bands": "\u00a30.01 to \u00a3100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6738,7 +6773,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£100.01 to £200.00"
+          "monthly_award_amount_bands": "\u00a3100.01 to \u00a3200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6768,7 +6803,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£1000.01 to £1100.00"
+          "monthly_award_amount_bands": "\u00a31000.01 to \u00a31100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6798,7 +6833,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£1100.01 to £1200.00"
+          "monthly_award_amount_bands": "\u00a31100.01 to \u00a31200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6828,7 +6863,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£1200.01 to £1300.00"
+          "monthly_award_amount_bands": "\u00a31200.01 to \u00a31300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6858,7 +6893,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£1300.01 to £1400.00"
+          "monthly_award_amount_bands": "\u00a31300.01 to \u00a31400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6888,7 +6923,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£1400.01 to £1500.00"
+          "monthly_award_amount_bands": "\u00a31400.01 to \u00a31500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6918,7 +6953,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£1500.01 to £1600.00"
+          "monthly_award_amount_bands": "\u00a31500.01 to \u00a31600.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6948,7 +6983,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£1600.01 to £1700.00"
+          "monthly_award_amount_bands": "\u00a31600.01 to \u00a31700.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -6978,7 +7013,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£1700.01 to £1800.00"
+          "monthly_award_amount_bands": "\u00a31700.01 to \u00a31800.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7008,7 +7043,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£1800.01 to £1900.00"
+          "monthly_award_amount_bands": "\u00a31800.01 to \u00a31900.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7038,7 +7073,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£1900.01 to £2000.00"
+          "monthly_award_amount_bands": "\u00a31900.01 to \u00a32000.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7068,7 +7103,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£200.01 to £300.00"
+          "monthly_award_amount_bands": "\u00a3200.01 to \u00a3300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7098,7 +7133,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£2000.01 to £2100.00"
+          "monthly_award_amount_bands": "\u00a32000.01 to \u00a32100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7128,7 +7163,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£2100.01 to £2200.00"
+          "monthly_award_amount_bands": "\u00a32100.01 to \u00a32200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7158,7 +7193,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£2200.01 to £2300.00"
+          "monthly_award_amount_bands": "\u00a32200.01 to \u00a32300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7188,7 +7223,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£2300.01 to £2400.00"
+          "monthly_award_amount_bands": "\u00a32300.01 to \u00a32400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7218,7 +7253,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£2400.01 to £2500.00"
+          "monthly_award_amount_bands": "\u00a32400.01 to \u00a32500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7248,7 +7283,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£300.01 to £400.00"
+          "monthly_award_amount_bands": "\u00a3300.01 to \u00a3400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7278,7 +7313,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£400.01 to £500.00"
+          "monthly_award_amount_bands": "\u00a3400.01 to \u00a3500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7308,7 +7343,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£500.01 to £600.00"
+          "monthly_award_amount_bands": "\u00a3500.01 to \u00a3600.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7338,7 +7373,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£600.01 to £700.00"
+          "monthly_award_amount_bands": "\u00a3600.01 to \u00a3700.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7368,7 +7403,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£700.01 to £800.00"
+          "monthly_award_amount_bands": "\u00a3700.01 to \u00a3800.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7398,7 +7433,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£800.01 to £900.00"
+          "monthly_award_amount_bands": "\u00a3800.01 to \u00a3900.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7428,7 +7463,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, no children",
-          "monthly_award_amount_bands": "£900.01 to £1000.00"
+          "monthly_award_amount_bands": "\u00a3900.01 to \u00a31000.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7458,7 +7493,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£0.01 to £100.00"
+          "monthly_award_amount_bands": "\u00a30.01 to \u00a3100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7488,7 +7523,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£100.01 to £200.00"
+          "monthly_award_amount_bands": "\u00a3100.01 to \u00a3200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7518,7 +7553,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£1000.01 to £1100.00"
+          "monthly_award_amount_bands": "\u00a31000.01 to \u00a31100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7548,7 +7583,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£1100.01 to £1200.00"
+          "monthly_award_amount_bands": "\u00a31100.01 to \u00a31200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7578,7 +7613,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£1200.01 to £1300.00"
+          "monthly_award_amount_bands": "\u00a31200.01 to \u00a31300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7608,7 +7643,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£1300.01 to £1400.00"
+          "monthly_award_amount_bands": "\u00a31300.01 to \u00a31400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7638,7 +7673,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£1400.01 to £1500.00"
+          "monthly_award_amount_bands": "\u00a31400.01 to \u00a31500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7668,7 +7703,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£1500.01 to £1600.00"
+          "monthly_award_amount_bands": "\u00a31500.01 to \u00a31600.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7698,7 +7733,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£1600.01 to £1700.00"
+          "monthly_award_amount_bands": "\u00a31600.01 to \u00a31700.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7728,7 +7763,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£1700.01 to £1800.00"
+          "monthly_award_amount_bands": "\u00a31700.01 to \u00a31800.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7758,7 +7793,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£1800.01 to £1900.00"
+          "monthly_award_amount_bands": "\u00a31800.01 to \u00a31900.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7788,7 +7823,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£1900.01 to £2000.00"
+          "monthly_award_amount_bands": "\u00a31900.01 to \u00a32000.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7818,7 +7853,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£200.01 to £300.00"
+          "monthly_award_amount_bands": "\u00a3200.01 to \u00a3300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7848,7 +7883,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£2000.01 to £2100.00"
+          "monthly_award_amount_bands": "\u00a32000.01 to \u00a32100.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7878,7 +7913,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£2100.01 to £2200.00"
+          "monthly_award_amount_bands": "\u00a32100.01 to \u00a32200.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7908,7 +7943,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£2200.01 to £2300.00"
+          "monthly_award_amount_bands": "\u00a32200.01 to \u00a32300.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7938,7 +7973,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£2300.01 to £2400.00"
+          "monthly_award_amount_bands": "\u00a32300.01 to \u00a32400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7968,7 +8003,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£2400.01 to £2500.00"
+          "monthly_award_amount_bands": "\u00a32400.01 to \u00a32500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -7998,7 +8033,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£300.01 to £400.00"
+          "monthly_award_amount_bands": "\u00a3300.01 to \u00a3400.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -8028,7 +8063,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£400.01 to £500.00"
+          "monthly_award_amount_bands": "\u00a3400.01 to \u00a3500.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -8058,7 +8093,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£500.01 to £600.00"
+          "monthly_award_amount_bands": "\u00a3500.01 to \u00a3600.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -8088,7 +8123,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£600.01 to £700.00"
+          "monthly_award_amount_bands": "\u00a3600.01 to \u00a3700.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -8118,7 +8153,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£700.01 to £800.00"
+          "monthly_award_amount_bands": "\u00a3700.01 to \u00a3800.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -8148,7 +8183,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£800.01 to £900.00"
+          "monthly_award_amount_bands": "\u00a3800.01 to \u00a3900.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -8178,7 +8213,7 @@
         ],
         "dimension_values": {
           "family_type": "Couple, with children",
-          "monthly_award_amount_bands": "£900.01 to £1000.00"
+          "monthly_award_amount_bands": "\u00a3900.01 to \u00a31000.00"
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -11669,6 +11704,7 @@
         "measure_kind": "prepared_column",
         "observation_basis": "fiscal_year_flow"
       },
+      "uprating_index": "dft.local_bus_fares_index",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -11692,6 +11728,264 @@
         "measure_kind": "prepared_column",
         "observation_basis": "fiscal_year_flow"
       },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_fare_receipts.london",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_fare_receipts",
+        "layout_groupby_value_id": "london",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "dft/bus_fare_receipts/london",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_fare_receipts.london",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_index": "dft.local_bus_fares_index",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_net_support.london",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_total_estimated_net_support",
+        "layout_groupby_value_id": "london",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "dft/bus_net_support/london",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_net_support.london",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "obr.fuel_duties_cars",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": "obr.fuel_duty.receipts",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "vehicle_category": "cars"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "obr/fuel_duties_cars",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.fuel_duties_cars",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "orr.rail_government_support",
+      "ledger_selector": {
+        "source_name": "orr",
+        "source_concept": "orr.rail.total_government_support",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "household",
+      "measure": "orr/rail_government_support",
+      "family": "orr_rail",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "orr.rail_government_support",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.household_energy_expenditure",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.household_expenditure.electricity_gas_other_fuels",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "dimension_values": {
+          "coicop": "04.5",
+          "frequency": "annual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "ons/household_energy_expenditure",
+      "family": "ons_national_accounts",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.household_energy_expenditure",
+        "measure_kind": "prepared_column"
+      }
+    },
+    {
+      "name": "scotgov.bus.passenger_revenue",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_concept": "scotgov.bus.operator_revenue",
+        "layout_groupby_value_id": "passenger_revenue",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "scotgov/bus_passenger_revenue",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.bus.passenger_revenue",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.bus.government_support",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_concept": "scotgov.bus.government_support",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "funding_component": "all_government_support"
+        },
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "scotgov/bus_government_support",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.bus.government_support",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "welshgov.bus.public_support",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "source_concept": "welshgov.local_transport.gross_expenditure",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "expenditure_component": "Gross expenditure",
+          "service_line": [
+            "Concessionary fares",
+            "Support to operators"
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "household",
+      "measure": "welshgov/bus_public_support",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.bus.public_support",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 2,
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfi_ni.bus.passenger_receipts",
+      "ledger_selector": {
+        "source_name": "dfi_ni",
+        "source_concept": "dfi_ni.translink_bus.passenger_receipts",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "service": [
+            "ulsterbus",
+            "metro_glider"
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "household",
+      "measure": "dfi_ni/bus_passenger_receipts",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfi_ni.bus.passenger_receipts",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 2,
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "nithc.public_transport_support",
+      "ledger_selector": {
+        "source_name": "nithc",
+        "source_concept": "nithc.dfi_transaction_value",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "mode_scope": "all_public_transport",
+          "funding_component": [
+            "Public Service Obligation compensation",
+            "Concessionary fare compensation for a range of groups"
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "household",
+      "measure": "nithc/public_transport_support",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "nithc.public_transport_support",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 2,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     }

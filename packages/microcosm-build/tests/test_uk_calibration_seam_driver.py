@@ -129,7 +129,7 @@ def test_driver_refuses_feed_outside_the_committed_pin_without_override():
     with pytest.raises(SystemExit, match="committed UK national feed pin"):
         driver._check_committed_ledger_feed_pin(
             "b" * 64,
-            manifest_sha256=driver.load_uk_national_chronicle_feed().manifest_sha256,
+            manifest_sha256=driver.load_uk_chronicle_feed().manifest_sha256,
             allow_unpinned_feed=False,
         )
 
@@ -148,7 +148,7 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(
     calls = []
     registry = _registry()
     pruned_registry = TargetRegistry([], country="uk")
-    pin = driver.load_uk_national_chronicle_feed()
+    pin = driver.load_uk_chronicle_feed()
     artifact = SimpleNamespace(
         path=tmp_path / "ledger",
         facts=({"fact": 1},),
@@ -225,7 +225,7 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(
     assert call["run_config_extra"] == {
         "calibration_year": 2025,
         "allow_unpinned_feed": allow_unpinned_feed,
-        "national_chronicle_feed_pin": pin.to_dict(),
+        "chronicle_feed_pin": pin.to_dict(),
     }
     assert "uk_target_fit" in capsys.readouterr().out
 
@@ -241,25 +241,23 @@ def test_driver_refuses_the_national_release_id(tmp_path: Path):
         driver._parse_args(args)
 
 
-def test_driver_accepts_the_merged_national_feed_without_local_promotion():
+def test_driver_and_local_census_read_the_one_chronicle_pin():
     from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
 
     driver = _load_driver_module()
+    pin = driver.load_uk_chronicle_feed()
     driver._check_committed_ledger_feed_pin(
-        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
-        manifest_sha256="a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        pin.facts_sha256,
+        manifest_sha256=pin.manifest_sha256,
         allow_unpinned_feed=False,
     )
-    # The local pin is its own reviewed declaration: microcosm#887 moved it to
-    # the same chronicle ec7169b artifact after a separate local re-pin review,
-    # so the national acceptance above neither reads nor promotes it.
-    assert _LEDGER_FACT_FEED_PIN["facts_sha256"] == (
-        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
-    )
-    assert _LEDGER_FACT_FEED_PIN["manifest_sha256"] == (
-        "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f"
-    )
-    assert _LEDGER_FACT_FEED_PIN["source_commit"] == "ec7169b"
+    # The local census restates the same declaration (microcosm#890 review:
+    # the national and local surfaces share uk/chronicle_feed.json, so a
+    # re-pin is one reviewed change and the two cannot drift apart).
+    assert _LEDGER_FACT_FEED_PIN["facts_sha256"] == pin.facts_sha256
+    assert _LEDGER_FACT_FEED_PIN["manifest_sha256"] == pin.manifest_sha256
+    assert _LEDGER_FACT_FEED_PIN["source_commit"] == pin.source_commit
+    assert _LEDGER_FACT_FEED_PIN["fact_row_count"] == pin.fact_row_count
 
 
 @pytest.mark.parametrize("manifest_sha256", ["c" * 64, None])
@@ -267,7 +265,7 @@ def test_driver_refuses_unpinned_national_manifest(manifest_sha256):
     driver = _load_driver_module()
     with pytest.raises(SystemExit, match="manifest"):
         driver._check_committed_ledger_feed_pin(
-            "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
+            "45bda3ae730d4ae3fa059d9e03304e902f7f6e74c5099355ef937625ca03b72b",
             manifest_sha256=manifest_sha256,
             allow_unpinned_feed=False,
         )
@@ -275,7 +273,7 @@ def test_driver_refuses_unpinned_national_manifest(manifest_sha256):
 
 def test_driver_checks_loaded_manifest_before_compiling_targets(monkeypatch, tmp_path):
     driver = _load_driver_module()
-    pin = driver.load_uk_national_chronicle_feed()
+    pin = driver.load_uk_chronicle_feed()
     artifact = SimpleNamespace(facts_sha256=pin.facts_sha256, manifest_sha256="c" * 64)
     monkeypatch.setattr(
         driver, "load_ledger_consumer_artifact", lambda *a, **k: artifact
