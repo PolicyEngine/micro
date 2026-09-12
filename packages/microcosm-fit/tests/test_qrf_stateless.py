@@ -119,6 +119,29 @@ def test_zero_uniform_skips_a_zero_probability_sign(model, monkeypatch):
     assert (actual.mixed == 3.0).all()
 
 
+def test_a_cdf_short_of_one_cannot_fall_back_to_the_first_sign(model, monkeypatch):
+    """The other half of the deliberate inverse-CDF change: the final bin closes.
+
+    ``predict_proba`` rows are floating-point and need not sum to exactly 1.0.
+    Without ``cumulative[:, -1] = 1.0`` a uniform above that sum makes every
+    comparison false, and ``argmax`` on an all-false row returns 0 — silently
+    selecting the *first* class, here the negative one, for a draw that should
+    land in the last bin. Closing the bin is what the charter's amendment 20
+    claims, so it is pinned rather than left to the strict-comparison test.
+    """
+    gate = model._target_models["mixed"].gate
+    assert list(gate.classes_) == [-1, 0, 1]
+    short = np.array([0.5, 0.5 - 2e-16, 0.0])
+    assert short.cumsum()[-1] < 1.0, "the row must fall short for this to bite"
+    monkeypatch.setattr(gate, "predict_proba", lambda x: np.tile(short, (len(x), 1)))
+    draws = uniforms(model, 2)
+    draws["sign_uniforms"]["mixed"] = np.full(2, 1.0 - 1e-16)
+    actual = model.predict_from_uniforms(pd.DataFrame({"x": [1.0, 2.0]}), **draws)
+    assert (actual.mixed == 3.0).all(), (
+        "a uniform past a short CDF selected the first class, not the last"
+    )
+
+
 def test_stateless_replays_legacy_uniforms_across_all_regimes(model):
     """Ordinary uniforms preserve legacy draws; exact CDF ties differ deliberately.
 
