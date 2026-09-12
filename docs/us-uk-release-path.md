@@ -140,6 +140,14 @@ skip; five final calibration-identity checks also pass. Source admission,
 production cadence costs and a dashboard consumer remain separate. See
 [the fiscal snapshot evidence](../experiments/fiscal-target-snapshot-host-20260912.md).
 
+Fiscal leaf-policy infrastructure now distinguishes required producers from
+explicitly documented proposed assumptions. It passes 91 source/mock and
+invented fiscal graph checks. The default remains strict all-producer;
+assumption execution and inactive-leaf exemptions remain unsupported until
+complete-parent admission and exhaustive dependency proof exist. No US
+assumptions or new dataset inputs are enabled. See
+[the policy contract and boundary](fiscal-leaf-policy.md).
+
 Complete-population ancestry remains an explicit requirement. The PUF host now
 retains its actual checked result for downstream consumption through
 `check_survey_puf55_run`. Constructing a dataclass or decoding its receipt cannot

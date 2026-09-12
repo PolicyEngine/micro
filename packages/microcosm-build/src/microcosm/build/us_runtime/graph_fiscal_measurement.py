@@ -7,8 +7,10 @@ are refused. This is not full fiscal-registry coverage or a population issuer.
 The host owns source/target activation and complete-enrichment ancestry.
 
 Computed roots use the existing real US adapter only after its static closure
-is explicitly present, with no missing cells or default allowlist. Measurements
-and model outputs live only in private tables and a bounded CSR artifact.
+is explicitly present, with no missing cells or default allowlist. Optional
+leaf policies bind producer intent or planned literal assumptions; assumption
+execution remains unsupported until a complete-parent host admits it.
+Measurements and model outputs live only in private tables and a CSR artifact.
 """
 
 from __future__ import annotations
@@ -46,6 +48,7 @@ from microcosm.graph.canonical import canonical_json, normative
 from microcosm.graph.executor import _context_digest
 
 from . import asec_engine_evaluation as runtime
+from . import fiscal_leaf_policy as leaf_policies
 
 MEASUREMENT_TYPE = ArtifactType("microcosm.us.declared_fiscal_measurement", 1)
 PROTOCOL = "microcosm.us.declared-fiscal-measurement.v1"
@@ -161,6 +164,62 @@ def _model_contract(roots):
     return {"evaluation": "real_baseline", "runtime": identity, "roots": contracts}
 
 
+def _resolved_model_contract(roots, leaf_policy=None):
+    # Validate malformed policies before importing any engine metadata/runtime.
+    document = (
+        None
+        if leaf_policy is None
+        else leaf_policies.fiscal_leaf_policy_document(leaf_policy)
+    )
+    if document is not None:
+        _require(document["roots"] == list(roots), "POLICY_ROOTS")
+    model = _model_contract(roots)
+    if document is None:
+        return model
+    leaves = {}
+    for contract in model["roots"]:
+        for name, entity in contract["leaves"].items():
+            _require(name not in leaves or leaves[name] == entity, "LEAF_ENTITY")
+            leaves[name] = entity
+    document = leaf_policies.classify_fiscal_leaf_policy(
+        leaf_policy,
+        period=document["period"],
+        roots=roots,
+        leaves=leaves,
+    )
+    assumptions = [
+        name
+        for name, entry in document["entries"].items()
+        if entry["kind"] == "assumption"
+    ]
+    for name in assumptions:
+        affected = [
+            contract["closure"]["root"]
+            for contract in model["roots"]
+            if name in contract["leaves"]
+        ]
+        _require(
+            document["entries"][name]["affected_roots"] == affected,
+            "ASSUMPTION_AFFECTED_ROOTS:" + name,
+        )
+    records = {}
+    if assumptions:
+        index = policyengine_us.PolicyEngineUSVariableMetadataIndex()
+        records = leaf_policies.fiscal_assumption_engine_records(
+            document,
+            metadata={
+                name: asdict(index.variable_metadata(name)) for name in assumptions
+            },
+            defaults=policyengine_us.PolicyEngineUSEngine().default_values(assumptions),
+        )
+    model["leaf_policy"] = {
+        "sha256": leaf_policy.sha256,
+        "document": document,
+        "engine_records": records,
+    }
+    return model
+
+
 def fiscal_measurement_node(
     registry: TargetRegistry,
     *,
@@ -171,6 +230,7 @@ def fiscal_measurement_node(
     geography_vintage: str,
     period: int,
     model_outputs: tuple[str, ...] = (),
+    leaf_policy: leaf_policies.FiscalLeafPolicy | None = None,
     node_id: str = "us.fiscal_measurement",
 ) -> Node:
     """Declare a bounded measurement stage; supplied targets are not activated here.
@@ -180,7 +240,10 @@ def fiscal_measurement_node(
     group tables are reconstructed as sorted IDs only, using Frame's exact
     membership contract; none of their values is inferred or used.
     Every required input leaf is checked against this declaration before model
-    evaluation. Neither this node nor its artifact admits a complete parent.
+    evaluation. None retains the strict all-producer contract. A policy with
+    assumptions may be declared for inspection but cannot execute in this
+    kernel: complete-parent collision admission has not been implemented.
+    Neither this node nor its artifact admits a complete parent.
     """
     _require(type(period) is int and period > 0, "PERIOD")
     _require(type(geography_vintage) is str and bool(geography_vintage), "VINTAGE")
@@ -190,6 +253,10 @@ def fiscal_measurement_node(
         and len(set(model_outputs)) == len(model_outputs),
         "MODEL_OUTPUTS",
     )
+    if leaf_policy is not None:
+        policy_document = leaf_policies.fiscal_leaf_policy_document(leaf_policy)
+        _require(policy_document["period"] == period, "POLICY_PERIOD")
+        _require(policy_document["roots"] == list(model_outputs), "POLICY_ROOTS")
     registry = _registry(_registry_document(registry))
     scopes = _scopes([asdict(s) for s in advertised_scopes])
     entities = (US_SCHEMA.person_entity, *US_SCHEMA.group_entities)
@@ -262,7 +329,12 @@ def fiscal_measurement_node(
             )
     _require(used_bindings == set(contract_targets), "UNUSED_BINDINGS")
     _require(target_scopes == keys, "UNCOVERED_ADVERTISED_SCOPE")
-    model = _model_contract(model_outputs)
+    model = _resolved_model_contract(model_outputs, leaf_policy)
+    entries = {} if leaf_policy is None else model["leaf_policy"]["document"]["entries"]
+    supplied = {name for names in columns.values() for name in names}
+    for name, entry in entries.items():
+        if entry["kind"] == "assumption":
+            _require(name not in supplied, "ASSUMPTION_COLUMN_COLLISION:" + name)
     for contract in model["roots"]:
         root = contract["closure"]["root"]
         _require(root not in columns[contract["entity"]], "FORMULA_INPUT_COLLISION")
@@ -274,7 +346,8 @@ def fiscal_measurement_node(
             "FORMULA_INPUT_COLLISION",
         )
         for leaf, entity in contract["leaves"].items():
-            _require(leaf in columns[entity], "UNDECLARED_MODEL_LEAF:" + leaf)
+            if leaf not in entries or entries[leaf]["kind"] == "producer":
+                _require(leaf in columns[entity], "UNDECLARED_MODEL_LEAF:" + leaf)
     params = {
         "registry": _json(_registry_document(registry)),
         "contract_targets": _json(contract_targets),
@@ -513,8 +586,11 @@ class FiscalMeasurementKernel(KernelBase):
         dependencies=("numpy", "pandas", "scipy"),
     )
 
-    def __init__(self, *, model_outputs=()):
+    def __init__(self, *, model_outputs=(), leaf_policy=None):
         self.model_outputs = model_outputs
+        if leaf_policy is not None:
+            leaf_policies.fiscal_leaf_policy_document(leaf_policy)
+        self.leaf_policy = leaf_policy
 
     def implementation_hash(self):
         return _sha(
@@ -532,10 +608,13 @@ class FiscalMeasurementKernel(KernelBase):
                         # to this helper's separate defining module.
                         policyengine_us.engine_tables,
                         runtime,
+                        leaf_policies,
                         _context_digest,
                         dependencies=self.capabilities.dependencies,
                     ),
-                    "model": _model_contract(self.model_outputs),
+                    "model": _resolved_model_contract(
+                        self.model_outputs, self.leaf_policy
+                    ),
                 }
             )
         )
@@ -554,9 +633,21 @@ class FiscalMeasurementKernel(KernelBase):
             geography_vintage=params["geography_vintage"],
             period=params["period"],
             model_outputs=self.model_outputs,
+            leaf_policy=self.leaf_policy,
             node_id=context.node.id,
         )
         _require(context.node.normative() == expected.normative(), "NODE_DECLARATION")
+        model = json.loads(params["model_contract"])
+        _require(
+            not any(
+                entry["kind"] == "assumption"
+                for entry in model.get("leaf_policy", {})
+                .get("document", {})
+                .get("entries", {})
+                .values()
+            ),
+            "ASSUMPTION_PARENT_ADMISSION_UNSUPPORTED",
+        )
         projection = _context_digest(context).hex()
         tables = {e: t.copy(deep=True) for e, t in context.tables.items()}
         for entity in US_SCHEMA.group_entities:
@@ -575,7 +666,6 @@ class FiscalMeasurementKernel(KernelBase):
             strata=context.strata.copy(),
         )
         adapter = _Adapter(frame)
-        model = json.loads(params["model_contract"])
         if self.model_outputs:
             for contract in model["roots"]:
                 for leaf, entity in contract["leaves"].items():
@@ -666,7 +756,8 @@ class FiscalMeasurementKernel(KernelBase):
         decode_fiscal_measurement(payload)
         _require(_context_digest(context).hex() == projection, "INPUT_MUTATION")
         _require(
-            _json(_model_contract(self.model_outputs)) == params["model_contract"],
+            _json(_resolved_model_contract(self.model_outputs, self.leaf_policy))
+            == params["model_contract"],
             "MODEL_DRIFT",
         )
         return KernelResult(
