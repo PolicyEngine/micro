@@ -16,6 +16,7 @@ import pytest
 
 import microcosm.graph.executor as graph_executor
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.graph.availability import EXECUTION_SCHEMA
 from microcosm.graph.decl import (
     ArtifactInput,
     ArtifactOutput,
@@ -3620,13 +3621,15 @@ def test_an_artifact_payload_enters_the_input_context_digest(tmp_path: Path) -> 
     )
 
 
-def test_a_gate_kernel_may_not_declare_a_typed_artifact_output(tmp_path: Path) -> None:
-    """Amendment 19 holds amendment 7: a gate exception stays a verdict.
+EVIDENCE = ArtifactType("gate.evidence", 1)
 
-    A gate whose kernel raises produces a synthesized ``fail`` result with no
-    artifacts, so a declared typed output would turn that verdict into an
-    aborted run. Amendment 19 carries no regime for an output a node was
-    unable to produce, so the declaration is refused outright.
+
+def _gate_artifact_graph(*, release_behind: bool, answer: str) -> Graph:
+    """A gate declaring typed evidence, its byte consumer, and a cell consumer.
+
+    ``release`` reads the cell consumer's column when ``release_behind`` is
+    true (so it sits behind the byte edge) and the gate's own verdict column
+    otherwise (so it sits beside it).
     """
     gate = Node(
         "gate",
@@ -3634,22 +3637,309 @@ def test_a_gate_kernel_may_not_declare_a_typed_artifact_output(tmp_path: Path) -
         inputs=(Slice("person", ("age",)),),
         outputs=(Owned("household", "gate_verdict", "string"),),
         population="survey",
-        artifact_outputs=(
-            ArtifactOutput("evidence", ArtifactType("gate.evidence", 1)),
-        ),
+        artifact_outputs=(ArtifactOutput("evidence", EVIDENCE),),
     )
-    graph = Graph("toy", (SOURCE,), (CREATE, gate))
+    use = Node(
+        "use",
+        "use@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "used", "float64"),),
+        population="survey",
+        artifact_inputs=(ArtifactInput("evidence", "gate", "evidence", EVIDENCE),),
+    )
+    after = Node(
+        "after",
+        "after@1",
+        inputs=(Slice("person", ("used",)),),
+        outputs=(Owned("person", "after", "float64"),),
+        population="survey",
+    )
+    release = Node(
+        "release",
+        "release@1",
+        inputs=(
+            (Slice("person", ("after",)),)
+            if release_behind
+            else (Slice("household", ("gate_verdict",)),)
+        ),
+        outputs=(Owned("household", "tier", "string"),),
+        params={"answer": answer, "requires_decisions": ()},
+        population="survey",
+    )
+    return Graph("toy", (SOURCE,), (CREATE, gate, use, after, release))
+
+
+def _gate_artifact_registry(*, raising: bool) -> KernelRegistry:
+    def failing_gate(context: KernelContext) -> KernelResult:
+        raise RuntimeError("evidence unavailable")
+
+    def passing_gate(context: KernelContext) -> KernelResult:
+        ids = context.tables["household"]["household_id"]
+        return KernelResult(
+            columns={
+                ("household", "gate_verdict"): pd.Series(
+                    "pass", index=ids, dtype="string"
+                )
+            },
+            artifacts={"evidence": b"evidence-bytes"},
+            receipt={"outcome": "pass", "evidence": {"fixture": True}},
+        )
+
+    def use(context: KernelContext) -> KernelResult:
+        table = context.tables["person"]
+        payload = context.artifacts["evidence"].payload
+        return KernelResult(
+            columns={
+                ("person", "used"): pd.Series(
+                    np.full(len(table), float(len(payload))),
+                    index=pd.Index(table["person_id"], name="person_id"),
+                    dtype="float64",
+                )
+            }
+        )
+
+    def after(context: KernelContext) -> KernelResult:
+        table = context.tables["person"]
+        return KernelResult(
+            columns={
+                ("person", "after"): pd.Series(
+                    table["used"].to_numpy(dtype=np.float64) * 2.0,
+                    index=pd.Index(table["person_id"], name="person_id"),
+                    dtype="float64",
+                )
+            }
+        )
+
+    def release(context: KernelContext) -> KernelResult:
+        ids = context.tables["household"]["household_id"]
+        answer = str(context.params["answer"])
+        return KernelResult(
+            columns={
+                ("household", "tier"): pd.Series(answer, index=ids, dtype="string")
+            },
+            receipt={"outcome": "pass"},
+        )
+
+    deterministic = Capabilities(Determinism.DETERMINISTIC)
     registry = _registry()
     registry.register(
         _Kernel(
             "gate@1",
             Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE),
-            lambda context: KernelResult(receipt={"outcome": "pass"}),
+            failing_gate if raising else passing_gate,
         )
     )
+    registry.register(_Kernel("use@1", deterministic, use))
+    registry.register(_Kernel("after@1", deterministic, after))
+    registry.register(
+        _Kernel(
+            "release@1",
+            Capabilities(Determinism.DETERMINISTIC, role=KernelRole.RELEASE),
+            release,
+        )
+    )
+    return registry
+
+
+def test_a_gate_that_declares_evidence_and_raises_leaves_its_consumers_unreached(
+    tmp_path: Path,
+) -> None:
+    """A gate exception is still a verdict (amendment 7); its outputs are absent.
+
+    The gate records ``fail`` with a ``gate_exception`` execution state naming
+    the outputs it could not produce; the byte consumer and everything causally
+    behind it are ``unreached`` with their blockers named by node key, no
+    kernel behind the edge runs, nothing is invented for them, the release
+    behind the edge stays evidence-tier, and the manifest serializes at schema
+    4, round-trips, and replays as hits under every resume policy.
+    """
     store = ContentStore(tmp_path / "store")
-    with pytest.raises(NodeRejected, match="gate kernel may not declare"):
+    source = _source_path(tmp_path / "src")
+    graph = _gate_artifact_graph(release_behind=True, answer="evidence")
+    registry = _gate_artifact_registry(raising=True)
+    manifest = _run(graph, source, store, registry)
+
+    gate = manifest.nodes["gate"]
+    assert gate.receipt["outcome"] == "fail"
+    assert gate.receipt["execution"] == {
+        "schema": EXECUTION_SCHEMA,
+        "state": "gate_exception",
+        "unavailable_artifacts": ("evidence",),
+    }
+    assert gate.receipt["evidence"]["exception_type"] == "RuntimeError"
+    assert not gate.opaque_artifacts
+    assert set(gate.typed_artifacts["outputs"]) == {"evidence"}
+    verdict = manifest.populations["survey"].household["gate_verdict"]
+    assert set(verdict.to_numpy()) == {"fail"}
+    assert "used" not in manifest.populations["survey"].person.columns
+
+    use = manifest.nodes["use"]
+    assert use.receipt["outcome"] == "unreached"
+    assert use.receipt["execution"] == {
+        "schema": EXECUTION_SCHEMA,
+        "state": "unreached",
+        "blocked_by": {"gate": gate.key},
+    }
+    assert not use.artifacts and use.frame_key is None and not use.opaque_artifacts
+    after = manifest.nodes["after"]
+    assert after.receipt["execution"]["blocked_by"] == {"use": use.key}
+    release = manifest.nodes["release"]
+    assert release.receipt["execution"]["blocked_by"] == {"after": after.key}
+    assert release.receipt["tier"] == "evidence"
+    assert release.receipt["gate_ancestry"] == ("gate",)
+    assert manifest.tier == "evidence"
+    calls = _calls(registry)
+    assert calls["gate@1"] == 1
+    assert calls["use@1"] == calls["after@1"] == calls["release@1"] == 0
+
+    text = manifest.to_json()
+    assert '"schema_version":4' in text
+    restored = RunManifest.from_json(text)
+    assert restored.key == manifest.key
+    assert restored.nodes["use"].receipt == use.receipt
+    assert restored.tier == "evidence"
+
+    for resume in ("auto", "require"):
+        again = _gate_artifact_registry(raising=True)
+        replay = _run(graph, source, store, again, resume=resume)
+        assert all(receipt.hit for receipt in replay.nodes.values())
+        assert replay.key == manifest.key
+        assert sum(_calls(again).values()) == 0
+
+
+def test_a_gate_that_declares_evidence_and_passes_produces_it(
+    tmp_path: Path,
+) -> None:
+    """The same declaration on a gate that succeeds is an ordinary byte edge."""
+    store = ContentStore(tmp_path / "store")
+    source = _source_path(tmp_path / "src")
+    graph = _gate_artifact_graph(release_behind=True, answer="certified")
+    manifest = _run(graph, source, store, _gate_artifact_registry(raising=False))
+    gate = manifest.nodes["gate"]
+    assert gate.receipt["outcome"] == "pass"
+    assert "execution" not in gate.receipt
+    assert gate.opaque_artifacts["evidence"] == opaque_artifact_key(
+        gate.key, "evidence"
+    )
+    assert store.load_bytes(gate.opaque_artifacts["evidence"]) == b"evidence-bytes"
+    used = manifest.populations["survey"].person["used"]
+    assert set(used.to_numpy()) == {float(len(b"evidence-bytes"))}
+    assert manifest.nodes["release"].receipt["gate_ancestry"] == ("gate",)
+    assert manifest.tier == "certified"
+    assert '"schema_version":3' in manifest.to_json()
+
+
+def test_a_kernel_may_not_author_the_executor_execution_state(
+    tmp_path: Path,
+) -> None:
+    """The execution state is executor evidence; a kernel returning one is rejected."""
+
+    def authoring(context: KernelContext) -> KernelResult:
+        table = context.tables["person"]
+        return KernelResult(
+            columns={
+                ("person", "a"): pd.Series(
+                    np.zeros(len(table)),
+                    index=pd.Index(table["person_id"], name="person_id"),
+                    dtype="float64",
+                )
+            },
+            receipt={
+                "execution": {
+                    "schema": EXECUTION_SCHEMA,
+                    "state": "unreached",
+                    "blocked_by": {},
+                }
+            },
+        )
+
+    registry = KernelRegistry()
+    registry.register(
+        _Kernel(
+            "source@1",
+            Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.CREATE),
+            _source,
+        )
+    )
+    registry.register(
+        _Kernel("a@1", Capabilities(Determinism.DETERMINISTIC), authoring)
+    )
+    graph = Graph("toy", (SOURCE,), (CREATE, _ordinary("a", "a@1", "age", "a")))
+    store = ContentStore(tmp_path / "store")
+    with pytest.raises(NodeRejected, match="may not author executor execution"):
         _run(graph, _source_path(tmp_path / "src"), store, registry)
+    # A free-form "execution" diagnostic that does not claim the executor's
+    # schema is still just a receipt field.
+    assert (
+        graph_executor.has_execution({"execution": {"literal_full_scans": 1}}) is False
+    )
+
+
+def test_a_cached_unreached_record_is_refused_once_its_inputs_exist(
+    tmp_path: Path,
+) -> None:
+    """An unreached record is a hit only while the same inputs are unavailable."""
+    store = ContentStore(tmp_path / "store")
+    source = _source_path(tmp_path / "src")
+    graph = _gate_artifact_graph(release_behind=True, answer="certified")
+    manifest = _run(graph, source, store, _gate_artifact_registry(raising=False))
+    gate_key = manifest.nodes["gate"].key
+    use_key = manifest.nodes["use"].key
+    record_key = graph_executor._cache_record_key(use_key)
+    raw = store.load_json(record_key)
+    raw.update(
+        schema_version=3,
+        receipt={
+            "outcome": "unreached",
+            "execution": {
+                "schema": EXECUTION_SCHEMA,
+                "state": "unreached",
+                "blocked_by": {"gate": gate_key},
+            },
+            "evidence": {"reason": "Required graph inputs are unavailable."},
+            "capabilities": raw["capabilities"],
+        },
+        columns=[],
+        frame_key=None,
+        weight=None,
+        opaque=[],
+    )
+    store.put_json(record_key, raw, node_key=use_key, verify_existing=False)
+    for resume in ("auto", "require"):
+        with pytest.raises(StoreCorrupt, match="has no unavailable input blocker"):
+            _run(
+                graph,
+                source,
+                store,
+                _gate_artifact_registry(raising=False),
+                resume=resume,
+            )
+
+
+def test_a_manifest_authenticates_its_unreached_blockers(tmp_path: Path) -> None:
+    """Portable provenance names each blocker by key and the manifest checks it."""
+    store = ContentStore(tmp_path / "store")
+    source = _source_path(tmp_path / "src")
+    graph = _gate_artifact_graph(release_behind=True, answer="evidence")
+    manifest = _run(graph, source, store, _gate_artifact_registry(raising=True))
+    payload = json.loads(manifest.to_json())
+
+    forged = json.loads(json.dumps(payload))
+    forged["nodes"]["use"]["receipt"]["execution"]["blocked_by"] = {"gate": "0" * 64}
+    with pytest.raises(ValueError, match="missing or has a different key"):
+        RunManifest.from_json(json.dumps(forged))
+
+    forged = json.loads(json.dumps(payload))
+    forged["nodes"]["after"]["receipt"]["execution"]["blocked_by"] = {
+        "gate": payload["nodes"]["gate"]["key"]
+    }
+    with pytest.raises(ValueError, match="not one of its declared typed inputs"):
+        RunManifest.from_json(json.dumps(forged))
+
+    forged = json.loads(json.dumps(payload))
+    forged["schema_version"] = 3
+    with pytest.raises(ValueError, match="require manifest schema 4"):
+        RunManifest.from_json(json.dumps(forged))
 
 
 def test_a_gate_reached_only_through_bytes_still_derives_the_tier(
