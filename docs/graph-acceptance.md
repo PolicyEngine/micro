@@ -350,10 +350,12 @@ Amendments so far (each re-locked):
     term is added only when it declares an input — so a node that declares
     no artifacts projects, keys, and serializes exactly as it did before.
     Measured rather than asserted: the whole `microcosm-graph` acceptance
-    suite is green with no re-pin, and the node keys of every node of the
-    three toy acceptance graphs (`small`, `chained`, `full`; 20 nodes) are
-    byte-identical before and after the change. Keys move only for a node
-    that declares an artifact edge, of which there are none on `main`.
+    suite is green with no re-pin, and every node key of six graphs — the
+    four toy acceptance graphs and both real country graphs, `uk_spine_graph`
+    (41 nodes) and `us_post_transfer_graph` (8 nodes), 74 node keys in all —
+    is byte-identical when computed against `origin/main`'s sources and
+    against this amendment's. Keys move only for a node that declares an
+    artifact edge, of which there are none on `main`.
     Raised by the US launch integration branch
     (`microcosm-us-launch-integration-20260909`), which extended both
     frozen files without an amendment; extracted and adopted 2026-09-11.
