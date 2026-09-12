@@ -7,6 +7,7 @@ fixture plus invented member literals.
 
 import ast
 import hashlib
+import json
 import shutil
 from pathlib import Path
 
@@ -177,6 +178,17 @@ def test_actual_invented_member_joins_the_real_preparation_by_native_keys(
     )
     assert not qualified.evidence["source_admission_issued"]
     assert not qualified.evidence["release_eligible"]
+    # A host records this receipt, so it must round-trip as JSON unchanged.
+    receipt = json.dumps(qualified.evidence, sort_keys=True)
+    assert json.loads(receipt) == qualified.evidence
+    assert qualified.evidence["joined_person_years"] == [2024]
+    assert qualified.evidence["acs_channel_rows"] > 0
+    assert not qualified.evidence["acs_components_modeled"]
+    assert set(qualified.evidence["families"]) == set(owner.FAMILIES)
+    assert (
+        qualified.evidence["dictionary"]["amount_entries_source"]["sha256"]
+        == owner.money.RESOURCE_PINS[0]
+    )
     prepared.checked_view()
 
 
