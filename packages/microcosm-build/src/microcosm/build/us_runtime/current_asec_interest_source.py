@@ -81,30 +81,58 @@ def require(condition, reason):
 
 
 @lru_cache(maxsize=1)
-def amount_entries():
+def _cached_amount_entries():
     payload = (
         resources.files(__package__).joinpath(routing.DOMAINS_RESOURCE).read_bytes()
     )
     require(routing._sha(payload) == routing.DOMAINS_SHA256, "DOMAINS_HASH")
-    field = next(f for f in json.loads(payload)["fields"] if f["name"] == "INT_VAL")
-    vintage = next(v for v in field["vintages"] if v["income_year"] == 2024)
+    fields = [f for f in json.loads(payload)["fields"] if f["name"] == "INT_VAL"]
+    require(len(fields) == 1, "DOMAIN_FIELD_ROSTER:INT_VAL")
+    field = fields[0]
+    vintages = [
+        v for v in field["vintages"] if v["income_year"] == routing.CURRENT_INCOME_YEAR
+    ]
+    require(len(vintages) == 1, "DOMAIN_VINTAGE:INT_VAL")
+    vintage = vintages[0]
     require(
-        vintage["pdf_sha256"] == routing.DICTIONARY_SHA256
+        vintage["dictionary_spelling"] == "INT_VAL"
+        and vintage["pdf_sha256"] == routing.DICTIONARY_SHA256
         and vintage["source_url"] == routing.DICTIONARY_URL,
         "DICTIONARY_PIN",
     )
-    return {
-        "INT_VAL": (
-            vintage["ascii_length_as_printed"],
-            vintage["ascii_position_as_printed"],
-            vintage["pdf_page_1based"],
-            vintage["printed_page"],
-            field["domain"]["encoded_range_inclusive"]["maximum"],
-            vintage["universe_as_printed"],
-            field["domain"]["zero_semantics"],
-        ),
-        **ADDITIONAL_AMOUNT_ENTRIES,
-    }
+    routing._require_nonnegative_amount_domain(
+        field,
+        vintage,
+        zero_semantics="none_or_niu_not_distinguishable_from_amount_alone",
+        valid_minimum=0,
+    )
+    return tuple(
+        {
+            "INT_VAL": (
+                vintage["ascii_length_as_printed"],
+                vintage["ascii_position_as_printed"],
+                vintage["pdf_page_1based"],
+                vintage["printed_page"],
+                field["domain"]["encoded_range_inclusive"]["maximum"],
+                vintage["universe_as_printed"],
+                field["domain"]["zero_semantics"],
+            ),
+            **ADDITIONAL_AMOUNT_ENTRIES,
+        }.items()
+    )
+
+
+def amount_entries():
+    """Return a detached mapping over privately cached immutable tuples."""
+    return dict(_cached_amount_entries())
+
+
+amount_entries.cache_clear = _cached_amount_entries.cache_clear
+
+
+def _domain_agreement(ready):
+    entry = amount_entries()["INT_VAL"]
+    routing._require_live_amount_domains(ready, {"INT_VAL": (0, entry[4], entry[6])})
 
 
 def _slot_status(age, receipt, account, amount):
@@ -349,6 +377,7 @@ def qualify_current_asec_interest(preparation):
     )
     parent = issued[2].parent
     ready = parent.ready()
+    _domain_agreement(ready)
     header, native_document = json.loads(ready.header), json.loads(issued[1])
     require(
         header["target_year"] == 2024
