@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from importlib import resources
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -127,11 +128,19 @@ def printed_amount_entries():
 # Printed yes/no entries. The zero label is not shared: OI_YN prints
 # "none or niu" where the others print "niu", so a zero receipt literal does not
 # carry the same meaning across families.
-# name: (length, position, pdf_page, printed_page, universe, zero_label)
+class ReceiptEntry(NamedTuple):
+    printed_length: int
+    printed_position: int
+    pdf_page_1based: int
+    printed_page: str
+    universe_as_printed: str
+    zero_label_as_printed: str
+
+
 RECEIPT_ENTRIES = {
-    "PEN_YN": (1, 570, 47, "6C-26", "All Persons aged 15+", "niu"),
-    "ANN_YN": (1, 444, 44, "6C-23", "All Persons aged 15+", "niu"),
-    "DST_YN": (
+    "PEN_YN": ReceiptEntry(1, 570, 47, "6C-26", "All Persons aged 15+", "niu"),
+    "ANN_YN": ReceiptEntry(1, 444, 44, "6C-23", "All Persons aged 15+", "niu"),
+    "DST_YN": ReceiptEntry(
         1,
         519,
         46,
@@ -139,12 +148,14 @@ RECEIPT_ENTRIES = {
         "Persons aged 58 and over (a_age \u2265 58)",
         "niu",
     ),
-    "DST_YN_YNG": (1, 520, 46, "6C-25", "Persons under age 58 (a_age < 58)", "niu"),
-    "RNT_YN": (1, 627, 49, "6C-28", "All Persons aged 15+", "niu"),
-    "FRSE_YN": (1, 397, 43, "6C-22", "ERN_YN=1 or FRMOTR=1", "Niu"),
-    "ERN_YN": (1, 381, 43, "6C-22", "WORKYN=1 OR WTEMP=1", "niu"),
-    "FRMOTR": (1, 389, 43, "6C-22", "ERN_OTR = 1", "niu"),
-    "OI_YN": (1, 555, 47, "6C-26", "All Persons aged 15+", "none or niu"),
+    "DST_YN_YNG": ReceiptEntry(
+        1, 520, 46, "6C-25", "Persons under age 58 (a_age < 58)", "niu"
+    ),
+    "RNT_YN": ReceiptEntry(1, 627, 49, "6C-28", "All Persons aged 15+", "niu"),
+    "FRSE_YN": ReceiptEntry(1, 397, 43, "6C-22", "ERN_YN=1 or FRMOTR=1", "Niu"),
+    "ERN_YN": ReceiptEntry(1, 381, 43, "6C-22", "WORKYN=1 OR WTEMP=1", "niu"),
+    "FRMOTR": ReceiptEntry(1, 389, 43, "6C-22", "ERN_OTR = 1", "niu"),
+    "OI_YN": ReceiptEntry(1, 555, 47, "6C-26", "All Persons aged 15+", "none or niu"),
 }
 RECEIPT_CODE_DOMAIN = (0, 1, 2)
 
@@ -156,7 +167,7 @@ def receipt_codes(field):
     single shared label would attribute a "respondent reported none" reading to
     eight fields whose dictionary entry does not support it.
     """
-    return {0: RECEIPT_ENTRIES[field][5], 1: "yes", 2: "no"}
+    return {0: RECEIPT_ENTRIES[field].zero_label_as_printed, 1: "yes", 2: "no"}
 
 
 # Retirement account identity. Code 4 names a regular IRA; it does not observe
@@ -172,12 +183,21 @@ ACCOUNT_CODES = {
     7: "Other type of retirement account",
 }
 REGULAR_IRA_CODE = 4
-# name: (length, position, pdf_page, printed_page, universe)
+
+
+class AccountEntry(NamedTuple):
+    printed_length: int
+    printed_position: int
+    pdf_page_1based: int
+    printed_page: str
+    universe_as_printed: str
+
+
 ACCOUNT_ENTRIES = {
-    "DST_SC1": (1, 491, 45, "6C-24", "DST_VAL1 > 0 and a_age \u2265 58"),
-    "DST_SC1_YNG": (1, 492, 45, "6C-24", "DST_YN_YNG = 1 and a_age < 58"),
-    "DST_SC2": (1, 493, 45, "6C-24", "DST_VAL2 > 0 and a_age \u2265 58"),
-    "DST_SC2_YNG": (1, 494, 45, "6C-24", "DST_VAL_YNG > 0 and a_age < 58"),
+    "DST_SC1": AccountEntry(1, 491, 45, "6C-24", "DST_VAL1 > 0 and a_age \u2265 58"),
+    "DST_SC1_YNG": AccountEntry(1, 492, 45, "6C-24", "DST_YN_YNG = 1 and a_age < 58"),
+    "DST_SC2": AccountEntry(1, 493, 45, "6C-24", "DST_VAL2 > 0 and a_age \u2265 58"),
+    "DST_SC2_YNG": AccountEntry(1, 494, 45, "6C-24", "DST_VAL_YNG > 0 and a_age < 58"),
 }
 
 # OI_OFF, verbatim. Code 20 is the reported alimony category. No residual rule
@@ -206,7 +226,7 @@ OTHER_INCOME_CATEGORIES = {
     20: "alimony",
 }
 ALIMONY_CATEGORY_CODE = 20
-OTHER_INCOME_CATEGORY_ENTRY = (2, 547, 47, "6C-26", "OI_YN = 1")
+OTHER_INCOME_CATEGORY_ENTRY = AccountEntry(2, 547, 47, "6C-26", "OI_YN = 1")
 
 # Published allocation flags. Values 0-9 follow I_ANNVAL; the DST composites
 # follow I_INTYN (0, 10, 11); I_DSTSC prints its own 0/1/9 set. I_FRMYN prints
@@ -218,12 +238,28 @@ ALLOCATION_DSTSC_CODES = (0, 1, 9)
 # I_FRMYN's printed Values block is empty; its (0:9) range header is all that is
 # published, so no code meaning is claimed for it.
 ALLOCATION_PRINTED_RANGE_CODES = tuple(range(10))
-# name: (length, position, pdf_page, printed_page, universe, codes)
+
+
+class AllocationEntry(NamedTuple):
+    printed_length: int
+    printed_position: int
+    pdf_page_1based: int
+    printed_page: str
+    universe_as_printed: str
+    codes: tuple
+
+
 ALLOCATION_ENTRIES = {
-    "I_ANNVAL": (1, 802, 53, "6C-32", "ANN_YN =1", ALLOCATION_ANNVAL_CODES),
-    "I_ANNYN": (1, 803, 53, "6C-32", "ANN_YN > 0", ALLOCATION_ANNVAL_CODES),
-    "I_DSTSC": (1, 821, 55, "6C-34", "DST_YN =1", ALLOCATION_DSTSC_CODES),
-    "I_DSTSCCOMP": (
+    "I_ANNVAL": AllocationEntry(
+        1, 802, 53, "6C-32", "ANN_YN =1", ALLOCATION_ANNVAL_CODES
+    ),
+    "I_ANNYN": AllocationEntry(
+        1, 803, 53, "6C-32", "ANN_YN > 0", ALLOCATION_ANNVAL_CODES
+    ),
+    "I_DSTSC": AllocationEntry(
+        1, 821, 55, "6C-34", "DST_YN =1", ALLOCATION_DSTSC_CODES
+    ),
+    "I_DSTSCCOMP": AllocationEntry(
         1,
         822,
         55,
@@ -231,15 +267,33 @@ ALLOCATION_ENTRIES = {
         "DST_YN = 1 or DST_YNG_YN = 1",
         ALLOCATION_ANNVAL_CODES,
     ),
-    "I_DSTVAL1COMP": (2, 823, 55, "6C-34", "", ALLOCATION_COMPOSITE_CODES),
-    "I_DSTVAL2COMP": (2, 825, 55, "6C-34", "DST_VAL2> 0", ALLOCATION_COMPOSITE_CODES),
-    "I_DSTYNCOMP": (2, 827, 55, "6C-34", "DST_YN > 0", ALLOCATION_COMPOSITE_CODES),
-    "I_ERNYN": (1, 833, 55, "6C-34", "ERN_YN > 0", ALLOCATION_ANNVAL_CODES),
-    "I_FRMYN": (1, 837, 55, "6C-34", "FRMOTR > 0", ALLOCATION_PRINTED_RANGE_CODES),
-    "I_OIVAL": (1, 843, 56, "6C-35", "OI_VAL > 0", ALLOCATION_ANNVAL_CODES),
-    "I_PENYN": (1, 854, 57, "6C-36", "PEN_YN > 0", ALLOCATION_ANNVAL_CODES),
-    "I_RNTVAL": (1, 861, 57, "6C-36", "RNT_VAL > 0", ALLOCATION_ANNVAL_CODES),
-    "I_RNTYN": (1, 862, 57, "6C-36", "RNT_YN > 0", ALLOCATION_ANNVAL_CODES),
+    "I_DSTVAL1COMP": AllocationEntry(
+        2, 823, 55, "6C-34", "", ALLOCATION_COMPOSITE_CODES
+    ),
+    "I_DSTVAL2COMP": AllocationEntry(
+        2, 825, 55, "6C-34", "DST_VAL2> 0", ALLOCATION_COMPOSITE_CODES
+    ),
+    "I_DSTYNCOMP": AllocationEntry(
+        2, 827, 55, "6C-34", "DST_YN > 0", ALLOCATION_COMPOSITE_CODES
+    ),
+    "I_ERNYN": AllocationEntry(
+        1, 833, 55, "6C-34", "ERN_YN > 0", ALLOCATION_ANNVAL_CODES
+    ),
+    "I_FRMYN": AllocationEntry(
+        1, 837, 55, "6C-34", "FRMOTR > 0", ALLOCATION_PRINTED_RANGE_CODES
+    ),
+    "I_OIVAL": AllocationEntry(
+        1, 843, 56, "6C-35", "OI_VAL > 0", ALLOCATION_ANNVAL_CODES
+    ),
+    "I_PENYN": AllocationEntry(
+        1, 854, 57, "6C-36", "PEN_YN > 0", ALLOCATION_ANNVAL_CODES
+    ),
+    "I_RNTVAL": AllocationEntry(
+        1, 861, 57, "6C-36", "RNT_VAL > 0", ALLOCATION_ANNVAL_CODES
+    ),
+    "I_RNTYN": AllocationEntry(
+        1, 862, 57, "6C-36", "RNT_YN > 0", ALLOCATION_ANNVAL_CODES
+    ),
 }
 
 # Which printed field each published flag names, and the fields for which the
@@ -861,7 +915,7 @@ def _other_income(raw, ages):
         raw["OI_OFF"],
         OTHER_INCOME_CATEGORIES,
         OTHER_INCOME_CATEGORIES,
-        width=OTHER_INCOME_CATEGORY_ENTRY[0],
+        width=OTHER_INCOME_CATEGORY_ENTRY.printed_length,
     )
     labels, canonical, kinds, sources = _classify(
         raw["amounts"]["OI_VAL"],
@@ -1113,7 +1167,8 @@ def _raw_arrays(ordered, ready, positions):
     allocations = {}
     for name, entry in ALLOCATION_ENTRIES.items():
         pairs = [
-            literal_code(t, entry[5], width=entry[0]) for t in ordered[name].tolist()
+            literal_code(t, entry.codes, width=entry.printed_length)
+            for t in ordered[name].tolist()
         ]
         allocations[name] = (
             [c for c, _ in pairs],
@@ -1263,11 +1318,12 @@ def qualify_current_asec_income_routing(preparation):
                 }
                 for name, e in printed_amount_entries().items()
             },
-            "receipt_entries": {k: list(v) for k, v in RECEIPT_ENTRIES.items()},
-            "account_entries": {k: list(v) for k, v in ACCOUNT_ENTRIES.items()},
-            "other_income_category_entry": list(OTHER_INCOME_CATEGORY_ENTRY),
+            "receipt_entries": {k: v._asdict() for k, v in RECEIPT_ENTRIES.items()},
+            "account_entries": {k: v._asdict() for k, v in ACCOUNT_ENTRIES.items()},
+            "other_income_category_entry": OTHER_INCOME_CATEGORY_ENTRY._asdict(),
             "allocation_entries": {
-                k: [*v[:5], list(v[5])] for k, v in ALLOCATION_ENTRIES.items()
+                k: {**v._asdict(), "codes": list(v.codes)}
+                for k, v in ALLOCATION_ENTRIES.items()
             },
             "fields_without_published_allocation_flag": list(UNFLAGGED_FIELDS),
             "published_allocation_flag_by_field": dict(

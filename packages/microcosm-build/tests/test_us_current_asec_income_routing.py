@@ -505,6 +505,7 @@ def test_the_qualifier_imports_only_the_accepted_source_neighbourhood():
         "functools",
         "importlib",
         "pathlib",
+        "typing",
         "numpy",
         "pandas",
     }
@@ -809,8 +810,16 @@ def test_routing_code_systems_agree_with_the_existing_domain_constants():
     assert projected == slots
     assert owner.ALIMONY_CATEGORY_CODE == alimony._ASEC_ALIMONY_OTHER_INCOME_CODE
     assert owner.OTHER_INCOME_CATEGORIES[owner.ALIMONY_CATEGORY_CODE] == "alimony"
-    assert set(owner.ACCOUNT_CODES) == set(range(8))
+    # Compare against the canonical code domain, not a re-typed literal.
+    assert set(owner.ACCOUNT_CODES) == set(distributions._VALID_ACCOUNT_CODES)
+    assert set(distributions._EXPECTED_OUTPUT_BY_ACCOUNT_CODE) <= set(
+        owner.ACCOUNT_CODES
+    )
     assert owner.ACCOUNT_CODES[owner.REGULAR_IRA_CODE] == "Regular IRA"
+    assert (
+        owner.OTHER_INCOME_CATEGORIES[alimony._ASEC_STRIKE_BENEFITS_OTHER_INCOME_CODE]
+        == "strike benefits"
+    )
     # Published flags and unflagged fields are disjoint and jointly complete.
     named = set(owner.PUBLISHED_ALLOCATION_FLAG_BY_FIELD)
     assert named.isdisjoint(owner.UNFLAGGED_FIELDS)
@@ -926,13 +935,15 @@ def test_other_income_routing_never_invents_a_reported_category(
 def test_printed_flag_and_scope_claims_match_the_dictionary_as_printed():
     # I_FRMYN prints an empty Values block, so only its (0:9) range header is
     # published; no code meaning is claimed for it.
-    assert owner.ALLOCATION_ENTRIES["I_FRMYN"][5] == tuple(range(10))
-    assert owner.ALLOCATION_ENTRIES["I_FRMYN"][5] is not owner.ALLOCATION_ANNVAL_CODES
-    assert owner.ALLOCATION_ENTRIES["I_DSTSC"][5] == (0, 1, 9)
+    assert owner.ALLOCATION_ENTRIES["I_FRMYN"].codes == tuple(range(10))
+    assert (
+        owner.ALLOCATION_ENTRIES["I_FRMYN"].codes is not owner.ALLOCATION_ANNVAL_CODES
+    )
+    assert owner.ALLOCATION_ENTRIES["I_DSTSC"].codes == (0, 1, 9)
     for name in ("I_DSTVAL1COMP", "I_DSTVAL2COMP", "I_DSTYNCOMP"):
-        assert owner.ALLOCATION_ENTRIES[name][5] == (0, 10, 11)
+        assert owner.ALLOCATION_ENTRIES[name].codes == (0, 10, 11)
     # I_DSTVAL1COMP's printed universe line is empty in the dictionary.
-    assert owner.ALLOCATION_ENTRIES["I_DSTVAL1COMP"][4] == ""
+    assert owner.ALLOCATION_ENTRIES["I_DSTVAL1COMP"].universe_as_printed == ""
     # The DST_SC(2) notation and the empty Values block stay recorded as
     # printed ambiguities rather than resolved silently.
     assert set(owner.AMBIGUOUS_FLAG_COVERAGE) == {
@@ -958,9 +969,13 @@ def test_printed_flag_and_scope_claims_match_the_dictionary_as_printed():
     for name in ("PEN_YN", "ANN_YN", "DST_YN", "DST_YN_YNG", "RNT_YN", "ERN_YN"):
         assert owner.receipt_codes(name)[0] == "niu"
     assert owner.receipt_codes("FRSE_YN")[0] == "Niu"
-    assert owner.RECEIPT_ENTRIES["FRSE_YN"][4] == "ERN_YN=1 or FRMOTR=1"
+    assert owner.RECEIPT_ENTRIES["FRSE_YN"].universe_as_printed == (
+        "ERN_YN=1 or FRMOTR=1"
+    )
     for name in ("PEN_YN", "ANN_YN", "RNT_YN", "OI_YN"):
-        assert owner.RECEIPT_ENTRIES[name][4] == "All Persons aged 15+"
+        assert owner.RECEIPT_ENTRIES[name].universe_as_printed == (
+            "All Persons aged 15+"
+        )
 
 
 def _pure_rows(n, ages, **literals):

@@ -216,6 +216,11 @@ page, range, universe and values per vintage. The routing code systems
 `ALLOCATION_ENTRIES`) are not in that artifact and are defined here from the
 pinned dictionary.
 
+The printed entry tables (`RECEIPT_ENTRIES`, `ACCOUNT_ENTRIES`,
+`ALLOCATION_ENTRIES`, `OTHER_INCOME_CATEGORY_ENTRY`) are `NamedTuple`s, so every
+use site and the emitted receipt reach their fields by name rather than by
+position.
+
 Two adjacent definitions exist in tree and are deliberately **not** imported, so
 this qualifier keeps the accepted source-only import neighbourhood
 (`asec_coverage_authentication`, `asec_current_money`, `source_csv_builtin`,
@@ -224,7 +229,11 @@ modelled stage machinery:
 
 - `retirement_distributions.US_RETIREMENT_DISTRIBUTION_REQUIRED_SOURCE_COLUMNS`
   — the same eight `DST_SC*`/`DST_VAL*` column names.
-- `alimony._ASEC_ALIMONY_OTHER_INCOME_CODE` — the same category code 20.
+- `alimony._ASEC_ALIMONY_OTHER_INCOME_CODE` and
+  `alimony._ASEC_STRIKE_BENEFITS_OTHER_INCOME_CODE` — the same category codes 20
+  and 12.
+- `retirement_distributions._VALID_ACCOUNT_CODES` — the same 0-7 account code
+  domain that `ACCOUNT_CODES` gives printed labels for.
 
 `test_routing_code_systems_agree_with_the_existing_domain_constants` asserts
 both agreements, per `docs/shared-constants.md` rule 5. If a later change makes
