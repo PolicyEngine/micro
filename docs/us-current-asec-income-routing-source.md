@@ -100,8 +100,9 @@ a nonfiler is never treated as a non-recipient.
 ## Source-level questions preserved as evidence
 
 These are printed-dictionary facts, kept distinguishable from modelling
-judgments and recorded verbatim under
-`evidence["dictionary"]["printed_universe_questions"]`:
+judgments. The first four are recorded under
+`evidence["dictionary"]["printed_universe_questions"]`; the rest under
+`evidence["dictionary"]["printed_scope_and_code_questions"]`:
 
 - `DST_VAL1`'s printed universe is `DST_SC1 = 1` although its label names the
   source-1 distribution amount; taken literally that would restrict it to 401k
@@ -109,9 +110,12 @@ judgments and recorded verbatim under
 - `DST_SC2_YNG`'s printed universe names `DST_VAL_YNG`, a field with no
   dictionary entry.
 - `I_DSTVAL1COMP`'s printed `Universe:` line is empty.
-- `DST_YN` and `DST_YN_YNG` print only the age-58 split and, unlike every other
-  family in this slice, do not print the 15+ floor. Coverage below age 15 is
-  therefore recorded as unresolved rather than resolved either way.
+- `DST_YN` and `DST_YN_YNG` print only the age-58 split. They print no 15+ floor
+  as the four age-universe families (`PEN_YN`, `ANN_YN`, `RNT_YN`, `OI_YN`) do,
+  and they are not gated on other literals as the farm family is — `FRSE_YN`
+  prints `ERN_YN=1 or FRMOTR=1` and so carries no age floor either. Coverage
+  below age 15 is therefore recorded as unresolved rather than resolved either
+  way.
 - `OI_YN`'s printed zero label is `none or niu` where `PEN_YN`, `ANN_YN`,
   `DST_YN` and `RNT_YN` print `niu`, so a zero receipt literal is not
   interchangeable across families.
@@ -132,8 +136,8 @@ The authenticated money owner normalizes `ANN_VAL`'s printed `-1` to a stored
 zero and records `CodebookStatus.DECLARED_NIU`. `amount_state` therefore reads
 the dollar meaning of a cell from the parent's status axis, never from the
 stored number: re-deriving NIU from the number would read that cell as a zero
-dollar annuity. `evidence["declared_niu_normalized_to_zero"]` lists the affected
-entries.
+dollar annuity. `evidence["declared_niu_normalized_to_zero"]` (a top-level key) lists the
+affected entries.
 
 The money owner restates non-2024 cohorts to the pinned price basis, so the
 literal-identity join is taken only on `person_years == 2024`; widening it to
@@ -156,12 +160,17 @@ the pooled 2022/2023 cohorts would require handling that restatement first.
   its printed range.
 
 `PUBLISHED_ALLOCATION_FLAG_BY_FIELD` names which flag covers which field.
-`UNFLAGGED_FIELDS` records the nine fields for which the 2025 dictionary
+`UNFLAGGED_FIELDS` records the ten fields for which the 2025 dictionary
 publishes no flag: `PNSN_VAL`, `FRSE_VAL`, `FRSE_YN`, `OI_OFF`, `OI_YN`,
 `DST_VAL1_YNG`, `DST_VAL2_YNG`, `DST_YN_YNG`, `DST_SC1_YNG`, `DST_SC2_YNG`.
-`AMBIGUOUS_FLAG_COVERAGE` records that `I_DSTSCCOMP`'s label names `DST_SC(2)`
-while its universe names both routes, so its coverage of the under-58 source
-codes is unresolved. No row is ever labelled a raw respondent value.
+`AMBIGUOUS_FLAG_COVERAGE` records three printed ambiguities: `I_DSTSCCOMP`'s
+label names `DST_SC(2)` while its universe names both routes, so its coverage of
+the under-58 source codes is unresolved; `I_DSTSC`'s label uses the same
+`DST_SC(2)` notation, so mapping it to both `DST_SC1` and `DST_SC2` reads the
+parenthesis as a slot count that the dictionary does not state; and `I_FRMYN`
+prints an empty `Values:` block, so only its `(0:9)` range header is published
+and no meaning is claimed for its codes. No row is ever labelled a raw
+respondent value.
 
 ## Constants
 

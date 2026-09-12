@@ -198,10 +198,15 @@ ALIMONY_CATEGORY_CODE = 20
 OTHER_INCOME_CATEGORY_ENTRY = (2, 547, 47, "6C-26", "OI_YN = 1")
 
 # Published allocation flags. Values 0-9 follow I_ANNVAL; the DST composites
-# follow I_INTYN (0, 10, 11); I_DSTSC prints its own 0/1/9 set.
+# follow I_INTYN (0, 10, 11); I_DSTSC prints its own 0/1/9 set. I_FRMYN prints
+# an empty Values block, so only its (0:9) range header is published and the
+# meaning of its codes is not; it is accepted on the printed range alone.
 ALLOCATION_ANNVAL_CODES = tuple(range(10))
 ALLOCATION_COMPOSITE_CODES = (0, 10, 11)
 ALLOCATION_DSTSC_CODES = (0, 1, 9)
+# I_FRMYN's printed Values block is empty; its (0:9) range header is all that is
+# published, so no code meaning is claimed for it.
+ALLOCATION_PRINTED_RANGE_CODES = tuple(range(10))
 # name: (length, position, pdf_page, printed_page, universe, codes)
 ALLOCATION_ENTRIES = {
     "I_ANNVAL": (1, 802, 53, "6C-32", "ANN_YN =1", ALLOCATION_ANNVAL_CODES),
@@ -219,7 +224,7 @@ ALLOCATION_ENTRIES = {
     "I_DSTVAL2COMP": (2, 825, 55, "6C-34", "DST_VAL2> 0", ALLOCATION_COMPOSITE_CODES),
     "I_DSTYNCOMP": (2, 827, 55, "6C-34", "DST_YN > 0", ALLOCATION_COMPOSITE_CODES),
     "I_ERNYN": (1, 833, 55, "6C-34", "ERN_YN > 0", ALLOCATION_ANNVAL_CODES),
-    "I_FRMYN": (1, 837, 55, "6C-34", "FRMOTR > 0", ALLOCATION_ANNVAL_CODES),
+    "I_FRMYN": (1, 837, 55, "6C-34", "FRMOTR > 0", ALLOCATION_PRINTED_RANGE_CODES),
     "I_OIVAL": (1, 843, 56, "6C-35", "OI_VAL > 0", ALLOCATION_ANNVAL_CODES),
     "I_PENYN": (1, 854, 57, "6C-36", "PEN_YN > 0", ALLOCATION_ANNVAL_CODES),
     "I_RNTVAL": (1, 861, 57, "6C-36", "RNT_VAL > 0", ALLOCATION_ANNVAL_CODES),
@@ -256,10 +261,17 @@ UNFLAGGED_FIELDS = (
     "DST_SC1_YNG",
     "DST_SC2_YNG",
 )
+# The DST_SC(2) notation is read here as "the two DST_SC slots", which is an
+# inference from the printed parenthesis rather than a printed statement.
 AMBIGUOUS_FLAG_COVERAGE = {
+    "I_DSTSC": "printed label names DST_SC(2); mapping it to both DST_SC1 and "
+    "DST_SC2 reads the parenthesis as a slot count, which the dictionary does "
+    "not state",
     "I_DSTSCCOMP": "printed label names DST_SC(2) while its printed universe "
     "names DST_YN = 1 or DST_YNG_YN = 1; whether it covers the under-58 source "
-    "codes is unresolved"
+    "codes is unresolved",
+    "I_FRMYN": "printed Values block is empty, so the meaning of its codes is "
+    "not published; only the (0:9) range header is",
 }
 
 READ_COLUMNS = (
@@ -280,7 +292,10 @@ NET_PROPERTY_RECEIPT_SCOPE = (
     "own any land, property, rented to others, or receive income from royalties, "
     "roomers or boarders, or from estates or trusts"
 )
-FARM_AMOUNT_SCOPE = "total amount of farm self-employment earnings"
+FARM_AMOUNT_SCOPE = (
+    "total amount of farm self-employment earnings (combined amounts in "
+    "ERN_VAL, if ERN_SRCE=3, and FRM_VAL)"
+)
 
 FAMILIES = (
     "pension_annuity",
@@ -633,9 +648,11 @@ def _retirement_distribution(raw, ages):
         "retirement_distribution_receipt", receipt_tokens, RECEIPT_CODES, RECEIPT_CODES
     )
     out = pd.concat([out, frame], axis=1)
-    # The two printed DST universes name only the age-58 split; unlike every
-    # other family in this slice they do not print the 15+ floor. Whether a
-    # person under 15 is inside them is a source question, left unresolved.
+    # The two printed DST universes name only the age-58 split. Unlike the four
+    # age-universe families here (PEN_YN, ANN_YN, RNT_YN, OI_YN) they print no
+    # 15+ floor, and unlike the farm family they are not gated on other
+    # literals either, so whether a person under 15 is inside them is a source
+    # question left unresolved.
     universes = [True if a >= 15 else None for a in ages]
     labels, canonical, _, _ = _classify(
         totals,
@@ -1172,11 +1189,6 @@ def qualify_current_asec_income_routing(preparation):
                 k: [*v[:5], list(v[5])] for k, v in ALLOCATION_ENTRIES.items()
             },
             "fields_without_published_allocation_flag": list(UNFLAGGED_FIELDS),
-            "declared_niu_normalized_to_zero": [
-                name
-                for name, entry in printed_amount_entries().items()
-                if entry.nonmoney_codes
-            ],
             "published_allocation_flag_by_field": dict(
                 PUBLISHED_ALLOCATION_FLAG_BY_FIELD
             ),
@@ -1187,11 +1199,23 @@ def qualify_current_asec_income_routing(preparation):
                 "DST_SC2_YNG": "printed universe names DST_VAL_YNG, which has no "
                 "dictionary entry; retained verbatim",
                 "I_DSTVAL1COMP": "printed universe line is empty",
-                "DST_YN": "printed universes name only the a_age 58 split and do "
-                "not print the 15+ floor the other families print; coverage below "
-                "age 15 is unresolved",
-                "RNT_YN": NET_PROPERTY_RECEIPT_SCOPE,
-                "RNT_VAL": NET_PROPERTY_AMOUNT_SCOPE,
+                "DST_YN": "printed universes name only the a_age 58 split; they "
+                "print no 15+ floor as the four age-universe families here do, "
+                "and they are not gated on other literals as the farm family is, "
+                "so coverage below age 15 is unresolved",
+            },
+            "printed_scope_and_code_questions": {
+                "RNT_YN": "printed question scope: " + NET_PROPERTY_RECEIPT_SCOPE,
+                "RNT_VAL": "printed question scope: " + NET_PROPERTY_AMOUNT_SCOPE,
+                "FRSE_VAL": "printed label: " + FARM_AMOUNT_SCOPE,
+                "PNSN_VAL": "printed label: " + PENSION_TOTAL_SCOPE,
+                "OI_YN": "printed zero label is 'none or niu' where PEN_YN, "
+                "ANN_YN, DST_YN and RNT_YN print 'niu'",
+                "DST_SC1": "gated on DST_VAL1 > 0 and a_age \u2265 58 while "
+                "DST_SC1_YNG is gated on DST_YN_YNG = 1 and a_age < 58; the two "
+                "routes are not symmetric",
+                "FRSE_YN": "printed universe is ERN_YN=1 or FRMOTR=1, so the farm "
+                "family prints no age floor at all",
             },
         },
         "preparation_sha256": _sha(entry[1]),
@@ -1200,6 +1224,11 @@ def qualify_current_asec_income_routing(preparation):
         "source_member_sha256": digest,
         "read_columns": list(READ_COLUMNS),
         "complete_current_source_rows": rows,
+        "declared_niu_normalized_to_zero": [
+            name
+            for name, entry in printed_amount_entries().items()
+            if entry.nonmoney_codes
+        ],
         "joined_person_years": [CURRENT_INCOME_YEAR],
         "restatement_note": (
             "the money owner restates non-2024 cohorts to the pinned price basis, "

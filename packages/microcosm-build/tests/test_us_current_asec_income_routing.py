@@ -189,6 +189,26 @@ def test_actual_invented_member_joins_the_real_preparation_by_native_keys(
         qualified.evidence["dictionary"]["amount_entries_source"]["sha256"]
         == owner.money.RESOURCE_PINS[0]
     )
+    assert qualified.evidence["declared_niu_normalized_to_zero"] == ["ANN_VAL"]
+    printed = qualified.evidence["dictionary"]
+    assert set(printed["printed_universe_questions"]) == {
+        "DST_VAL1",
+        "DST_SC2_YNG",
+        "I_DSTVAL1COMP",
+        "DST_YN",
+    }
+    assert set(printed["printed_scope_and_code_questions"]) == {
+        "RNT_YN",
+        "RNT_VAL",
+        "FRSE_VAL",
+        "PNSN_VAL",
+        "OI_YN",
+        "DST_SC1",
+        "FRSE_YN",
+    }
+    assert set(printed["ambiguous_allocation_flag_coverage"]) == set(
+        owner.AMBIGUOUS_FLAG_COVERAGE
+    )
     prepared.checked_view()
 
 
@@ -843,3 +863,39 @@ def test_other_income_routing_never_invents_a_reported_category(
     assert out.other_income_source_total.iloc[0] == 1500.0
     # The reported category never becomes a residual assignment.
     assert not bool(out.other_income_residual_rule_applied.iloc[0])
+
+
+def test_printed_flag_and_scope_claims_match_the_dictionary_as_printed():
+    # I_FRMYN prints an empty Values block, so only its (0:9) range header is
+    # published; no code meaning is claimed for it.
+    assert owner.ALLOCATION_ENTRIES["I_FRMYN"][5] == tuple(range(10))
+    assert owner.ALLOCATION_ENTRIES["I_FRMYN"][5] is not owner.ALLOCATION_ANNVAL_CODES
+    assert owner.ALLOCATION_ENTRIES["I_DSTSC"][5] == (0, 1, 9)
+    for name in ("I_DSTVAL1COMP", "I_DSTVAL2COMP", "I_DSTYNCOMP"):
+        assert owner.ALLOCATION_ENTRIES[name][5] == (0, 10, 11)
+    # I_DSTVAL1COMP's printed universe line is empty in the dictionary.
+    assert owner.ALLOCATION_ENTRIES["I_DSTVAL1COMP"][4] == ""
+    # The DST_SC(2) notation and the empty Values block stay recorded as
+    # printed ambiguities rather than resolved silently.
+    assert set(owner.AMBIGUOUS_FLAG_COVERAGE) == {
+        "I_DSTSC",
+        "I_DSTSCCOMP",
+        "I_FRMYN",
+    }
+    assert len(owner.UNFLAGGED_FIELDS) == 10
+    # Printed labels are complete, including the farm composite clause.
+    assert owner.FARM_AMOUNT_SCOPE.endswith(
+        "(combined amounts in ERN_VAL, if ERN_SRCE=3, and FRM_VAL)"
+    )
+    assert owner.PENSION_TOTAL_SCOPE.endswith("from all pension sources")
+    assert "estates or trusts" in owner.NET_PROPERTY_RECEIPT_SCOPE
+    assert "estates" not in owner.NET_PROPERTY_AMOUNT_SCOPE
+    # The two printed-question dictionaries stay separate: one is about printed
+    # universes, the other about printed scopes and code labels.
+    assert set(owner.ACCOUNT_ENTRIES["DST_SC1"][4:]) == {"DST_VAL1 > 0 and a_age ≥ 58"}
+    assert owner.ACCOUNT_ENTRIES["DST_SC1_YNG"][4] == ("DST_YN_YNG = 1 and a_age < 58")
+    assert owner.ACCOUNT_ENTRIES["DST_SC2_YNG"][4] == ("DST_VAL_YNG > 0 and a_age < 58")
+    assert owner.RECEIPT_ENTRIES["OI_YN"][5] == "none or niu"
+    assert owner.RECEIPT_ENTRIES["FRSE_YN"][4] == "ERN_YN=1 or FRMOTR=1"
+    for name in ("PEN_YN", "ANN_YN", "RNT_YN", "OI_YN"):
+        assert owner.RECEIPT_ENTRIES[name][4] == "All Persons aged 15+"
