@@ -1121,6 +1121,38 @@ def test_the_observer_stays_passive_on_the_l0_budget_refit_and_prox_paths():
         validate_target_snapshot(snapshot)
 
 
+def test_the_codec_is_stricter_than_the_emitting_edge_and_says_so():
+    """A validated payload is a payload that serializes.
+
+    The emitter coerces what a running solver honestly produces (numpy
+    scalars, a non-finite loss) so the observer can never end a run; the codec
+    refuses those same values, so `json.dumps` can never be the thing that
+    fails on a payload the codec has already blessed.
+    """
+    emitted = _payload(context={"tolerance": np.float64(0.5)})
+    assert emitted["context"] == {"tolerance": 0.5}
+    assert isinstance(emitted["context"]["tolerance"], float)
+    json.dumps(emitted)
+
+    for location in ("context", "search", "selection"):
+        for bad in (float("nan"), float("inf"), np.float64(0.5)):
+            payload = _payload()
+            payload[location] = {"tolerance": bad}
+            with pytest.raises(TargetSnapshotError):
+                validate_target_snapshot(payload)
+
+    for bad_best in (
+        {"available": True},
+        {"available": True, "epoch": 1},
+        {"available": True, "epoch": 1, "loss": float("nan")},
+        {"available": True, "epoch": np.int64(1), "loss": 0.1},
+    ):
+        payload = _payload()
+        payload["best_retained"] = bad_best
+        with pytest.raises(TargetSnapshotError):
+            validate_target_snapshot(payload)
+
+
 def test_created_at_is_a_timezone_aware_timestamp():
     payload = _payload()
     parsed = datetime.fromisoformat(payload["created_at"])

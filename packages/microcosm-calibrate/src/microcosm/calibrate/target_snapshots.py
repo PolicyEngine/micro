@@ -373,15 +373,25 @@ def _metadata_key(key: object, *, where: str) -> str:
     return key
 
 
-def _metadata_value(value: object, *, where: str, key: str) -> object:
+def _metadata_value(value: object, *, where: str, key: str, coerce: bool) -> object:
     """One aggregate metadata value: a JSON scalar, and nothing else.
 
-    A non-finite float becomes ``None`` rather than an error, for the same
-    reason a non-finite estimate does: a diverging run legitimately holds one,
-    JSON cannot carry it, and the observer must never be the thing that ends a
-    calibration an unobserved run would have finished.
+    ``coerce`` separates the two edges this contract has. At the *emitting*
+    edge a numpy scalar becomes its Python equivalent and a non-finite float
+    becomes ``None``, for the same reason a non-finite estimate does: a
+    diverging run legitimately holds one, JSON cannot carry it, and the
+    observer must never be the thing that ends a calibration an unobserved run
+    would have finished. In the *public codec* neither is accepted, so a
+    payload that validates is a payload that serializes — the strictness is
+    what makes the finite-or-null claim true, and the emitter's normalization
+    is what keeps it from costing a run.
     """
     if isinstance(value, np.generic):
+        if not coerce:
+            raise TargetSnapshotError(
+                f"{where}[{key!r}] is a {type(value).__name__}; a validated "
+                "snapshot carries plain JSON scalars."
+            )
         value = value.item()
     if value is None or isinstance(value, (bool, str)):
         if isinstance(value, str) and len(value) > MAX_METADATA_STRING_LENGTH:
@@ -397,7 +407,13 @@ def _metadata_value(value: object, *, where: str, key: str) -> object:
             )
         return value
     if isinstance(value, float):
-        return _finite_or_none(value)
+        if coerce:
+            return _finite_or_none(value)
+        if not math.isfinite(value):
+            raise TargetSnapshotError(
+                f"{where}[{key!r}] must be finite or null, got {value!r}."
+            )
+        return value
     raise TargetSnapshotError(
         f"{where}[{key!r}] must be a JSON scalar (string, number, boolean or null), "
         f"got {type(value).__name__}. Calibration target snapshots carry aggregate "
@@ -406,7 +422,7 @@ def _metadata_value(value: object, *, where: str, key: str) -> object:
 
 
 def normalize_metadata(
-    value: object, *, where: str, allow_none: bool = False
+    value: object, *, where: str, allow_none: bool = False, coerce: bool = True
 ) -> dict[str, object] | None:
     """Validate ``value`` against the metadata contract and return a fresh copy.
 
@@ -429,14 +445,19 @@ def normalize_metadata(
     normalized: dict[str, object] = {}
     for key, item in value.items():
         name = _metadata_key(key, where=where)
-        normalized[name] = _metadata_value(item, where=where, key=name)
+        normalized[name] = _metadata_value(item, where=where, key=name, coerce=coerce)
     return normalized
 
 
 def normalize_best_retained(
-    value: object, *, epochs: int | None = None
+    value: object, *, epochs: int | None = None, coerce: bool = True
 ) -> dict[str, object]:
-    """The closed ``{available, epoch, loss}`` triple, freshly built."""
+    """The closed ``{available, epoch, loss}`` triple, freshly built.
+
+    ``coerce`` splits the emitting edge from the public codec exactly as
+    :func:`normalize_metadata` does, and ``coerce=False`` additionally
+    requires the triple to be complete rather than defaulted.
+    """
     if value is None:
         return {"available": False, "epoch": None, "loss": None}
     if not isinstance(value, Mapping):
@@ -448,11 +469,20 @@ def normalize_best_retained(
         raise TargetSnapshotError(f"best_retained carries unknown keys: {unknown}.")
     if "available" not in value:
         raise TargetSnapshotError("best_retained must record whether one is available.")
+    if not coerce:
+        missing = sorted(_BEST_RETAINED_KEYS - set(map(str, value)))
+        if missing:
+            raise TargetSnapshotError(f"best_retained is missing keys: {missing}.")
     available = value["available"]
     if not isinstance(available, bool):
         raise TargetSnapshotError("best_retained.available must be a boolean.")
     epoch = value.get("epoch")
     if isinstance(epoch, np.generic):
+        if not coerce:
+            raise TargetSnapshotError(
+                f"best_retained.epoch is a {type(epoch).__name__}; a validated "
+                "snapshot carries plain JSON scalars."
+            )
         epoch = epoch.item()
     if epoch is not None:
         if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0:
@@ -467,13 +497,23 @@ def normalize_best_retained(
             )
     loss = value.get("loss")
     if isinstance(loss, np.generic):
+        if not coerce:
+            raise TargetSnapshotError(
+                f"best_retained.loss is a {type(loss).__name__}; a validated "
+                "snapshot carries plain JSON scalars."
+            )
         loss = loss.item()
     if loss is not None:
         if isinstance(loss, bool) or not isinstance(loss, (int, float)):
             raise TargetSnapshotError(
                 f"best_retained.loss must be a number or null, got {loss!r}."
             )
-        loss = _finite_or_none(loss)
+        if coerce:
+            loss = _finite_or_none(loss)
+        elif not math.isfinite(loss):
+            raise TargetSnapshotError(
+                f"best_retained.loss must be finite or null, got {loss!r}."
+            )
     if not available and (epoch is not None or loss is not None):
         raise TargetSnapshotError(
             "best_retained says no best iterate is available, so it cannot also "
@@ -810,9 +850,11 @@ def validate_target_snapshot(payload: Mapping[str, object]) -> None:
         raise TargetSnapshotError("a calibration snapshot needs at least one target.")
     _strict_number(payload["loss"], what="loss")
     # Every metadata seam, one contract, checked uniformly.
-    normalize_metadata(payload["context"], where="context")
-    normalize_metadata(payload["search"], where="search", allow_none=True)
-    normalize_metadata(payload["selection"], where="selection", allow_none=True)
+    normalize_metadata(payload["context"], where="context", coerce=False)
+    normalize_metadata(payload["search"], where="search", allow_none=True, coerce=False)
+    normalize_metadata(
+        payload["selection"], where="selection", allow_none=True, coerce=False
+    )
     non_finite_rows = payload["non_finite_rows"]
     if (
         isinstance(non_finite_rows, bool)
@@ -821,13 +863,8 @@ def validate_target_snapshot(payload: Mapping[str, object]) -> None:
     ):
         raise TargetSnapshotError("non_finite_rows must be a non-negative integer.")
     best = normalize_best_retained(
-        payload["best_retained"], epochs=int(payload["epochs"])
+        payload["best_retained"], epochs=int(payload["epochs"]), coerce=False
     )
-    if best != dict(payload["best_retained"]):
-        raise TargetSnapshotError(
-            f"best_retained carries values the contract cannot represent: "
-            f"{dict(payload['best_retained'])!r}."
-        )
     selection = payload["selection"]
     if payload["iterate"] == ITERATE_SELECTED and isinstance(selection, Mapping):
         selected_epoch = selection.get("selected_epoch")
