@@ -146,10 +146,18 @@ from the landing session's notes.
 
 ## Next
 
-- Whole-workspace `uv run pytest` (running); then the lane report in
-  `out.md`. Amendment text, lock, changelog fragment and exports are done.
-- For Max: the gate-artifact-output refusal (see the amendment entry) is
-  the one interim ruling this lane made on his behalf.
+- Whole-workspace `uv run pytest` is the only command still running. Every gate
+  the brief names is green at `HEAD`, and the complete set of tests this change
+  can reach — the graph package (373) plus the 8 test files outside it that
+  import `microcosm.graph` directly or through the seven source modules that do
+  (81) — is green at exit 0. The lane report is in `out.md`.
+- For Max, in `out.md` §8: the gate-artifact-output refusal is the one interim
+  ruling this lane made on his behalf; the interface lock has **no automated
+  enforcement** (the charter's freeze is a human gate, which is how the
+  integration branch changed both frozen files unnoticed) and the unmerged
+  sibling branch `graph-interface-lock-test` (`8bd6e05ec`) already adds the
+  test — this branch passes it as it stands, exit 0; plus the pre-existing
+  `ruff format` drift and the stale local `_buildh-runtime` feed.
 
 ---
 
