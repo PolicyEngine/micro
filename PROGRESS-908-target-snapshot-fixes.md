@@ -68,6 +68,26 @@ ref, and am now implementing the four reviewed findings. Not pushed, no PR.
 - The metadata bounds (32 entries, 64-character keys, 256-character strings)
   are the narrowest values that comfortably hold everything `solve.py` emits.
 
+## Verification (isolated interpreter, no installs, threads=1)
+
+`/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-verified-lanes-20260910/.venv/bin/python -I -B -S`
+with this worktree's shard `src` roots ahead of that venv's site-packages and
+an import-path assertion, `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB_NUM_THREADS=1`.
+
+| battery | result |
+| --- | --- |
+| `packages/microcosm-calibrate/tests` | 307 passed (12 s) |
+| `packages/microcosm-fit/tests` | 124 passed (13 s) — main's QRF pins intact |
+| `test_spec_engine_loader.py` + `test_us_multispine_pool_tool.py` | 197 passed (309 s) |
+| `packages/microcosm-build/tests -k "inventory or coverage or seed"` | 448 passed, 2 skipped (343 s) |
+| `packages/microcosm-graph/tests -k parity` | 25 passed (88 s) |
+| `tools/spec_engine_coverage.py --check` | 42156/42156 fields, 41/41 inventory |
+| `tools/ci_test_groups.py --verify` | `verification=ok`; the snapshot test file lands in fast `rest` / engine `us-am`, never `[defaulted]` |
+| `ruff check .` | clean; `ruff format --check` clean on both touched files |
+
+18 of the 51 tests in `test_target_snapshots.py` are new; 9 of them fail on
+the reviewed head `bae1887ff` and pass here.
+
 ## Next
 
 - Independent re-review by main before integration/PR updates.
