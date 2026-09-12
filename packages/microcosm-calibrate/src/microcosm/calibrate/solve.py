@@ -861,6 +861,7 @@ def _optimize(
             progress_callback=progress_callback,
             progress_context=progress_context,
             observer=_post_projection_observer,
+            snapshots=snapshots,
             preserve_zeros=grouped_preserve_zeros,
         )
         if return_gate_open_probabilities:
@@ -1145,6 +1146,24 @@ def _check_grouped_household_ids(frame: Frame, expected: tuple[int | str, ...]) 
         raise ValueError("stored group household IDs must preserve the ordered IDs")
 
 
+def _grouped_snapshot_selection(preserve_zeros: bool) -> dict[str, object]:
+    """The bounded aggregate labels identifying a grouped snapshot's solver.
+
+    Grouped Adam is a closing-state algorithm: it never runs the retain-best
+    rule, so every grouped snapshot carries ``best_retained.available: False``.
+    Without a label saying which solver produced it, that is indistinguishable
+    from an ordinary run whose retain-best rule happened to be off, and a
+    consumer would read the two the same way. These are three JSON scalars
+    describing the run's mode -- no household IDs, no group membership, no
+    bounds vector, and nothing of record length.
+    """
+    return {
+        "rule": "closing_state",
+        "constraint_mode": "grouped_upper_bounds",
+        "grouped_preserve_zeros": bool(preserve_zeros),
+    }
+
+
 def _optimize_grouped(
     matrix: torch.Tensor,
     targets: torch.Tensor,
@@ -1163,9 +1182,20 @@ def _optimize_grouped(
     progress_callback: Callable[[dict[str, object]], None] | None,
     progress_context: Mapping[str, object] | None,
     observer: Callable[[dict[str, object]], None] | None,
+    snapshots: BoundTargetSnapshots | None = None,
     preserve_zeros: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Free-mass Adam on positive coordinates, with full float64 accepted state."""
+    """Free-mass Adam on positive coordinates, with full float64 accepted state.
+
+    ``snapshots`` is the public aggregate observer (microcosm#908), off by
+    default and strictly separate from the private ``observer`` proof seam:
+    the latter carries record-length accepted weights, household IDs, the
+    group map and the bounds vector, none of which a public snapshot may ever
+    hold. Snapshots read the estimate tensor this epoch's loss was already
+    computed from, so enabling them adds no matrix evaluation, no model
+    evaluation and no RNG advance, and the returned weights and trajectory are
+    bit-identical to the same run with snapshots off.
+    """
     if (
         matrix.dtype != torch.float32
         or targets.dtype != torch.float32
@@ -1232,6 +1262,9 @@ def _optimize_grouped(
         )
         anchor_t = torch.tensor(anchor[active], dtype=torch.float64)
     trajectory = np.empty(epochs, dtype=np.float64)
+    selection_labels = (
+        None if snapshots is None else _grouped_snapshot_selection(preserve_zeros)
+    )
     for epoch in range(epochs):
         optimizer.zero_grad()
         # This is an internal candidate, not an accepted population vector.
@@ -1267,6 +1300,32 @@ def _optimize_grouped(
                     "epochs": epochs,
                     "loss": trajectory[epoch],
                 }
+            )
+        if snapshots is not None and snapshots.emits(epoch + 1, epochs):
+            # The exact estimate tensor this epoch's loss was computed from,
+            # detached rather than recomputed: recomputing would add a matrix
+            # evaluation, and the truthful numerical basis for trajectory
+            # [epoch] is the float32 forward pass that produced it, even
+            # though the accepted state is float64.
+            #
+            # This is a PRE-update loss-evaluation snapshot, the same
+            # convention the ordinary Adam loop above uses. It is deliberately
+            # not the post-update projected accepted vector the private
+            # observer reports at observe(epoch + 1): those are different
+            # vectors, and producing target totals for the accepted one would
+            # need the extra evaluation this design forbids.
+            snapshots.emit(
+                estimate.detach().cpu().numpy(),
+                epoch=epoch + 1,
+                epochs=epochs,
+                iterate=ITERATE_CURRENT,
+                precision="float32",
+                loss=trajectory[epoch],
+                # Grouped Adam retains no best iterate at all, so this is the
+                # closed "no retain-best rule is running" triple, not a
+                # not-yet-recorded incumbent.
+                best_retained={"available": False, "epoch": None, "loss": None},
+                selection=selection_labels,
             )
         total_loss.backward()
         optimizer.step()
@@ -2073,6 +2132,16 @@ def calibrate(
             loss was already computed from. The closing ``selected`` snapshot
             describes the weights calibration actually returns.
 
+            ``grouped_upper_bounds`` runs are instrumented the same way and at
+            the same seams. Because grouped Adam is a closing-state algorithm,
+            every grouped snapshot reports ``best_retained.available: False``
+            and carries the bounded ``selection`` labels ``rule``,
+            ``constraint_mode`` and ``grouped_preserve_zeros`` so a consumer
+            can tell "this solver retains no best iterate" from "retain-best
+            was switched off". The private ``_post_projection_observer`` proof
+            seam stays entirely separate: its record-length weights, household
+            IDs, group map and bounds never reach a snapshot.
+
     Returns:
         A :class:`CalibrationResult` with the calibrated frame, per-target
         diagnostics, loss trajectory, and any skipped targets.
@@ -2482,13 +2551,23 @@ def calibrate(
         # read off the same float64 estimates the final diagnostics use — not
         # the last in-loop iterate, which the optimizer may have discarded in
         # favour of an earlier better one or changed by a closing projection.
-        selected_epoch = iterate_selection_receipt.get("selected_epoch")
+        #
+        # Grouped Adam is a closing-state algorithm. It returns the accepted
+        # vector of its last projection and never runs the retain-best rule,
+        # so its retain-best answer is read off the solver it actually used,
+        # not inferred from an empty receipt. Inferring it would make a later
+        # change that populated a grouped receipt silently claim the grouped
+        # solver had retained a best iterate.
+        grouped_run = grouped_upper_bounds is not None
+        selected_epoch = (
+            None if grouped_run else iterate_selection_receipt.get("selected_epoch")
+        )
         # A non-empty receipt means the optimizer ran the retain-best rule. It
         # records the epoch it selected, which IS the best iterate's epoch when
         # an earlier iterate won; when the closing iterate won, no separate best
         # epoch was recorded, so the snapshot says "retained, epoch unrecorded"
         # instead of inventing one.
-        retained_best = bool(iterate_selection_receipt)
+        retained_best = (not grouped_run) and bool(iterate_selection_receipt)
         best_is_earlier = (
             retained_best
             and isinstance(selected_epoch, int)
@@ -2513,7 +2592,14 @@ def calibrate(
                     else None
                 ),
             },
-            selection=dict(iterate_selection_receipt) or None,
+            # The grouped receipt stays empty by design, so the grouped
+            # selection identity is the bounded mode label instead. Both are
+            # aggregate scalars; neither carries record-level content.
+            selection=(
+                _grouped_snapshot_selection(grouped_preserve_zeros)
+                if grouped_run
+                else (dict(iterate_selection_receipt) or None)
+            ),
         )
     effective_target_loss_weights = (
         np.ones(problem.target_vector.shape, dtype=np.float64)
