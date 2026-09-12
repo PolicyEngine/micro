@@ -254,6 +254,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "medicaid_take_up.py",
         "misc_itemized.py",
         "nonzero_shares.py",
+        # Hash-verified local NSECE source adapter and opt-in candidate Frame step.
+        "nsece_childcare.py",
         "operator_boundary.py",  # Raw-stage validator; no population treatment.
         "org_wages.py",
         "parity_reference.py",
