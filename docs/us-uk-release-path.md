@@ -43,7 +43,7 @@ common source population alone does not guarantee identical estimates.
 | Stage | US demonstrated result | UK demonstrated result |
 | --- | --- | --- |
 | Population construction | Small real ACS/ASEC composition, clone and financial enrichment pass; maintained two-route PUF host passes invented cold/replay controls, with native PUF and remaining inputs pending | Real FRS 2024–25 spine and earlier whole-spine parity; latest integrated stage set needs fresh coverage and verification |
-| Geography | Small native post-clone block assignment and financial extension passed on 11 September; strict replay is running; complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
+| Geography | Small native post-clone block assignment and financial extension passed on 11 September; strict required replay passed on 12 September; complete CD support/fit pending | Existing OA-ladder assignment exercised in real candidates; shared post-clone adapter passes 52 scoped checks with lazy imports, while native graph integration remains pending |
 | Calibration | Declared national/state/CD measurement stage and solver controls pass; dense graph integration and fully enriched native solve pending | Real 55,000-household build/calibration experiments complete but fail area-support and target-fit gates |
 | Independent quality | Complete-candidate engine outcomes, holdouts and reform validation pending | Prior comparisons and diagnostics exist; the recorded 55k candidates skipped holdout evaluation and do not establish release quality |
 | Full/compact files | Small prefix replay and 36 supplied-parent full/pruned/local export checks pass; complete enriched release family pending | Size-selection implementation and measured candidates exist; current accepted full/compact local family pending |
@@ -58,15 +58,20 @@ source `2ca11c85a`, and reports 5,362 seconds elapsed and 9.31 GB peak RSS.
 This supersedes the earlier assignment-before-cloning milestone for ordering;
 it does not establish full PUF enrichment or national/CD calibration.
 
-On 12 September, a strict required replay of that frozen source was launched
-with a fresh output directory and a read-only retained store. It must verify
-all source bytes again, reuse every node, and reproduce complete artifact
-content, excluding only operational timing and cache-hit fields. Its outcome
-is pending. Meanwhile the maintained graph's observer-mutation defect has been
-fixed and independently reviewed, and the shared graph changes are being
-consolidated against the amended main interface. These software changes still
-need their own native candidate verification; the frozen pilot does not
-certify the newer source.
+On 12 September, a strict required replay of that frozen source passed with a
+fresh output directory and a read-only retained store. It verified the source
+bytes again, reused all nine prefix and nineteen financial-graph nodes, and
+reproduced the four non-manifest exports byte for byte. The portable manifest
+also matched after excluding only operational timing and cache-hit fields.
+The closed run took 3,981 seconds and peaked at 10.99 GB RSS; source, resource,
+native-input, owned-file and thread-control checks remained unchanged, with no
+unexpected access refusals. See the
+[replay record](../experiments/us-financial19-required-replay-20260912.md).
+Meanwhile the maintained graph's observer-mutation defect has been fixed and
+independently reviewed, and the shared graph changes are being consolidated
+against the amended main interface. Those software changes still need their
+own native candidate verification; this replay certifies only its frozen
+financial stage, not the newer source or a release.
 
 The maintained PUF55 host is now adopted. Its 31 small controls and two actual
 full-host controls pass on invented inputs: both conditioning routes, 110 fits
