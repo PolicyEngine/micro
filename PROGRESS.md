@@ -55,7 +55,9 @@ Out, because it is not needed for artifacts (each is its own lane):
   canonical projection, `opaque_artifact_key`, serialization, and the view.
 - `a2b6dfb0b`: the acceptance suite's B2 `KernelContext` field set, as its
   own commit, matching `80b63ba14`.
-- `1cce8eceb` (red, 7 of 8 failing) → `15f9d2c67`: `artifact_edges.py` and
+- `1cce8eceb` (red, **8 of 8 failing** — the commit message and an earlier
+  version of this line both say 7, which is wrong; see the correction under
+  "Re-verification") → `15f9d2c67`: `artifact_edges.py` and
   the executor, cache record, and manifest support.
 - `38b9a9e4d`: amendment 19 in the charter, the relock, the changelog
   fragment. `8c2e7faab`: the graph explorer's receipt payload.
@@ -111,6 +113,27 @@ from the landing session's notes.
   by this lane (all 17 changed Python files pass `ruff format --check`
   individually). CI's lint lane runs only `ruff check .`, so this is repo drift,
   not a gate this lane moved.
+- The red commit `1cce8eceb` records "Red: 7 of 8 fail against the executor as
+  it stands", and this journal repeated it. **It was 8 of 8.** Measured by
+  extracting the whole tree at `1cce8eceb` (`git archive | tar -x`), pointing
+  `PYTHONPATH` at that tree's six shard `src` directories (confirmed:
+  `microcosm.graph.executor` resolves into the extract, and
+  `microcosm.graph.artifact_edges` has no spec there, so the executor support
+  genuinely had not landed), and running the commit's own
+  `test_graph_executor.py` against its own sources: **8 failed, 63 passed**, the
+  8 being exactly the amendment-19 tests the commit added. Red-first discipline
+  holds — the commit was redder than claimed — but the count in its message is
+  wrong and stays wrong, because rewriting landed history to fix a tally would
+  be worse than recording the correction here.
+- An adversarial audit line-traced the new module: eleven non-docstring
+  statements of `artifact_edges.py` never executed in the whole graph suite, all
+  on the foreign-provenance parsing surface. Closed in `e3f69a4c4` with three
+  tests through the public `NodeReceipt`/`RunManifest` surface; the trace now
+  reports zero. The same trace showed `run_graph`'s consumer-side receipt
+  comparison is unreachable as a refusal — both skeptics confirmed the charter's
+  wording claims only the check's ordering, which does execute — so the branch
+  is now commented the way this file already marks such guards, rather than
+  chased with a test that cannot be written honestly.
 - `packages/microcosm-build/tests/test_release_target_parity.py` fails two
   tests locally. **Not this lane, and not CI**: both are guarded by
   `_feed_or_skip` on a 131 MB pinned feed that lives *outside the repository*
