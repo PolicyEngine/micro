@@ -1087,6 +1087,40 @@ def test_non_finite_diagnostics_stay_null_statuses_rather_than_aborting():
     validate_target_snapshot(json.loads(json.dumps(payload)))
 
 
+def test_the_observer_stays_passive_on_the_l0_budget_refit_and_prox_paths():
+    """Strict validation must not change — or end — the runs it only watches.
+
+    The Adam path already had this parity test; the sparse-selection paths are
+    where the tightened codec has the most metadata to reject (search
+    identity, phase labels, selection receipts), so they get one too.
+    """
+    l0_kwargs = dict(epochs=8, refit_epochs=8, target_records=2, budget_iters=2, seed=0)
+    baseline = calibrate_l0_refit(_frame(), _targets(), **l0_kwargs)
+    seen, observer = _collect(cadence=TargetSnapshotCadence(every=EVERY_EPOCH))
+    observed = calibrate_l0_refit(
+        _frame(), _targets(), target_snapshots=observer, **l0_kwargs
+    )
+    np.testing.assert_array_equal(baseline.weights, observed.weights)
+    assert {s["phase"] for s in seen} >= {"l0_selection", "post_l0_refit"}
+    assert any(s["search"] is not None for s in seen)
+
+    prox_kwargs = dict(epochs=8, seed=0, method="prox", l1_lambda=0.01)
+    prox_baseline = calibrate(_frame(), _targets(), **prox_kwargs)
+    prox_seen, prox_observer = _collect(
+        cadence=TargetSnapshotCadence(every=EVERY_EPOCH)
+    )
+    prox_observed = calibrate(
+        _frame(), _targets(), target_snapshots=prox_observer, **prox_kwargs
+    )
+    np.testing.assert_array_equal(prox_baseline.weights, prox_observed.weights)
+    np.testing.assert_array_equal(
+        prox_baseline.loss_trajectory, prox_observed.loss_trajectory
+    )
+    assert prox_seen, "an enabled observer must actually receive snapshots"
+    for snapshot in (*seen, *prox_seen):
+        validate_target_snapshot(snapshot)
+
+
 def test_created_at_is_a_timezone_aware_timestamp():
     payload = _payload()
     parsed = datetime.fromisoformat(payload["created_at"])
