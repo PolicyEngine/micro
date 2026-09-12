@@ -15,6 +15,7 @@ from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph.canonical import canonical_json, sha256_domain
 from microcosm.graph.decl import StructuralDelta
 from microcosm.graph.kernel import Capabilities, Determinism, KernelRole, SeedSource
+from microcosm.graph.keys import opaque_artifact_key
 from microcosm.graph.manifest import Decision, NodeReceipt, PopulationView, RunManifest
 from microcosm.graph.population import MassRecord
 
@@ -695,3 +696,135 @@ def test_package_exports_runtime_implementations_and_failures() -> None:
     assert graph_api.StoreCorrupt is graph_api.StoreCorruptError
     assert graph_api.StoreUnavailable is graph_api.StoreUnavailableError
     assert graph_api.NodeRejected is graph_api.NodeRejectedError
+
+
+def _typed_descriptor(producer: str, artifact: str, producer_key: str) -> dict:
+    return {
+        "producer": producer,
+        "artifact": artifact,
+        "producer_key": producer_key,
+        "key": opaque_artifact_key(producer_key, artifact),
+        "type": {"name": "qrf.forest", "schema_version": 1},
+        "numerics": {"numeric": "bitwise", "tolerance": None, "platform": None},
+    }
+
+
+def _typed_pair() -> tuple[NodeReceipt, NodeReceipt]:
+    """A producer of one typed artifact and the consumer that declares it."""
+    producer_key = "a" * 64
+    descriptor = _typed_descriptor("fit", "forest", producer_key)
+    producer = NodeReceipt(
+        key=producer_key,
+        hit=False,
+        seed=1,
+        kernel_ref="fit@1",
+        kernel_impl_hash="b" * 64,
+        capabilities=_capabilities(),
+        receipt={"trees": 3},
+        opaque_artifacts={"forest": descriptor["key"]},
+        typed_artifacts={"inputs": {}, "outputs": {"forest": descriptor}},
+    )
+    consumer = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="consume@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=_capabilities(),
+        receipt={"read": True},
+        typed_artifacts={"inputs": {"donor": descriptor}, "outputs": {}},
+    )
+    return producer, consumer
+
+
+def test_a_manifest_authenticates_its_typed_artifact_edges() -> None:
+    """Amendment 19: a recorded edge must resolve to its producer's output."""
+    producer, consumer = _typed_pair()
+    RunManifest(
+        country="toy",
+        nodes={"fit": producer, "draw": consumer},
+        started_at="t0",
+        finished_at="t1",
+        host="h",
+    )
+    with pytest.raises(ValueError, match="producer is missing or inconsistent"):
+        RunManifest(
+            country="toy",
+            nodes={"draw": consumer},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )
+    stripped = replace(producer, opaque_artifacts={})
+    with pytest.raises(ValueError, match="output provenance mismatch"):
+        RunManifest(
+            country="toy",
+            nodes={"fit": stripped, "draw": consumer},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )
+    renamed = _typed_descriptor("fit", "other", producer.key)
+    mismatched = replace(
+        consumer, typed_artifacts={"inputs": {"donor": renamed}, "outputs": {}}
+    )
+    with pytest.raises(ValueError, match="does not match its producer output"):
+        RunManifest(
+            country="toy",
+            nodes={"fit": producer, "draw": mismatched},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )
+
+
+def test_a_release_may_not_omit_a_gate_reached_only_through_bytes() -> None:
+    """Amendment 19 cannot route around F2 by hiding a gate behind an edge."""
+    gate_key = "a" * 64
+    descriptor = _typed_descriptor("gate", "evidence", gate_key)
+    gate = NodeReceipt(
+        key=gate_key,
+        hit=False,
+        seed=1,
+        kernel_ref="gate@1",
+        kernel_impl_hash="b" * 64,
+        capabilities=_capabilities(KernelRole.GATE),
+        receipt={"outcome": "fail", "evidence": {"fixture": True}},
+        opaque_artifacts={"evidence": descriptor["key"]},
+        typed_artifacts={"inputs": {}, "outputs": {"evidence": descriptor}},
+    )
+    release = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="release@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=_capabilities(KernelRole.RELEASE),
+        receipt={
+            "tier": "evidence",
+            "outcome": "fail",
+            "gate_ancestry": ["gate"],
+            "requires_decisions": [],
+        },
+        typed_artifacts={"inputs": {"donor": descriptor}, "outputs": {}},
+    )
+    honest = RunManifest(
+        country="toy",
+        nodes={"gate": gate, "release": release},
+        started_at="t0",
+        finished_at="t1",
+        host="h",
+    )
+    assert honest.tier == "evidence"
+    hidden = replace(
+        release,
+        receipt={**dict(release.receipt), "gate_ancestry": [], "tier": "certified"},
+    )
+    with pytest.raises(ValueError, match="omitted a typed artifact gate ancestor"):
+        RunManifest(
+            country="toy",
+            nodes={"gate": gate, "release": hidden},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )
