@@ -7,8 +7,10 @@ prior-lane history; see "Root journals are history, not state" in
 
 ## State
 
-Landed and reviewed on `amend-typed-artifacts`; final whole-workspace run in
-progress. Nothing pushed, no PR, no branches created, `uv.lock` untouched.
+Landed, reviewed, and re-verified from scratch on `amend-typed-artifacts`. The
+whole-workspace run is the last command outstanding; every gate the brief names
+has been re-run green in this session. Nothing pushed, no PR, no branches
+created, `uv.lock` untouched.
 
 ## Scope (what is in, and what is deliberately out)
 
@@ -81,6 +83,43 @@ Out, because it is not needed for artifacts (each is its own lane):
   the F2-over-bytes path, cross-version edges under all three resume
   policies, every artifact declaration field being normative, A3 through a
   byte edge, and a cache hit that reads no payload.
+
+## Re-verification, 2026-09-11 (independent of the landing session)
+
+Everything below was re-run from a clean read of the tree, not carried over
+from the landing session's notes.
+
+- The node-key answer re-measured with a script that varies only the
+  graph-kernel code: `microcosm.graph` resolved once from this branch and once
+  from `origin/main`'s sources (shadowed through `PYTHONPATH`, confirmed by the
+  loaded `decl.py` hash `635fef92...` on the main run), with `microcosm.build`
+  identical in both. Six graphs, 5+5+6+9+41+8 = 74 nodes: **all 74 node keys and
+  all 74 canonical projections byte-identical.** The amendment's per-graph counts
+  are each correct.
+- `docs/graph-interface.lock` re-checked against `shasum -a 256` of the two
+  frozen files: both match.
+- Re-run green: `packages/microcosm-graph/tests` 370 passed exit 0; the
+  acceptance subset 113 passed exit 0; `test_graph_kernel_contract.py` 15 passed
+  exit 0; the `KernelContext(` consumers (calibrate/fit/frame `test_kernels.py`
+  plus `test_us_graph.py`, `test_uk_graph.py`) 36 passed exit 0.
+  `tools/ci_test_groups.py --verify` ok, `tools/spec_engine_coverage.py --check`
+  42156/42156 + 41/41, `tools/graph_acceptance_burndown.py --verify` ok,
+  `ruff check .` clean — all exit 0.
+- No consumer constructs `KernelContext` positionally: all five non-test sites
+  use keyword arguments, so the new field's placement could not have broken one.
+- `ruff format --check .` exits 1 on 81 pre-existing files, none of them touched
+  by this lane (all 17 changed Python files pass `ruff format --check`
+  individually). CI's lint lane runs only `ruff check .`, so this is repo drift,
+  not a gate this lane moved.
+- `packages/microcosm-build/tests/test_release_target_parity.py` fails two
+  tests locally. **Not this lane, and not CI**: both are guarded by
+  `_feed_or_skip` on a 131 MB pinned feed that lives *outside the repository*
+  (`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl`,
+  dated 2026-07-23), so CI skips them; the local artifact predates #855's
+  hierarchy-label requirement. The same two fail identically with `origin/main`'s
+  graph sources swapped in, and `ledger_targets.py` imports no
+  `microcosm.graph`. This is the US twin of the UK instance the #791 lane already
+  recorded in `experiments/791-household-composition-receipts.md:111`.
 
 ## Next
 
