@@ -101,13 +101,22 @@ their source: the complete-population host must authenticate the original
 sampling references and retained parent before and after use. Native fit,
 full-size memory and calibration acceptance remain unestablished.
 
-Complete-population ancestry remains an explicit requirement. The PUF host
-checks its output before return but does not issue a persistent authority token
-for its public dataclass. Later calibration and export must check the actual
-retained output; they cannot treat its receipt as an admission mechanism. The
-minimal invented fixture's 61 present input names out of 161 are diagnostic
-only, with unresolved original-channel values. Native coverage will be measured
-on the new candidate rather than inferred from this fixture.
+Complete-population ancestry remains an explicit requirement. The PUF host now
+retains its actual checked result for downstream consumption through
+`check_survey_puf55_run`. Constructing a dataclass or decoding its receipt cannot
+issue that authority. Consumers must recheck the original run before use and
+after their last relevant I/O. The corrected checker passes 25 controls on
+actual invented cold/required execution, including extra manifest attachments,
+source/store corruption and late output mutation. Independent review approved
+the source and mechanical test colocation; 45 cases share one expensive fixture.
+See [the retained-output evidence](../experiments/us-puf55-checked-output-20260912.md).
+
+The minimal invented fixture's 61 present input names out of 161 remain a
+diagnostic inventory, with unresolved original-channel values. Native coverage
+will be measured on the new candidate. Parallel successor work is qualifying
+unemployment receipt/amount, three health-cost amounts and current interview
+health coverage from the actual survey sources. Reporting universes and missing
+values remain explicit; no prior-wage or age-only zero fallback is introduced.
 
 The remaining critical sequence is complete PUF/input integration, a small
 real full build, model and calibration evaluation, then progressive scale
