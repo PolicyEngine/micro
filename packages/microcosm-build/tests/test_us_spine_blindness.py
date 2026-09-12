@@ -231,6 +231,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "block_ladder_sources.py",
         "capital_gain_distributions.py",
         "casualty_losses.py",
+        # Opt-in normalized-donor preparation; not a registered build stage.
+        # Still scanned for source-spine access by the all-runtime guard.
+        "childcare_attendance.py",
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",

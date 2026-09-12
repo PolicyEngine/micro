@@ -120,6 +120,7 @@ of this source preparation.
 ```bash
 uv sync --all-packages --locked --extra us
 uv run pytest packages/microcosm-build/tests/test_us_childcare_attendance.py
+uv run pytest packages/microcosm-build/tests/test_us_spine_blindness.py
 uv run ruff check .
 uv run python tools/ci_test_groups.py --verify
 ```
@@ -128,3 +129,9 @@ The donor tests use only explicitly synthetic records. They check survey-weighte
 participation, joint schedules, preservation of observed zeros, source-clone
 coherence, stable ordering/chunking, age scope, and rejection of unsupported or
 invalid input. Production data validation remains separate from PR CI.
+
+The runtime inventory in `test_us_spine_blindness.py` explicitly classifies this
+preparation module outside the population-treatment registry. That classification
+does not exempt it from the all-runtime source-spine access scan. Registering it
+as a production stage must update its classification as well as the source and
+coverage contracts above.
