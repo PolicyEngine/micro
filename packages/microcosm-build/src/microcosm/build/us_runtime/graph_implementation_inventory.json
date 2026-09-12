@@ -1250,6 +1250,7 @@
     "microcosm.graph/store.py": {
       "imports": [
         "microcosm.frame",
+        "microcosm.frame.bundle",
         "microcosm.graph.errors",
         "numpy",
         "pandas"
