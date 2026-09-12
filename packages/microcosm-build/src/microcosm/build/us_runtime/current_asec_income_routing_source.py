@@ -976,8 +976,20 @@ def _other_income(raw, ages):
     return out
 
 
-def _read_capture(path, *, rows):
-    """Bounded literal reader; its path and row count establish no authority."""
+def _read_capture(path, *, rows, columns=None, patterns=None):
+    """Bounded literal reader; its path and row count establish no authority.
+
+    Private source extensions may choose an explicit literal roster and amount
+    grammars. The original routing qualifier retains its unchanged defaults.
+    """
+    columns = READ_COLUMNS if columns is None else tuple(columns)
+    patterns = amount_patterns() if patterns is None else dict(patterns)
+    require(
+        len(set(columns)) == len(columns)
+        and set(COORDINATE_COLUMNS) <= set(columns)
+        and set(patterns) <= set(columns),
+        "READ_COLUMN_CONTRACT",
+    )
     reader = source_csv_builtin.capture_csv_reader(csv)
     require(reader is not None, "CSV_READER_CHANGED")
     records, keys, coordinates = [], set(), set()
@@ -988,13 +1000,13 @@ def _read_capture(path, *, rows):
             bool(header)
             and all(header)
             and len(header) == len(set(header))
-            and set(READ_COLUMNS) <= set(header),
+            and set(columns) <= set(header),
             "HEADER",
         )
-        positions = [header.index(c) for c in READ_COLUMNS]
+        positions = [header.index(c) for c in columns]
         for row in stream:
             require(len(row) == len(header) and len(records) < rows, "ROW_SHAPE")
-            record = dict(zip(READ_COLUMNS, (row[i] for i in positions), strict=True))
+            record = dict(zip(columns, (row[i] for i in positions), strict=True))
             key = record["PERIDNUM"]
             require(re.fullmatch(r"[0-9]{22}", key, re.ASCII) is not None, "PERSON_KEY")
             for name, width in COORDINATE_WIDTHS.items():
@@ -1010,23 +1022,20 @@ def _read_capture(path, *, rows):
                 min(pair) > 0 and pair not in coordinates and key not in keys,
                 "DUPLICATE_OR_INVALID_COORDINATE",
             )
-            for name, pattern in amount_patterns().items():
+            for name, pattern in patterns.items():
                 require(
                     record[name] == "" or pattern.fullmatch(record[name]) is not None,
                     "AMOUNT_TOKEN:" + name,
                 )
-            for name in (
-                *RECEIPT_ENTRIES,
-                *ACCOUNT_ENTRIES,
-                "OI_OFF",
-                *ALLOCATION_ENTRIES,
-            ):
+            for name in columns:
+                if name in COORDINATE_COLUMNS or name in patterns:
+                    continue
                 require(len(record[name]) <= TOKEN_MAX_CHARS, "TOKEN_BOUND:" + name)
             records.append(record)
             keys.add(key)
             coordinates.add(pair)
     require(len(records) == rows, "ROW_COUNT")
-    return pd.DataFrame(records, columns=READ_COLUMNS).set_index("PERIDNUM", drop=False)
+    return pd.DataFrame(records, columns=columns).set_index("PERIDNUM", drop=False)
 
 
 def amount_observations(field, positions, literals):
